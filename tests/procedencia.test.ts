@@ -2,13 +2,14 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { proyectoDePrueba } from "./fixtures";
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "geeper-procedencia-"));
 process.env.GEEPER_DATA = dir;
 process.env.GEEPER_COSIGN = path.join(dir, "no-existe", "cosign");
 
+const COSIGN_REAL = path.join(os.homedir(), ".local", "bin", "cosign");
 const sha = (t: string) => createHash("sha256").update(t).digest("hex");
 
 describe("procedencia in-toto de cada render (C4)", () => {
@@ -59,6 +60,26 @@ describe("procedencia in-toto de cada render (C4)", () => {
     expect(st.subject[0].digest.sha256).toBe(sha("video"));
     expect(log[0]).toMatch(/sin firmar: cosign no está instalado/);
   });
+
+  it.skipIf(!fs.existsSync(COSIGN_REAL))("con cosign real firma sin red y la verificación detecta un cambio", async () => {
+    const { execFileSync } = await import("node:child_process");
+    const antes = process.env.GEEPER_COSIGN;
+    process.env.GEEPER_COSIGN = COSIGN_REAL;
+    vi.resetModules();
+    const p = await import("@/lib/procedencia");
+    fs.mkdirSync(p.dirClaves(), { recursive: true });
+    execFileSync(COSIGN_REAL, ["generate-key-pair"], { cwd: p.dirClaves(), env: { ...process.env, COSIGN_PASSWORD: "" }, stdio: "ignore" });
+    const archivo = path.join(dir, "firmar.json");
+    fs.writeFileSync(archivo, '{"a":1}\n');
+    const f = await p.firmar(archivo);
+    expect(f.firma).toBe(`${archivo}.sigstore.json`);
+    const verificar = () => execFileSync(COSIGN_REAL, ["verify-blob", "--key", path.join(p.dirClaves(), "cosign.pub"), "--bundle", f.firma!, "--insecure-ignore-tlog=true", archivo], { stdio: "pipe" });
+    expect(verificar).not.toThrow();
+    fs.writeFileSync(archivo, '{"a":2}\n');
+    expect(verificar).toThrow();
+    process.env.GEEPER_COSIGN = antes;
+    vi.resetModules();
+  }, 60_000);
 
   it("nunca tumba el render: si algo falla, devuelve null y lo registra", async () => {
     const { escribirProcedencia } = await import("@/lib/procedencia");

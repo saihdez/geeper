@@ -554,3 +554,28 @@ Revisión de seguridad de los pasos 2 a 9. Cada hallazgo se verificó contra el 
   y el mensaje de error ya pasa por `tapar()`); que el modelo local exfiltre secretos por inyección en
   la transcripción (no tiene herramientas ni secretos en el contexto y su salida está restringida por
   esquema); que el agente inyecte `cadena` (Geeper la pisa; hay prueba).
+
+## 33. Credenciales C2PA en el MP4: evaluadas, todavía no se incrustan (C5, 2026-11-20)
+
+Prueba en esta PC con `c2patool` 0.27.23 (Apache 2.0 / MIT, binario en `~/.local/bin`, release fijada
+y SHA-256) sobre un MP4 H.264/AAC de 2 s, 1080×1920:
+
+- **Funciona:** un manifiesto con la acción `c2pa.created`,
+  `digitalSourceType: …/trainedAlgorithmicMedia` y `softwareAgent: Geeper` se incrusta en ~11 ms
+  (+14 KB) y `c2patool` lo lee como válido. Con el certificado de prueba sale
+  `signingCredential.untrusted`, como con cualquier certificado propio que no esté en la lista de
+  confianza de C2PA. Sin `ta_url` (el sello de tiempo iría a un servidor externo).
+- **Es frágil:** un `ffmpeg -c copy` lo borra entero («No claim found»); cambiar un byte del video da
+  `assertion.bmffHash.mismatch`. Tendría que ser el último paso, después de todo ffmpeg.
+- **Plataformas (fuentes secundarias, no hay doc oficial clara):** TikTok y Meta leen C2PA al subir y
+  ponen la etiqueta de IA; en YouTube varía, y la etiqueta puesta por C2PA no se puede disputar. TikTok
+  agregó marca de agua invisible porque el C2PA se pierde al reeditar. No se puede medir si la subida lo
+  borra o si aceptan un certificado no confiable sin subir un video, y Geeper no sube nada de prueba.
+- **Decisión: no se incrusta en la entrega por ahora.** La obligación de declarar IA ya la cubre la
+  casilla de cada plataforma (Geeper la pide en la revisión de anuncios, `anuncios/revision.ts`), que
+  además el dueño controla; una etiqueta por C2PA no se puede quitar, y con certificado propio no se sabe
+  cómo la trata cada plataforma.
+- **Se reabre si:** el dueño quiere probarlo con un video privado o no listado (cuando lo pida), o una
+  plataforma exige C2PA. Entonces: paso final de `render.ts` sólo si hay planos generativos, certificado
+  propio en `~/geeper-data/claves/` y verificar con `c2patool` el archivo descargado de la plataforma.
+- **Descartado:** firmar con un certificado de una CA comercial (cuesta y pide cuenta).

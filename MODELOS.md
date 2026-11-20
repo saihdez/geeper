@@ -50,6 +50,7 @@ guarda su licencia en `geeper.json` y en la tabla `Asset`; el QC avisa (sin bloq
 | Phoenix (Arize), opcional | Elastic 2.0 (uso interno permitido) | Sólo si se quiere mirar las trazas en una UI: no se instala por defecto |
 | Promptfoo 0.125.1 (fijado, por `npx`) | MIT | Sólo desarrollo: `pnpm run evals` compara modelos y prompts; telemetría, actualizaciones y «compartir» apagados |
 | cosign v3.1.4 (Sigstore), opcional | Apache 2.0 | Binario en `~/.local/bin`: firma local de la procedencia de cada render, sin Rekor |
+| c2patool 0.27.23 (C2PA), sólo evaluado | Apache 2.0 / MIT | Binario en `~/.local/bin`; no lo usa la app (DECISIONES §33) |
 
 ## Material
 
