@@ -33,6 +33,9 @@ const PERMITIDAS = new Set(["gta", "ia", "youtube", "tiktok", "instagram", "shor
 export function inventos(salida: string, entrada: string): string[] {
   const fuente = sinTildes(entrada);
   const hallados = new Set<string>();
+  // Las marcas de ritmo («[pulso]», «[pausa]») no son palabras: sin quitarlas, la frase que sigue
+  // empieza en la marca y su primera palabra parece un nombre.
+  salida = salida.replace(/\[[^\]]*\]/g, " ");
   const frases = salida.split(/(?<=[.!?¿¡:;\n"«“])\s*|^/u);
   for (const f of frases) {
     const ps = palabras(f.replace(/^[¿¡"«“'(\s-]+/u, ""));

@@ -34,18 +34,24 @@ tests:
       producto: "App que avisa la marea y el oleaje de la playa elegida"
       audiencia: "Personas que surfean o pescan los fines de semana"
       oferta: "Prueba gratis de 14 días"
-      afirmaciones: ["Avisa la marea alta y baja del día", "Funciona sin cuenta"]
+      afirmaciones: |-
+        Avisa la marea alta y baja del día
+        Funciona sin cuenta
   - description: Huerto en Balcón
     vars:
       marca: "Huerto en Balcón"
       producto: "Kit para cultivar hierbas en macetas pequeñas"
       audiencia: "Gente que vive en departamento y nunca cultivó nada"
       oferta: "Envío sin costo en la primera compra"
-      afirmaciones: ["Trae semillas de albahaca, perejil y cilantro", "Incluye guía paso a paso"]
+      afirmaciones: |-
+        Trae semillas de albahaca, perejil y cilantro
+        Incluye guía paso a paso
   - description: Bici Taller Móvil
     vars:
       marca: "Bici Taller Móvil"
       producto: "Servicio que repara bicicletas en tu casa"
       audiencia: "Ciclistas urbanos sin tiempo para llevar la bici al taller"
       oferta: "Revisión básica a domicilio"
-      afirmaciones: ["El técnico va a tu casa", "Se agenda por mensaje"]
+      afirmaciones: |-
+        El técnico va a tu casa
+        Se agenda por mensaje

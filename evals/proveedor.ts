@@ -30,7 +30,7 @@ function pedido(suite: string, crudo: string, v: Vars): { esquema: z.ZodType; pr
     case "titulos":
       return { esquema: RespuestaTitulos, prompt: promptTitulos({ tema: s(v.tema), guion: s(v.guion), formato: s(v.formato, "9:16") }) };
     case "anuncios": {
-      const datos = DatosCampana.parse({ brief: { marca: s(v.marca), producto: s(v.producto), audiencia: s(v.audiencia), oferta: s(v.oferta), afirmaciones: ((v.afirmaciones as string[] | undefined) ?? []).map((texto, i) => ({ id: `a${i + 1}`, texto, aprobada: true })) } });
+      const datos = DatosCampana.parse({ brief: { marca: s(v.marca), producto: s(v.producto), audiencia: s(v.audiencia), oferta: s(v.oferta), afirmaciones: lineas(v.afirmaciones).map((texto, i) => ({ id: `a${i + 1}`, texto, aprobada: true })) } });
       const { sistema, usuario } = construirPrompt(datos);
       return { esquema: RespuestaIdeas, prompt: usuario, sistema, temperatura: 0.8 };
     }
@@ -47,6 +47,9 @@ const FALSOS: Record<string, unknown> = {
   juez: { reason: "falso", pass: true, score: 1 },
 };
 
+/** Promptfoo convierte una lista en varios casos: las afirmaciones van como texto, una por línea. */
+const lineas = (x: unknown): string[] => (Array.isArray(x) ? x.map(String) : String(x ?? "").split("\n")).map((l) => l.trim()).filter(Boolean);
+
 async function main() {
   const [modelo, suite, crudo, , contexto] = process.argv.slice(2);
   if (!modelo || !suite || crudo === undefined) throw new Error("Uso: <modelo> <suite> <prompt> [opciones] [contexto]");
@@ -56,7 +59,9 @@ async function main() {
     process.stdout.write(JSON.stringify(FALSOS[suite] ?? {}));
     return;
   }
-  const r = await pedirJson(modelo, p.prompt, p.esquema, { tarea: `evals ${suite}`, sistema: p.sistema, temperatura: p.temperatura, esperarGpu: true, timeoutMs: 300_000 });
+  // `pnpm run evals --modelo X` corre un solo modelo y lo usa también como juez (GEEPER_EVALS_JUEZ).
+  const usar = suite === "juez" ? (process.env.GEEPER_EVALS_JUEZ ?? modelo) : modelo;
+  const r = await pedirJson(usar, p.prompt, p.esquema, { tarea: `evals ${suite}`, sistema: p.sistema, temperatura: p.temperatura, esperarGpu: true, timeoutMs: 300_000 });
   process.stdout.write(JSON.stringify(r.datos));
 }
 

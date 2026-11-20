@@ -8,6 +8,7 @@ describe("reglas de las evals (C3)", () => {
     expect(inventos("El faro de la isla de Somme. Así sube 120 escalones.", "sube 120 escalones")).toEqual(["Somme"]);
     expect(inventos("Lo vio en YouTube y en GTA 6.", "x")).toEqual(["6"]);
     expect(inventos("Cuando se cortó la luz. Nadie lo esperaba.", momento)).toEqual([]);
+    expect(inventos("No es sólo harina y agua. [pulso] Es un ecosistema.", "masa madre")).toEqual([]);
   });
 
   it("idioma aproximado", () => {

@@ -6,6 +6,7 @@
  * ~/dev/video-tools/pruebas/evals/<fecha>/ e imprime una tabla para anotar en MODELOS.md.
  * Suites: ganchos, titulos, anuncios, director (por defecto, todas).
  * --falso: el proveedor responde sin modelo (prueba la tubería, no los modelos).
+ * --modelo gemma4:12b: sólo ese modelo, y también como juez (cuando el otro no cabe en la GPU).
  * Promptfoo va fijado y con la telemetría, las actualizaciones y el «compartir» apagados.
  */
 import fs from "node:fs";
@@ -25,7 +26,10 @@ interface Resultado {
 async function main() {
   const args = process.argv.slice(2);
   const falso = args.includes("--falso");
-  const elegidas = args.filter((a) => !a.startsWith("--"));
+  const iModelo = args.indexOf("--modelo");
+  const modelo = iModelo >= 0 ? args[iModelo + 1] : undefined;
+  if (iModelo >= 0 && !modelo) throw new Error("--modelo pide un nombre, p. ej. gemma4:12b");
+  const elegidas = args.filter((a, i) => !a.startsWith("--") && !(iModelo >= 0 && i === iModelo + 1));
   const suites = elegidas.length ? elegidas : SUITES;
   const malas = suites.filter((s) => !SUITES.includes(s));
   if (malas.length) throw new Error(`Suites desconocidas: ${malas.join(", ")} (hay: ${SUITES.join(", ")})`);
@@ -38,12 +42,14 @@ async function main() {
     PROMPTFOO_DISABLE_SHARING: "1",
     PROMPTFOO_DISABLE_REMOTE_GENERATION: "1",
     ...(falso ? { GEEPER_EVALS_FALSO: "1" } : {}),
+    ...(modelo ? { GEEPER_EVALS_JUEZ: modelo } : {}),
   };
+  const filtro = modelo ? ["--filter-providers", modelo.replace(":", "-")] : [];
   const filas: string[] = ["| Suite | Modelo | Pasan | Puntaje medio | Errores |", "|---|---|---|---|---|"];
   for (const s of suites) {
     console.error(`▶ ${s}${falso ? " (falso)" : ""}`);
     const salida = path.join(dir, `${s}.json`);
-    await correr("npx", ["-y", PROMPTFOO, "eval", "-c", `evals/${s}.yaml`, "--no-cache", "--no-write", "--no-progress-bar", "-o", salida, "-o", path.join(dir, `${s}.html`)], {
+    await correr("npx", ["-y", PROMPTFOO, "eval", "-c", `evals/${s}.yaml`, "--no-cache", "--no-write", "--no-progress-bar", ...filtro, "-o", salida, "-o", path.join(dir, `${s}.html`)], {
       cwd: RAIZ,
       env,
       timeout: 4 * 3600_000,

@@ -579,3 +579,48 @@ y SHA-256) sobre un MP4 H.264/AAC de 2 s, 1080×1920:
   plataforma exige C2PA. Entonces: paso final de `render.ts` sólo si hay planos generativos, certificado
   propio en `~/geeper-data/claves/` y verificar con `c2patool` el archivo descargado de la plataforma.
 - **Descartado:** firmar con un certificado de una CA comercial (cuesta y pide cuenta).
+
+## 34. Mediciones con la GPU: salida estructurada, evals y QC visual (A3, C3, E1, 2026-11-20)
+
+Medido en esta PC (RTX 5080 16 GB, Ollama de MPT) con `gemma4:12b`, la GPU libre (LM Studio
+descargado) y `keep_alive: 0`. Datos en `~/dev/video-tools/pruebas/stack-2026-11-20/`, `evals/2026-11-20T1512`
+y `T1519`, `qc-vision/2026-11-20T1518`.
+
+**A3 — el pensamiento se come el contexto.** gemma4 (12b y 26b) «piensa» por defecto. Con el contexto
+de 4096 tokens, el director salía cortado (`done_reason: length`, 3808 tokens, 9.700 caracteres de
+razonamiento, 32 s) y las ideas de anuncio se quedaban sin tiempo. `pedirJson` ahora pide `think: false`
+(opción `pensar` para activarlo) y, si la respuesta se corta igual, lo dice. Con eso:
+
+| Esquema | Con esquema en `format` | Sólo `json` | Tiempo | Tokens salida |
+|---|---|---|---|---|
+| ganchos | pasa Zod | pasa Zod | 9,7 s (carga incluida) | 65 |
+| títulos | pasa Zod | pasa Zod | 4,3 s | 35 |
+| ideas-anuncio | pasa Zod | **falla** (guion como lista) | 5,6 s | 194 |
+| director | lo frena el `superRefine` (marca de ritmo en la palabra 11 de una narración de 11) | **falla** (sin `titulo` ni `tema`) | — | — |
+
+Conclusión: el esquema en `format` es necesario (con «sólo json» la forma sale mal en 2 de 4) y los
+cuatro esquemas entran en la gramática. Lo que la gramática no puede imponer (índices de palabra dentro
+de la narración) lo atrapa Zod, como se diseñó.
+
+**C3 — evals con gemma4:12b, también de juez** (`pnpm run evals --modelo gemma4:12b`):
+
+| Suite | Pasan | Puntaje medio | Motivo de los fallos |
+|---|---|---|---|
+| ganchos | 12/20 | 0,97 | 6 del juez, 2 reales (una cifra inventada «14», más de un emoji) |
+| títulos | 6/6 | 1,00 | — |
+| anuncios | 3/3 | 1,00 | — |
+| director | 3/4 | 0,98 | el chequeo de inventos tomaba «[pulso] Es» por un nombre (arreglado) |
+
+- El **juez 12b no sirve**: castiga justo el estilo que pide el prompt (MAYÚSCULAS de énfasis,
+  ganchos llamativos) y a veces responde en inglés. Las aserciones deterministas sí son fiables.
+- Arreglado en la suite: Promptfoo convierte una lista en `vars` en varios casos, así que las
+  afirmaciones van como texto, una por línea (por eso la primera corrida dio 0/6 con errores).
+- **gemma4:26b** (18 GB) no entra entero en 16 GB de VRAM: corre repartido GPU/CPU (como en MPT, 80/20) y
+  más lento. WSL se reinició mientras corría su pasada de A3 (no se pudo atribuir con certeza), así que esta
+  vez se midió sólo el 12b. Pendiente: `pnpm run evals` sin `--modelo` (compara los dos, juez 26b) con la
+  GPU libre y vigilando la memoria.
+
+**E1 — QC visual:** gemma4:12b tiene visión; revisó las 14 hojas de contacto en 4,6 s cada una y no
+marcó ninguna. Sin una hoja con defectos conocidos no se sabe si es que no los hay o que no los ve: la
+regla `visual-ia` sigue como **aviso** y no bloquea. Falta llenar la columna «¿Real?» de la tabla y
+probar con una hoja con manos o texto deformes.
