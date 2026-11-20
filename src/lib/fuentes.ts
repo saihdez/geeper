@@ -60,6 +60,8 @@ async function ytdlp(args: string[], log?: Registro, signal?: AbortSignal) {
 
 /** Trae (o reutiliza) la fuente. `maxMinutos` limita lo que se baja de un VOD largo. */
 export async function traerFuente(src: string, o: { maxMinutos?: number; log?: Registro; signal?: AbortSignal } = {}): Promise<Fuente> {
+  // Algo que empieza con «-» llegaría a ffprobe o a yt-dlp como una opción, no como fuente.
+  if (src.trim().startsWith("-")) throw new Error("La fuente no puede empezar con «-»: pega la URL o la ruta del archivo.");
   const id = idFuente(src);
   const dir = path.join(dirFuentes(), id);
   await fs.mkdir(dir, { recursive: true });
@@ -86,7 +88,7 @@ export async function traerFuente(src: string, o: { maxMinutos?: number; log?: R
   let info: InfoFuente;
   if (await existe(rutaInfo)) info = JSON.parse(await fs.readFile(rutaInfo, "utf8")) as InfoFuente;
   else {
-    const r = await ytdlp(["-J", "--skip-download", src], undefined, o.signal);
+    const r = await ytdlp(["-J", "--skip-download", "--", src], undefined, o.signal);
     const j = JSON.parse(r.stdout) as Record<string, unknown>;
     if (j.is_live) throw new Error("Es un directo en vivo: Geeper no graba directos. Espera a que quede el VOD publicado.");
     info = {
@@ -113,7 +115,7 @@ export async function traerFuente(src: string, o: { maxMinutos?: number; log?: R
       args.push("--download-sections", `*0-${max}`);
       o.log?.(`El VOD dura ${(info.duracion / 60).toFixed(0)} min: se bajan los primeros ${o.maxMinutos ?? 90} (usa --max-minutos para más)`);
     }
-    await ytdlp([...args, info.url], o.log, o.signal);
+    await ytdlp([...args, "--", info.url], o.log, o.signal);
     await fs.rename(path.join(dir, ".fuente.mp4"), video);
   }
 
@@ -122,7 +124,7 @@ export async function traerFuente(src: string, o: { maxMinutos?: number; log?: R
   const previo = (await fs.readdir(dir)).find((f) => f.endsWith(".live_chat.json"));
   if (previo) chat = path.join(dir, previo);
   else if (info.fueDirecto && /youtube/i.test(info.plataforma ?? "")) {
-    await ytdlp(["--skip-download", "--write-subs", "--sub-langs", "live_chat", "-o", path.join(dir, "chat"), info.url], o.log, o.signal).catch(() => null);
+    await ytdlp(["--skip-download", "--write-subs", "--sub-langs", "live_chat", "-o", path.join(dir, "chat"), "--", info.url], o.log, o.signal).catch(() => null);
     const nuevo = (await fs.readdir(dir)).find((f) => f.endsWith(".live_chat.json"));
     chat = nuevo ? path.join(dir, nuevo) : null;
   }

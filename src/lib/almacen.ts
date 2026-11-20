@@ -30,11 +30,19 @@ export async function leerProyecto(slug: string): Promise<Proyecto | null> {
 }
 
 /** Valida, guarda geeper.json (atómico) y crea la Version siguiente. Devuelve el número. */
-export async function guardarProyecto(proyectoId: string, datos: Proyecto, nota: string): Promise<number> {
+/**
+ * Guarda una versión nueva. Con `versionBase`, sólo si el proyecto sigue en esa versión (se comprueba
+ * dentro de la transacción: dos guardados a la vez no pisan uno al otro).
+ */
+export async function guardarProyecto(proyectoId: string, datos: Proyecto, nota: string, op: { versionBase?: number } = {}): Promise<number> {
   const p = validarProyecto(datos);
   const fila = await db.proyecto.findUniqueOrThrow({ where: { id: proyectoId } });
   const json = JSON.stringify(p, null, 2) + "\n";
   const numero = await db.$transaction(async (tx) => {
+    if (op.versionBase !== undefined) {
+      const actual = await tx.proyecto.findUniqueOrThrow({ where: { id: proyectoId }, select: { versionActual: true } });
+      if (actual.versionActual !== op.versionBase) throw new Error(`El proyecto cambió: va por la versión ${actual.versionActual} y el cambio se hizo sobre la ${op.versionBase}.`);
+    }
     const ultima = await tx.version.findFirst({ where: { proyectoId }, orderBy: { numero: "desc" } });
     const n = (ultima?.numero ?? 0) + 1;
     await tx.version.create({ data: { proyectoId, numero: n, nota, hash: sha256Texto(json), json } });

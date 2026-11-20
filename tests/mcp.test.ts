@@ -86,8 +86,22 @@ describe("servidor MCP de Geeper (B1)", () => {
     expect(Object.keys(p.geeper.escenas)).not.toContain("e03");
   });
 
+  it("dos guardados sobre la misma versión: el segundo no pisa al primero (comprobado dentro de la transacción)", async () => {
+    const { guardarProyecto } = await import("@/lib/almacen");
+    const { versionDeProyecto } = await import("@/lib/render");
+    const { p, numero } = await versionDeProyecto("p1");
+    const [a, b] = await Promise.allSettled([guardarProyecto("p1", p, "A", { versionBase: numero }), guardarProyecto("p1", p, "B", { versionBase: numero })]);
+    expect([a.status, b.status].sort()).toEqual(["fulfilled", "rejected"]);
+    expect(String((a.status === "rejected" ? a : b as PromiseRejectedResult).reason)).toMatch(/El proyecto cambió/);
+  });
+
+  it("momentos_buscar no acepta una fuente que parezca una opción", async () => {
+    expect((await llamar("momentos_buscar", { src: "--exec=touch /tmp/x" })).isError).toBe(true);
+  });
+
   it("una propuesta inválida no se aplica y dice el paso", async () => {
-    const r = await llamar("aplicar_cambio", { slug: "faros", propuesta: [{ tipo: "quitarEscena", escena: "e99" }], versionBase: 2 });
+    const { versionActual } = await db.proyecto.findUniqueOrThrow({ where: { id: "p1" } });
+    const r = await llamar("aplicar_cambio", { slug: "faros", propuesta: [{ tipo: "quitarEscena", escena: "e99" }], versionBase: versionActual });
     expect(r.isError).toBe(true);
     expect(r.content[0]!.text).toMatch(/paso 1/);
   });
@@ -100,7 +114,8 @@ describe("servidor MCP de Geeper (B1)", () => {
     expect(est).toMatchObject({ tipo: "voz.regenerar", estado: "pendiente" });
     expect((await llamar("encolar", { slug: "faros", tipo: "publicar.subir" })).isError).toBe(true);
     const render = await json("encolar", { slug: "faros", tipo: "render.entregar", payload: { version: 1 } });
-    expect((await db.trabajo.findUniqueOrThrow({ where: { id: render.trabajo } })).payload).toEqual({ version: 2 });
+    const { versionActual } = await db.proyecto.findUniqueOrThrow({ where: { id: "p1" } });
+    expect((await db.trabajo.findUniqueOrThrow({ where: { id: render.trabajo } })).payload).toEqual({ version: versionActual });
   });
 
   it("momentos_buscar encola la búsqueda", async () => {
@@ -113,7 +128,7 @@ describe("servidor MCP de Geeper (B1)", () => {
     const renders = path.join(dir, "faros", "renders");
     fs.mkdirSync(renders, { recursive: true });
     execFileSync(FFMPEG, ["-v", "error", "-f", "lavfi", "-i", "testsrc=size=1080x1920:rate=30:duration=1", "-pix_fmt", "yuv420p", path.join(renders, "v2-shorts.mp4")]);
-    await db.render.create({ data: { proyectoId: "p1", versionNumero: 2, perfil: "shorts-9x16", ruta: "renders/v2-shorts.mp4", estado: "aprobado", duracion: 1 } });
+    await db.render.create({ data: { proyectoId: "p1", versionNumero: 3, perfil: "shorts-9x16", ruta: "renders/v2-shorts.mp4", estado: "aprobado", duracion: 1 } });
     const r = await llamar("fotograma", { slug: "faros", segundo: 0.5 });
     expect(r.isError).toBeFalsy();
     expect(r.content[0]).toMatchObject({ type: "image", mimeType: "image/png" });

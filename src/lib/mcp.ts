@@ -171,7 +171,7 @@ export function crearServidor(): McpServer {
       const { p } = await versionDeProyecto(fila.id);
       const ev = evaluarPropuesta(p, propuesta);
       if (!ev.nuevo) return error(ev.error ?? `La propuesta falla en el paso ${ev.fallo?.n} (${ev.fallo?.tipo}): ${ev.fallo?.error}. No se aplicó nada.`);
-      const numero = await guardarProyecto(fila.id, ev.nuevo, nota);
+      const numero = await guardarProyecto(fila.id, ev.nuevo, nota, { versionBase });
       return texto({ slug, aplicada: numero, diferencias: ev.diferencias });
     }),
   );
@@ -264,7 +264,7 @@ export function crearServidor(): McpServer {
       description:
         "Encola la búsqueda de momentos fuertes de un VOD, video o grabación (URL o archivo local; nunca un directo en vivo). Deja candidatos en ~/geeper-data/_fuentes/<id>/candidatos.md; sigue el avance con trabajo_estado.",
       inputSchema: z.object({
-        src: z.string().min(1).describe("URL o ruta de archivo."),
+        src: z.string().min(1).refine((x) => !x.startsWith("-"), "No puede empezar con «-»").describe("URL o ruta de archivo."),
         top: z.number().int().min(1).max(20).default(8),
         min: z.number().min(3).max(120).optional(),
         max: z.number().min(3).max(180).optional(),

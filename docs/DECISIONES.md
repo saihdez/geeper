@@ -536,3 +536,21 @@ Paso 9 de `docs/STACK-AGENTICO.md`, 2026-11-20. **Código listo; falta instalar 
 - **Pendiente del dueño:** `sudo apt install bubblewrap` (Geeper no usa sudo). Después, medir con un
   VOD real que el tiempo de «Buscar momentos» no cambie de forma notable y anotarlo aquí.
 - **Descartado:** gVisor, Firecracker o un contenedor por archivo (pesados para una PC y un usuario).
+
+## 32. Segunda opinión sobre el stack agéntico (Nemotron Ultra, 2026-11-20)
+
+Revisión de seguridad de los pasos 2 a 9. Cada hallazgo se verificó contra el código:
+
+- **Arreglado:** (a) dos `aplicar_cambio` a la vez podían pasar el chequeo de versión (hay `await`
+  entre leer y guardar): ahora `guardarProyecto(…, { versionBase })` lo compara dentro de la
+  transacción, con prueba de la carrera. (b) Una fuente que empezara con `-` llegaba a ffprobe o yt-dlp
+  como opción: se rechaza y yt-dlp recibe `--` antes de la URL. (c) bwrap con `--cap-drop ALL`.
+- **Se mantiene:** la clave de cosign sin contraseña. Para firmar sin intervención el proceso necesita
+  el secreto igual; cifrarla con una contraseña guardada al lado no agrega nada. La firma prueba «lo
+  hizo esta instalación de Geeper», no un no repudio fuerte; si alguien toma control de la PC, puede
+  firmar. Para más, un token de hardware (fuera del alcance de una PC interna).
+- **Descartado (no aplica):** que `fotograma` lea fuera del proyecto (la ruta del render la escribe
+  Geeper y `dentroDe` la valida); que `tapar()` no cubra objetos (OTel no admite objetos como atributo
+  y el mensaje de error ya pasa por `tapar()`); que el modelo local exfiltre secretos por inyección en
+  la transcripción (no tiene herramientas ni secretos en el contexto y su salida está restringida por
+  esquema); que el agente inyecte `cadena` (Geeper la pisa; hay prueba).
