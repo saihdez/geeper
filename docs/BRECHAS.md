@@ -20,7 +20,8 @@
 | E4 reencuadre por cara | **Hecho parcial**: punto fijo por clip con YuNet para todo material (HEREDADO.md, LightCraft) y reencuadre react/cara para clips 9:16 (`py/reencuadre.py`); falta el seguimiento dinámico |
 | D1 portada y ganchos | **Hecho** (2026-11-19): portada en 3 pasos con PhotoCraft, diseños propios .psd y miniatura en YouTube (docs/PHOTOCRAFT.md); rúbrica de ganchos en la skill `geeper`. Falta descripción y hashtags con IA |
 | Stack agéntico, paso 1 (A1, A2, E2 de STACK-AGENTICO.md) | **Hecho** (2026-11-20, rama `feat/stack-contrato`): `AGENTS.md`, JSON Schema de los contratos en `docs/esquemas/`, pesos sin *pickle*. G1 ya tiene su contrato (`src/lib/director.ts`), falta el flujo |
-| E3, G1, G2, G4, Q3, D2, D3, P1, P2 | Pendientes |
+| Q3 QC visual | **Código listo** (2026-11-20, `feat/stack-qc-vision`): aviso con modelo de visión local sobre la hoja de contacto, apagado hasta medir con `scripts/medir-qc-vision.ts` (DECISIONES §29) |
+| E3, G1, G2, G4, D2, D3, P1, P2 | Pendientes |
 
 ## 0. Qué significa «el mejor» aquí
 

@@ -22,6 +22,7 @@ const MAPA: Record<string, Explicacion> = {
   ampliacion: { que: "Que ninguna imagen se vea borrosa por estar estirada.", hacer: "Cámbiala por una más grande o por un SVG; si es un logo, abre el detalle y usa «Vectorizar»." },
   duplicados: { que: "Que la imagen no se quede congelada.", hacer: "Mira la escena donde se congela: cambia su clip o quítala." },
   subtitulos: { que: "Que los subtítulos se puedan leer: líneas cortas y no más de dos.", hacer: "Abre las escenas marcadas y acorta el texto que se muestra (no cambia lo que se oye)." },
+  "visual-ia": { que: "Que no haya manos, caras o letras deformes ni logos ajenos en las imágenes.", hacer: "Es un aviso de la IA y puede equivocarse: mira la hoja de contacto y, si ves el defecto, cambia la imagen de esa escena." },
   "subtitulos-ritmo": { que: "Que los subtítulos no pasen demasiado rápido.", hacer: "Es un aviso: la persona habla rápido. Si quieres, recorta palabras de relleno." },
   "zonas-seguras": { que: "Que ningún texto quede tapado por los botones de la red social.", hacer: "Acorta el texto en pantalla o cambia su posición." },
   "hyperframes-check": { que: "Que la composición no tenga errores (textos ilegibles, piezas rotas).", hacer: "Mira el detalle: si dice «contrast», cambia el texto o su posición; si no, avisa." },

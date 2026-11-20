@@ -482,3 +482,22 @@ Paso 6 de `docs/STACK-AGENTICO.md`, 2026-11-20.
 - **Nuevo contrato `ideas-anuncio`** en `docs/esquemas/` (la respuesta del modelo, distinta de la
   propuesta de un agente) y `promptDirector()` en `src/lib/director.ts` (lo usarán las evals y G1).
 - **Descartado:** DeepEval y Ragas (Python; Ragas es para RAG, que Geeper no tiene).
+
+## 29. QC visual con un modelo de visión local, como aviso (E1, Q3)
+
+Paso 7 de `docs/STACK-AGENTICO.md`, 2026-11-20. **Código listo; falta medir el modelo.**
+
+- **Sobre la hoja de contacto**, no cada fotograma: una imagen por render (un recuadro por escena y la
+  tarjeta final) con el prompt que dice qué es cada recuadro. Respuesta con esquema (A3):
+  `{problemas: [{fotograma, tipo: mano|cara|texto|marca|otro, gravedad, nota}]}`.
+- **Regla `visual-ia`, siempre aviso:** graves y medias la marcan; leves sólo se listan. Explicada en
+  palabras en el QC. Si la GPU está ocupada o Docker apagado, el aviso lo dice y el QC sigue. Corre
+  después del render, que ya soltó la GPU, así que no se traba con su propio candado.
+- **Apagada por defecto** hasta medir: `GEEPER_QC_VISION=<modelo>` la enciende. Candidatos, en orden:
+  Gemma 4 (si el tag que ya está trae visión: `ollama show`), Qwen3-VL (Apache 2.0) en el tamaño que
+  quepa, MiniCPM-V (su licencia pide registro para uso comercial: revisarla antes).
+- **Medir:** `pnpm tsx scripts/medir-qc-vision.ts <modelo>… --max 30` revisa las hojas que ya hay y
+  deja una tabla por modelo con una columna «¿real?» para llenar a mano. Con 30 renders revisados se
+  decide el modelo y si algún tipo (p. ej. manos graves) puede bloquear.
+- **Pendiente:** usar el mismo modelo para puntuar momentos de clips (G5) sólo si mejora a
+  `buscar-momentos.ts` medido con una suite de evals.

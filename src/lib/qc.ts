@@ -14,6 +14,7 @@ import { intervalos, type Grupo } from "./linea";
 import { ffmpeg, fotograma, probar } from "./media";
 import { correr, type Registro } from "./proceso";
 import type { Ritmo } from "./pulsos";
+import { revisarHojaVisual } from "./qc-vision";
 import { FFMPEG, FFPROBE } from "./rutas";
 import { lineas } from "./subtitulos";
 
@@ -444,6 +445,12 @@ export async function correrQc(archivo: string, esp: Esperado, dirHoja: string, 
   reglas.push(...(esp.extras ?? []));
 
   const hoja = await hojaDeContacto(archivo, esp.momentos, dirHoja, log);
+  // Revisión visual con IA (aviso; apagada salvo GEEPER_QC_VISION). El render ya soltó la GPU.
+  const visual = await revisarHojaVisual(hoja.hoja, hoja.fotos);
+  if (visual) {
+    reglas.push(visual);
+    log(`QC visual (${String((visual.medido as { modelo?: string }).modelo)}): ${visual.ok ? "sin defectos claros" : (visual.detalle ?? "revisar")}`);
+  }
   return {
     aprobado: reglas.every((r) => r.ok || r.aviso),
     archivo,
