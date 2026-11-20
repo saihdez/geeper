@@ -100,3 +100,17 @@ export async function chequeoFirma(): Promise<Chequeo> {
   }
   return { nombre, ok: true, detalle: `cosign ${v} con clave local (sin Rekor)` };
 }
+
+/** Aislamiento del material de fuera (D2): bubblewrap. Opcional: sin él, ffmpeg lee esos archivos como siempre. */
+export async function chequeoAislamiento(): Promise<Chequeo> {
+  const { BWRAP, puedeAislar } = await import("./aislado");
+  const nombre = "Aislamiento del material de internet (bubblewrap)";
+  if (process.env.GEEPER_AISLAR === "0") return { nombre, ok: true, aviso: true, detalle: "apagado (GEEPER_AISLAR=0)" };
+  if (await puedeAislar()) return { nombre, ok: true, detalle: "ffmpeg y ffprobe leen lo bajado o subido sin red y sin poder escribir fuera de su salida" };
+  const hay = await fs.access(BWRAP).then(() => true, () => false);
+  return {
+    nombre, ok: true, aviso: true,
+    detalle: hay ? `${BWRAP} no pudo crear el espacio aislado` : "no está: los VODs y archivos subidos se leen sin aislar",
+    arreglo: hay ? "Revisa que WSL permita user namespaces (sysctl kernel.unprivileged_userns_clone)." : "sudo apt install bubblewrap   (lo corre el dueño; Geeper no usa sudo)",
+  };
+}

@@ -520,3 +520,19 @@ Paso 8 de `docs/STACK-AGENTICO.md`, 2026-11-20.
 - **cosign v3.1.4** (Apache 2.0) en `~/.local/bin/cosign`, bajado de la release oficial y comprobado con
   el SHA-256 que publica GitHub (`424e2c97…bbfa`).
 - **Descartado:** SLSA (es para paquetes que se publican) y firmar con `age` (cifra, no firma).
+
+## 31. El material de internet se lee aislado con bubblewrap (D2)
+
+Paso 9 de `docs/STACK-AGENTICO.md`, 2026-11-20. **Código listo; falta instalar `bwrap` y medir.**
+
+- **Automático por origen:** si una entrada de `ffmpeg` o `ffprobe` está en `~/geeper-data/_fuentes/`
+  (VODs bajados) o `_subidos/` (lo que se arrastra a Clips), corre dentro de `bwrap`: sin red
+  (`--unshare-net`), todo en sólo lectura salvo la carpeta de salida, `/tmp` propio y muere con el
+  padre. Cubre el primer `ffprobe`, la lectura de sonoridad del VOD entero (`dbPorSegundo`), las vistas
+  previas, las miniaturas y el corte del clip (`src/lib/aislado.ts`, `media.ts`, `momentos.ts`). Lo de
+  los proyectos (assets ya importados, renders) no se aísla: ya pasó por aquí.
+- **Si no se puede, sigue como hoy:** sin `bwrap`, o si WSL no deja crear el espacio de nombres, se
+  corre sin aislar y el doctor lo avisa. `GEEPER_AISLAR=0` lo apaga.
+- **Pendiente del dueño:** `sudo apt install bubblewrap` (Geeper no usa sudo). Después, medir con un
+  VOD real que el tiempo de «Buscar momentos» no cambie de forma notable y anotarlo aquí.
+- **Descartado:** gVisor, Firecracker o un contenedor por archivo (pesados para una PC y un usuario).

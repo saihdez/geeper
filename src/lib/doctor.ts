@@ -18,7 +18,7 @@ import { juzgar, leerAjustes, salidaActual, verificarSalida } from "./redes/sali
 import { REDES_IDS } from "./redes/tipos";
 import { PYTHON_CARAS, YUNET } from "./caras";
 import { CONTENEDORES_MPT } from "./imagenes";
-import { chequeoAuditoria, chequeoFirma, chequeoImagenes, chequeoSbom } from "./doctor-evidencia";
+import { chequeoAislamiento, chequeoAuditoria, chequeoFirma, chequeoImagenes, chequeoSbom } from "./doctor-evidencia";
 
 export interface Chequeo {
   nombre: string;
@@ -180,8 +180,8 @@ export async function diagnosticar(): Promise<Chequeo[]> {
   });
 
   // Evidencia: SBOM al día, vulnerabilidades conocidas y cambios en las imágenes de MPT (avisos).
-  const [sbom, auditoria, imagenes, firma] = await Promise.all([chequeoSbom(), chequeoAuditoria(), chequeoImagenes(), chequeoFirma()]);
-  c.push(sbom, auditoria, imagenes, firma);
+  const [sbom, auditoria, imagenes, firma, aislamiento] = await Promise.all([chequeoSbom(), chequeoAuditoria(), chequeoImagenes(), chequeoFirma(), chequeoAislamiento()]);
+  c.push(sbom, auditoria, imagenes, firma, aislamiento);
 
   c.push(...(await diagnosticarRedes()));
   return c;

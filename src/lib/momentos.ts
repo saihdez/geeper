@@ -14,6 +14,7 @@
  *    TwitchDownloader.
  */
 import { spawn } from "node:child_process";
+import { comando } from "./aislado";
 import type { Palabra } from "./esquema";
 import { FFMPEG } from "./rutas";
 
@@ -227,13 +228,15 @@ export function chatTwitch(json: unknown, n: number): number[] {
 // ---- Audio ---------------------------------------------------------------------------------------
 
 /** dB RMS por segundo del audio (mono, 8 kHz), leído en flujo: no carga el VOD entero en memoria. */
-export function dbPorSegundo(archivo: string, maxSegundos?: number): Promise<number[]> {
+export async function dbPorSegundo(archivo: string, maxSegundos?: number): Promise<number[]> {
   const SR = 8000;
+  const args = ["-hide_banner", "-nostdin", "-v", "error", "-i", archivo];
+  if (maxSegundos) args.push("-t", String(maxSegundos));
+  args.push("-vn", "-ac", "1", "-ar", String(SR), "-f", "s16le", "-");
+  // Es lo primero que decodifica un VOD bajado: aislado (sin red, sin escribir) si viene de fuera.
+  const c = await comando(FFMPEG, args, [archivo], []);
   return new Promise((ok, mal) => {
-    const args = ["-hide_banner", "-nostdin", "-v", "error", "-i", archivo];
-    if (maxSegundos) args.push("-t", String(maxSegundos));
-    args.push("-vn", "-ac", "1", "-ar", String(SR), "-f", "s16le", "-");
-    const p = spawn(FFMPEG, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const p = spawn(c.cmd, c.args, { stdio: ["ignore", "pipe", "pipe"] });
     const out: number[] = [];
     let suma = 0;
     let cuenta = 0;

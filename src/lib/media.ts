@@ -1,4 +1,5 @@
 import { FFMPEG, FFPROBE } from "./rutas";
+import { correrSiExterno, entradasYSalida } from "./aislado";
 import { correr, type Registro } from "./proceso";
 
 export interface InfoMedia {
@@ -11,7 +12,8 @@ export interface InfoMedia {
 }
 
 export async function probar(ruta: string): Promise<InfoMedia> {
-  const r = await correr(FFPROBE, ["-v", "error", "-show_entries", "format=duration:stream", "-of", "json", ruta]);
+  // Un archivo de fuera se lee sin red ni permiso de escritura (aislado.ts).
+  const r = await correrSiExterno(FFPROBE, ["-v", "error", "-show_entries", "format=duration:stream", "-of", "json", ruta], [ruta], []);
   const j = JSON.parse(r.stdout) as { format?: { duration?: string }; streams?: Record<string, unknown>[] };
   const v = j.streams?.find((s) => s.codec_type === "video");
   const a = j.streams?.find((s) => s.codec_type === "audio");
@@ -32,7 +34,9 @@ function fraccion(s: string): number {
 }
 
 export function ffmpeg(args: string[], log?: Registro) {
-  return correr(FFMPEG, ["-hide_banner", "-nostdin", "-y", ...args], { log });
+  // Si alguna entrada viene de fuera, corre aislado: sin red y escribiendo sólo en la carpeta de salida.
+  const { entradas, salidas } = entradasYSalida(args);
+  return correrSiExterno(FFMPEG, ["-hide_banner", "-nostdin", "-y", ...args], entradas, salidas, { log });
 }
 
 /** Versión de ffmpeg (para la huella de los pasos que dependen de él). */
