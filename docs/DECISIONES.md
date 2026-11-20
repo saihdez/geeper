@@ -408,3 +408,29 @@ Paso 3 de `docs/STACK-AGENTICO.md`, 2026-11-20.
 - **Verificado:** pruebas con un cliente MCP en memoria (una por herramienta, incluido un PNG real de un
   render de prueba), `initialize` + `tools/list` + `proyectos_listar` por stdio contra los datos reales
   (5 proyectos) y Playwright MCP arrancando con su Chromium.
+
+## 26. SBOM CycloneDX 1.7, digests de MPT y `pnpm audit` en el doctor (C2, D3)
+
+Paso 4 de `docs/STACK-AGENTICO.md`, 2026-11-20. Cumple el «SBOM desde F1» de PRODUCTO.md §9.
+
+- **`@cyclonedx/cyclonedx-library`, no `cyclonedx-npm`:** el segundo lee `npm ls` y Geeper usa pnpm.
+  Los paquetes salen de `pnpm licenses list --prod --json` (281 con su licencia; «MIT and ISC» se
+  convierte en expresión SPDX y lo que no es SPDX va como nombre). Se valida con el esquema oficial
+  1.7 que trae la librería (Ajv, sólo en desarrollo).
+- **Qué entra:** paquetes de producción, 9 modelos (`MODELOS_SBOM` en `src/lib/sbom.ts`; los de Geeper
+  con el sha256 de sus pesos, los de MPT por nombre; una prueba exige que estén en MODELOS.md), las
+  imágenes de MPT con su digest, las apps Craft con su release, ffmpeg e Hyperframes.
+  `docs/sbom/geeper.cdx.json` va en el repo.
+- **SBOM viejo = otro `pnpm-lock.yaml`:** el SBOM guarda el sha256 del lock y el doctor lo compara
+  (las fechas de archivo no sirven: git las cambia al hacer checkout).
+- **D3:** el doctor lee la imagen de cada contenedor de MPT (`docker inspect`), guarda digest e id en
+  `~/geeper-data/imagenes.json` y avisa si cambió. Es lo único que escribe el doctor, y es un registro
+  propio de Geeper. Las imágenes construidas en local (`mpt-image-server`) no tienen digest de
+  registro: se usa su id. El importador anota esos digests en la procedencia de cada asset de MPT
+  (`regenerar.imagenesMpt`).
+- **`pnpm audit --prod` en el doctor** (aviso). La primera corrida encontró `effect` 3.20 (alta,
+  ReDoS, lo trae el CLI de Prisma): *override* a 3.22.4 en la misma rama 3.x; y `fflate` 0.8.2
+  (moderada, en `unzipSync`, que Geeper no usa: sólo `zipSync`): subido a 0.8.3. Queda en cero.
+- **De paso (E2):** el arreglo que sugería el doctor para YuNet bajaba de `raw/main`; ahora usa la URL
+  fijada a un commit y comprueba el sha256.
+- **Descartado:** SPDX 3.0.1 además de CycloneDX (un formato basta; CycloneDX describe modelos de ML).

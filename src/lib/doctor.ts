@@ -16,7 +16,9 @@ import { revisarPrivados } from "./redes/privados";
 import { obtenerRed } from "./redes/index";
 import { juzgar, leerAjustes, salidaActual, verificarSalida } from "./redes/salida";
 import { REDES_IDS } from "./redes/tipos";
-import { PYTHON_CARAS } from "./caras";
+import { PYTHON_CARAS, YUNET } from "./caras";
+import { CONTENEDORES_MPT } from "./imagenes";
+import { chequeoAuditoria, chequeoImagenes, chequeoSbom } from "./doctor-evidencia";
 
 export interface Chequeo {
   nombre: string;
@@ -27,7 +29,6 @@ export interface Chequeo {
   arreglo?: string;
 }
 
-const CONTENEDORES_MPT = ["moneyprinterturbo-api", "moneyprinterturbo-webui", "mpt-ollama", "mpt-kokoro", "mpt-image-server"];
 
 async function intento(cmd: string, args: string[], timeout = 20_000) {
   try {
@@ -111,7 +112,8 @@ export async function diagnosticar(): Promise<Chequeo[]> {
     arreglo: ping.codigo !== 0
       ? 'uv venv ~/dev/video-tools/venvs/geeper-clips && uv pip install --python ~/dev/video-tools/venvs/geeper-clips/bin/python "numpy>=1.26,<3" "opencv-python-headless>=4.9,<5" "yt-dlp[default]>=2026.10"'
       : yuOk ? undefined
-      : "mkdir -p ~/.cache/geeper/modelos && curl -L -o ~/.cache/geeper/modelos/face_detection_yunet_2023mar.onnx https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
+      // URL fijada a un commit y sha256 comprobado (MODELOS.md, «Formatos y descargas»).
+      : `mkdir -p ~/.cache/geeper/modelos && curl -L -o ~/.cache/geeper/modelos/${YUNET.archivo} ${YUNET.url} && echo "${YUNET.sha256}  ~/.cache/geeper/modelos/${YUNET.archivo}" | sha256sum -c`,
   });
 
   // ffmpeg con NVENC.
@@ -176,6 +178,10 @@ export async function diagnosticar(): Promise<Chequeo[]> {
     nombre: "mpt_acabado.py (alineación)", ok: py3.stdout.includes("ok"), detalle: py3.stdout.includes("ok") ? "se importa" : py3.stderr.slice(0, 200),
     arreglo: py3.stdout.includes("ok") ? undefined : "Restaura ~/dev/video-tools/bin/mpt_acabado.py",
   });
+
+  // Evidencia: SBOM al día, vulnerabilidades conocidas y cambios en las imágenes de MPT (avisos).
+  const [sbom, auditoria, imagenes] = await Promise.all([chequeoSbom(), chequeoAuditoria(), chequeoImagenes()]);
+  c.push(sbom, auditoria, imagenes);
 
   c.push(...(await diagnosticarRedes()));
   return c;

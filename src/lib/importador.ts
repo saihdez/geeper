@@ -23,6 +23,7 @@ import { detectarSilencios, puntuarPalabras, resumirConfianza } from "./confianz
 import { aplicarEdicion } from "./ediciones";
 import { conFocos, marcarAuto } from "./caras";
 import { proponerMusica } from "./pulsos";
+import { huellaImagenesMpt } from "./imagenes";
 import { etiquetaPesos, huellaPesos } from "./modelos";
 import { alinear, MODELO_WHISPER, transcribir } from "./voz";
 
@@ -144,6 +145,8 @@ export async function importarMpt(ctx: Contexto, d: DatosImport): Promise<{ vers
   const faltan = imagenesFaltantes(script.search_terms?.length ?? 0, fuentes.length);
   if (faltan) throw new Error(faltan);
   const assets: Record<string, Asset> = {};
+  // Qué versión de MPT lo generó (D3/Q5): digests de sus imágenes Docker según el último doctor.
+  const imagenesMpt = await huellaImagenesMpt();
 
   // Clips en el orden de material_sources.
   const clips: Asset[] = [];
@@ -163,6 +166,7 @@ export async function importarMpt(ctx: Contexto, d: DatosImport): Promise<{ vers
         prompt: f.search_term ?? null,
         modelo: d.modeloImagen ?? null,
         movimiento: script.params?.image_motion ?? null,
+        imagenesMpt,
       },
     });
     assets[id] = a;
@@ -185,6 +189,7 @@ export async function importarMpt(ctx: Contexto, d: DatosImport): Promise<{ vers
       texto: script.script,
       modelo: "kokoro-82m",
       alineacion: { modelo: `whisper-${MODELO_WHISPER}`, pesos: await huellaPesos(`whisper-${MODELO_WHISPER}`) },
+      imagenesMpt,
     },
   });
   assets[voz.id] = voz;
