@@ -29,6 +29,8 @@ pnpm run lint         # eslint
 pnpm test             # vitest (sin GPU ni Docker)
 pnpm run doctor       # sólo lectura: qué falta en la PC y cómo arreglarlo
 pnpm run esquemas     # regenera docs/esquemas/*.schema.json desde Zod
+pnpm run sbom         # docs/sbom/geeper.cdx.json (CycloneDX 1.7)
+pnpm run evals        # compara modelos y prompts con Promptfoo (usa GPU: pide permiso)
 ```
 
 Un cambio está terminado cuando `typecheck`, `lint` y `test` están en verde. Si cambias un esquema Zod

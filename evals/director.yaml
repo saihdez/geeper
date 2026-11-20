@@ -1,0 +1,50 @@
+# Guion del director (storyboard)
+# Generado para Promptfoo (C3 de docs/STACK-AGENTICO.md). Corre con `pnpm run evals` (usa GPU).
+# Casos inventados: sin canales reales ni personas identificables.
+description: Storyboard con narración, plano, duración y marcas de ritmo
+# El prompt real lo arma evals/proveedor.ts con las variables del caso (las recibe en el contexto).
+prompts: ['{{ __suite }}']
+providers:
+  - id: 'exec: npx tsx proveedor.ts gemma4:26b director'
+    label: gemma4-26b
+  - id: 'exec: npx tsx proveedor.ts gemma4:12b director'
+    label: gemma4-12b
+evaluateOptions:
+  maxConcurrency: 1
+defaultTest:
+  vars:
+    __suite: director
+  options:
+    provider:
+      id: 'exec: npx tsx proveedor.ts gemma4:26b juez'
+  assert:
+    - type: is-json
+    # JSON Schema 2020-12 con el Ajv de Geeper (el de Promptfoo es draft-07).
+    - type: javascript
+      value: file://aserciones.ts:esquema_director
+    - type: javascript
+      value: file://aserciones.ts:director
+    - type: llm-rubric
+      weight: 0.5
+      value: "El storyboard cuenta el tema con un gancho al inicio y un cierre, los planos pedidos son concretos y filmables o generables, la narración cabe en la duración y no inventa nombres ni datos."
+tests:
+  - description: "Por qué los faros siguen encendidos en la era del GPS"
+    vars:
+      tema: "Por qué los faros siguen encendidos en la era del GPS"
+      duracion: 30
+      formato: '9:16'
+  - description: "Cómo funciona la masa madre"
+    vars:
+      tema: "Cómo funciona la masa madre"
+      duracion: 45
+      formato: '9:16'
+  - description: "Qué hace que el cielo sea azul"
+    vars:
+      tema: "Qué hace que el cielo sea azul"
+      duracion: 30
+      formato: '9:16'
+  - description: "Tres hábitos para dormir mejor"
+    vars:
+      tema: "Tres hábitos para dormir mejor"
+      duracion: 40
+      formato: '9:16'

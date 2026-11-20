@@ -1,0 +1,130 @@
+# Ganchos y título de un clip
+# Generado para Promptfoo (C3 de docs/STACK-AGENTICO.md). Corre con `pnpm run evals` (usa GPU).
+# Casos inventados: sin canales reales ni personas identificables.
+description: Ganchos de 3 a 9 palabras y título para momentos de material largo
+# El prompt real lo arma evals/proveedor.ts con las variables del caso (las recibe en el contexto).
+prompts: ['{{ __suite }}']
+providers:
+  - id: 'exec: npx tsx proveedor.ts gemma4:26b ganchos'
+    label: gemma4-26b
+  - id: 'exec: npx tsx proveedor.ts gemma4:12b ganchos'
+    label: gemma4-12b
+evaluateOptions:
+  maxConcurrency: 1
+defaultTest:
+  vars:
+    __suite: ganchos
+  options:
+    provider:
+      id: 'exec: npx tsx proveedor.ts gemma4:26b juez'
+  assert:
+    - type: is-json
+    # JSON Schema 2020-12 con el Ajv de Geeper (el de Promptfoo es draft-07).
+    - type: javascript
+      value: file://aserciones.ts:esquema_ganchos
+    - type: javascript
+      value: file://aserciones.ts:ganchos
+    - type: llm-rubric
+      weight: 0.5
+      value: "Los ganchos y el título describen sólo lo que pasa en el texto, sin exagerar, sin inventar hechos ni poner palabras en boca de nadie, en español neutro y con ganas de seguir mirando."
+tests:
+  - description: momento 01
+    vars:
+      texto: "Llevo tres horas intentando pasar este jefe y justo cuando le quedaba un golpe se me cortó la luz de toda la casa."
+      idioma: es
+      react: false
+  - description: momento 02
+    vars:
+      texto: "Le eché sal en vez de azúcar al pastel y nadie en la mesa se atrevió a decírmelo hasta el final de la cena."
+      idioma: es
+      react: true
+  - description: momento 03
+    vars:
+      texto: "El tren se detuvo en medio del campo y el conductor bajó a sacar una vaca de la vía con las manos."
+      idioma: es
+      react: false
+  - description: momento 04
+    vars:
+      texto: "Pensé que la tortuga estaba dormida pero llevaba veinte minutos mirándome comer sin parpadear."
+      idioma: es
+      react: false
+  - description: momento 05
+    vars:
+      texto: "Abrí la caja del envío y en lugar de la consola venía un ladrillo envuelto en papel de regalo."
+      idioma: es
+      react: false
+  - description: momento 06
+    vars:
+      texto: "En la prueba de sonido el micrófono captó a mi vecino cantando ópera en la ducha durante toda la transmisión."
+      idioma: es
+      react: false
+  - description: momento 07
+    vars:
+      texto: "El chat decidió el nombre del gato por votación y ganó Tostada con el noventa por ciento de los votos."
+      idioma: es
+      react: true
+  - description: momento 08
+    vars:
+      texto: "Intenté montar la mesa sin leer las instrucciones y me sobraron catorce tornillos y una pata entera."
+      idioma: es
+      react: false
+  - description: momento 09
+    vars:
+      texto: "El dron se quedó sin batería sobre el lago y bajó despacio hasta posarse justo encima de una boya."
+      idioma: es
+      react: false
+  - description: momento 10
+    vars:
+      texto: "Mi abuela ganó la partida de ajedrez en ocho movimientos y después me explicó cada error que cometí."
+      idioma: es
+      react: false
+  - description: momento 11
+    vars:
+      texto: "Saltó la alarma de incendios por el humo de las tostadas en pleno directo y tuvimos que salir a la calle."
+      idioma: es
+      react: true
+  - description: momento 12
+    vars:
+      texto: "El perro aprendió a abrir el refrigerador y lo encontramos dormido al lado de un paquete de jamón vacío."
+      idioma: es
+      react: false
+  - description: momento 13
+    vars:
+      texto: "Cuando llegamos a la cima la niebla tapaba todo, y a los dos minutos se abrió y se vio el valle entero."
+      idioma: es
+      react: false
+  - description: momento 14
+    vars:
+      texto: "Probé el picante más fuerte de la tienda y tuve que terminar el video con la cara metida en un balde de leche."
+      idioma: es
+      react: false
+  - description: momento 15
+    vars:
+      texto: "La bici eléctrica se quedó sin carga en la única subida del recorrido y la subí empujando bajo la lluvia."
+      idioma: es
+      react: false
+  - description: momento 16
+    vars:
+      texto: "En la carrera de karts iba último toda la prueba y en la última curva chocaron los tres que iban delante."
+      idioma: es
+      react: true
+  - description: momento 17
+    vars:
+      texto: "El volcán de bicarbonato de la feria de ciencias salió tan fuerte que manchó el techo del gimnasio."
+      idioma: es
+      react: false
+  - description: momento 18
+    vars:
+      texto: "Me equivoqué de idioma en la entrevista y respondí todas las preguntas en portugués sin darme cuenta."
+      idioma: es
+      react: false
+  - description: momento 19
+    vars:
+      texto: "Construí una caja para el gato con tres pisos y el gato prefirió dormir en la caja de cartón en la que venía."
+      idioma: es
+      react: false
+  - description: momento 20
+    vars:
+      texto: "Después de cien intentos por fin salió el truco de la patineta, justo cuando la cámara ya se había apagado."
+      idioma: es
+      react: false

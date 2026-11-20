@@ -8,6 +8,7 @@
  * repo quedó desactualizado.
  */
 import { z } from "zod";
+import { RespuestaLlm as RespuestaIdeas } from "./anuncios/ideas";
 import { Propuesta as PropuestaAnuncio } from "./anuncios/propuesta";
 import { Director } from "./director";
 import { Proyecto } from "./esquema";
@@ -52,6 +53,13 @@ export const CONTRATOS: readonly Contrato[] = [
     titulo: "Respuesta del modelo: títulos de portada",
     descripcion: "Salida del modelo local al proponer títulos de portada. Referencia: src/lib/titulos.ts.",
     esquema: RespuestaTitulos,
+    io: "input",
+  },
+  {
+    nombre: "ideas-anuncio",
+    titulo: "Respuesta del modelo: ideas de anuncio",
+    descripcion: "Salida del modelo local al proponer conceptos para una campaña («Propónme ideas»). Referencia: src/lib/anuncios/ideas.ts.",
+    esquema: RespuestaIdeas,
     io: "input",
   },
   {

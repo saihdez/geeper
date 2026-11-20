@@ -81,3 +81,21 @@ export type Director = z.infer<typeof Director>;
 export function validarDirector(datos: unknown): Director {
   return Director.parse(datos);
 }
+
+/** Prompt del director para el modelo local (función pura). La forma la impone el esquema (A3). */
+export function promptDirector(o: { tema: string; duracion: number; formato?: string; notas?: string }): string {
+  const escenas = Math.max(3, Math.min(10, Math.round(o.duracion / 6)));
+  return [
+    `Eres director de videos cortos en español neutro. Propón el storyboard de un video de ${o.duracion} s en ${o.formato ?? "9:16"}.`,
+    `Tema: ${o.tema}`,
+    ...(o.notas ? [`Notas de la persona: ${o.notas}`] : []),
+    "",
+    `- Unas ${escenas} escenas con ids e01, e02… Cada una: narración (lo que dice la voz, frases cortas), plano pedido`,
+    "  (tipo generado|archivo|clip|texto, descripción visual concreta, encuadre y movimiento) y duración estimada en segundos.",
+    `- La suma de duraciones cerca de ${o.duracion} s. La voz habla ~2,5 palabras por segundo: no escribas más de lo que cabe.`,
+    "- La primera escena abre con un gancho (dato que sorprende, pregunta o situación). La última cierra la idea.",
+    "- Marcas de ritmo: «corte», «pausa», «enfasis» o «pulso» con el índice (desde 0) de la palabra de esa narración.",
+    "- NO inventes nombres propios, lugares, cifras ni citas que no estén en el tema. Si falta un dato, no lo afirmes.",
+    "- Responde sólo el JSON.",
+  ].join("\n");
+}

@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://geeper.local/esquemas/ideas-anuncio.schema.json",
+  "$comment": "Generado desde Zod con `pnpm run esquemas`; no editar a mano. La validación real es Zod: las reglas de consistencia (refinamientos) no están aquí.",
+  "title": "Respuesta del modelo: ideas de anuncio",
+  "type": "object",
+  "properties": {
+    "conceptos": {
+      "minItems": 1,
+      "maxItems": 5,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "nombre": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "marco": {
+            "type": "string"
+          },
+          "gancho": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 200
+          },
+          "promesa": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "guion": {
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 4000
+          },
+          "cta": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "afirmaciones_nuevas": {
+            "maxItems": 6,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 300
+            }
+          }
+        },
+        "required": [
+          "nombre",
+          "gancho",
+          "guion"
+        ]
+      }
+    }
+  },
+  "required": [
+    "conceptos"
+  ],
+  "description": "Salida del modelo local al proponer conceptos para una campaña («Propónme ideas»). Referencia: src/lib/anuncios/ideas.ts."
+}

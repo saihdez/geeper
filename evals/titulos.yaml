@@ -1,0 +1,60 @@
+# Títulos de portada
+# Generado para Promptfoo (C3 de docs/STACK-AGENTICO.md). Corre con `pnpm run evals` (usa GPU).
+# Casos inventados: sin canales reales ni personas identificables.
+description: Tres títulos de portada de hasta 55 caracteres
+# El prompt real lo arma evals/proveedor.ts con las variables del caso (las recibe en el contexto).
+prompts: ['{{ __suite }}']
+providers:
+  - id: 'exec: npx tsx proveedor.ts gemma4:26b titulos'
+    label: gemma4-26b
+  - id: 'exec: npx tsx proveedor.ts gemma4:12b titulos'
+    label: gemma4-12b
+evaluateOptions:
+  maxConcurrency: 1
+defaultTest:
+  vars:
+    __suite: titulos
+  options:
+    provider:
+      id: 'exec: npx tsx proveedor.ts gemma4:26b juez'
+  assert:
+    - type: is-json
+    # JSON Schema 2020-12 con el Ajv de Geeper (el de Promptfoo es draft-07).
+    - type: javascript
+      value: file://aserciones.ts:esquema_titulos
+    - type: javascript
+      value: file://aserciones.ts:titulos
+    - type: llm-rubric
+      weight: 0.5
+      value: "Los tres títulos son distintos entre sí (uno directo, uno con pregunta, uno con curiosidad), dan ganas de ver el video y no prometen nada que el guion no diga."
+tests:
+  - description: faros
+    vars:
+      tema: "faros"
+      guion: "Los faros de la costa siguen encendidos aunque los barcos ya usan GPS. Un farero cuenta que en invierno sube muchos escalones cada noche."
+      formato: '9:16'
+  - description: el pan de masa madre
+    vars:
+      tema: "el pan de masa madre"
+      guion: "La masa madre es harina y agua que fermentan solas. Hay que alimentarla cada día y tarda horas en hacer crecer el pan."
+      formato: '9:16'
+  - description: por qué el cielo es azul
+    vars:
+      tema: "por qué el cielo es azul"
+      guion: "La luz del sol se dispersa en el aire y el azul se dispersa más que el rojo. Por eso de día vemos el cielo azul y al atardecer naranja."
+      formato: '9:16'
+  - description: ahorrar agua en casa
+    vars:
+      tema: "ahorrar agua en casa"
+      guion: "Cerrar la llave al lavarse los dientes y arreglar las fugas pequeñas son los cambios más fáciles para gastar menos agua."
+      formato: '9:16'
+  - description: los pulpos
+    vars:
+      tema: "los pulpos"
+      guion: "El pulpo tiene tres corazones y la sangre azul. Puede cambiar de color en menos de un segundo para esconderse."
+      formato: '9:16'
+  - description: dormir mejor
+    vars:
+      tema: "dormir mejor"
+      guion: "Dormir a la misma hora todos los días y dejar el teléfono fuera del cuarto ayuda a descansar más."
+      formato: '9:16'

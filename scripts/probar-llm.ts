@@ -8,7 +8,7 @@
  */
 import { z } from "zod";
 import { RespuestaLlm as RespuestaIdeas } from "../src/lib/anuncios/ideas";
-import { Director } from "../src/lib/director";
+import { Director, promptDirector } from "../src/lib/director";
 import { promptGanchos, RespuestaGanchos } from "../src/lib/ganchos";
 import { ErrorLlm, pedirJson } from "../src/lib/llm-local";
 import { promptTitulos, RespuestaTitulos } from "../src/lib/titulos";
@@ -27,7 +27,7 @@ const casos: { nombre: string; esquema: z.ZodType; prompt: string }[] = [
   {
     nombre: "director",
     esquema: Director,
-    prompt: `Eres director de videos cortos. Propón un storyboard de 30 s en 9:16 sobre este tema, con 4 escenas (ids e01…e04), narración en español, plano pedido y marcas de ritmo (índice de palabra dentro de la narración).\nTema: ${texto}`,
+    prompt: promptDirector({ tema: texto, duracion: 30 }),
   },
 ];
 

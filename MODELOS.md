@@ -48,6 +48,7 @@ guarda su licencia en `geeper.json` y en la tabla `Asset`; el QC avisa (sin bloq
 | `@cyclonedx/cyclonedx-library` 10.4.0, `packageurl-js`, `ajv` (+ formatos) | Apache 2.0 / MIT | Sólo desarrollo: arman y validan el SBOM (`pnpm run sbom`) |
 | OpenTelemetry (`@opentelemetry/api` 1.10, `sdk-trace` 3.0, `context-async-hooks` 3.0, `exporter-trace-otlp-http` 0.300) | Apache 2.0 | Trazas de trabajos, pasos, GPU y modelo local (`src/lib/trazas.ts`) |
 | Phoenix (Arize), opcional | Elastic 2.0 (uso interno permitido) | Sólo si se quiere mirar las trazas en una UI: no se instala por defecto |
+| Promptfoo 0.125.1 (fijado, por `npx`) | MIT | Sólo desarrollo: `pnpm run evals` compara modelos y prompts; telemetría, actualizaciones y «compartir» apagados |
 
 ## Material
 

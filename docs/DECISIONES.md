@@ -457,3 +457,28 @@ Paso 5 de `docs/STACK-AGENTICO.md`, 2026-11-20.
   (`sdk-trace-node`/`sdk-trace-base`) está marcada como obsoleta en npm a favor de `sdk-trace`.
 - **Descartado:** Langfuse (autoalojado pide Postgres, ClickHouse y Redis) y el SDK completo de
   OTel para Node con autoinstrumentación (trazaría cada consulta de Prisma y cada `fs`: ruido).
+
+## 28. Evals de prompts y modelos con Promptfoo (C3)
+
+Paso 6 de `docs/STACK-AGENTICO.md`, 2026-11-20.
+
+- **4 suites en `evals/`:** ganchos (20 momentos inventados), títulos (6), ideas de anuncio (3 briefs
+  ficticios) y guion del director (4 temas). Sin canales reales ni personas identificables. Cada una
+  compara `gemma4:26b` y `gemma4:12b`.
+- **El prompt es el de la app:** el proveedor `exec:` (`evals/proveedor.ts`) recibe las variables del
+  caso y arma el prompt con las mismas funciones que Geeper (`promptGanchos`, `promptTitulos`,
+  `construirPrompt`, `promptDirector`), y lo pide por `pedirJson` (esquema en `format`, gpu-lock que
+  espera su turno, `keep_alive: 0`). Cambiar un prompt en `src/lib` cambia lo que se evalúa.
+- **Aserciones deterministas primero** (`src/lib/evals.ts`, probadas con vitest): JSON Schema 2020-12
+  con el Ajv de Geeper (el de Promptfoo es draft-07 y rechaza `$schema` 2020-12), largos, comillas,
+  términos prohibidos, idioma, que la narración quepa en la duración y **nombres o cifras que no
+  estaban en la entrada** (el caso del «faro de la isla de Somme»). Las siglas en mayúsculas no cuentan
+  (GTA, GPS): es un límite conocido. Después, un juez local (`llm-rubric` con `gemma4:26b`, peso 0,5).
+  Nunca una API paga.
+- **`pnpm run evals [suite] [--falso]`:** Promptfoo 0.125.1 por `npx` (no es dependencia), con
+  telemetría, actualizaciones y «compartir» apagados. Resultados JSON y HTML en
+  `~/dev/video-tools/pruebas/evals/<fecha>/` y una tabla para MODELOS.md. `--falso` prueba la tubería
+  sin GPU (verificado: 4 suites, 72 casos, ~1 min).
+- **Nuevo contrato `ideas-anuncio`** en `docs/esquemas/` (la respuesta del modelo, distinta de la
+  propuesta de un agente) y `promptDirector()` en `src/lib/director.ts` (lo usarán las evals y G1).
+- **Descartado:** DeepEval y Ragas (Python; Ragas es para RAG, que Geeper no tiene).

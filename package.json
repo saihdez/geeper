@@ -23,6 +23,7 @@
     "test": "vitest run",
     "esquemas": "tsx scripts/esquemas.ts",
     "sbom": "tsx scripts/sbom.ts",
+    "evals": "tsx scripts/evals.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
