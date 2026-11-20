@@ -33,16 +33,22 @@ export function promptGanchos(d: { texto: string; canal: string | null; idioma: 
   ].join("\n");
 }
 
-const Respuesta = z.object({ ganchos: z.array(z.string()).default([]), titulo: z.string().nullable().optional() });
+/** Lo que se le pide al modelo (docs/esquemas/ganchos.schema.json). Los filtros finos van en `limpiarSugerencias`. */
+export const RespuestaGanchos = z
+  .object({
+    ganchos: z.array(z.string().describe("Gancho de 3 a 9 palabras para los primeros 2 segundos, sin comillas.")).default([]).describe("Tres ganchos distintos."),
+    titulo: z.string().nullable().optional().describe("Título del clip (de reacción si es react)."),
+  })
+  .describe("Sugerencias de gancho y título para un clip.");
 
 /** Limpia lo que devuelve el modelo: quita comillas, términos prohibidos, vacíos, largos y repetidos. */
 export function limpiarSugerencias(crudo: string): Sugerencias {
   const inicio = crudo.indexOf("{");
   const fin = crudo.lastIndexOf("}");
   if (inicio < 0 || fin <= inicio) return { ganchos: [], titulo: null };
-  let datos: z.infer<typeof Respuesta>;
+  let datos: z.infer<typeof RespuestaGanchos>;
   try {
-    datos = Respuesta.parse(JSON.parse(crudo.slice(inicio, fin + 1)));
+    datos = RespuestaGanchos.parse(JSON.parse(crudo.slice(inicio, fin + 1)));
   } catch {
     return { ganchos: [], titulo: null };
   }

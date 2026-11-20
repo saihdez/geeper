@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://geeper.local/esquemas/director.schema.json",
+  "$comment": "Generado desde Zod con `pnpm run esquemas`; no editar a mano. La validación real es Zod: las reglas de consistencia (refinamientos) no están aquí.",
+  "title": "Propuesta del director (storyboard)",
+  "type": "object",
+  "properties": {
+    "titulo": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "description": "Nombre de trabajo del video."
+    },
+    "tema": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300,
+      "description": "De qué trata, en una frase."
+    },
+    "formato": {
+      "default": "9:16",
+      "description": "Formato del video.",
+      "type": "string",
+      "enum": [
+        "9:16",
+        "16:9",
+        "1:1"
+      ]
+    },
+    "duracionObjetivo": {
+      "type": "number",
+      "minimum": 5,
+      "maximum": 600,
+      "description": "Duración buscada en segundos."
+    },
+    "escenas": {
+      "minItems": 1,
+      "maxItems": 40,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^e\\d{2,3}$",
+            "description": "Id de la escena: e01, e02… (el mismo que tendrá en geeper.json)."
+          },
+          "narracion": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 600,
+            "description": "Lo que se oye en la escena, tal cual lo dirá la voz."
+          },
+          "plano": {
+            "type": "object",
+            "properties": {
+              "tipo": {
+                "type": "string",
+                "enum": [
+                  "generado",
+                  "archivo",
+                  "clip",
+                  "texto"
+                ],
+                "description": "De dónde sale la imagen: generado (MPT o Wan), archivo propio, clip de material largo o sólo texto sobre fondo."
+              },
+              "descripcion": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 400,
+                "description": "Qué se ve, en una o dos frases. Para planos generados es la base del prompt."
+              },
+              "encuadre": {
+                "type": "string",
+                "enum": [
+                  "general",
+                  "medio",
+                  "primer-plano",
+                  "detalle"
+                ],
+                "description": "Tamaño del plano pedido."
+              },
+              "movimiento": {
+                "type": "string",
+                "enum": [
+                  "fijo",
+                  "acercar",
+                  "alejar",
+                  "paneo-izquierda",
+                  "paneo-derecha"
+                ],
+                "description": "Movimiento de cámara pedido (se traduce a `movimiento` del clip visual)."
+              }
+            },
+            "required": [
+              "tipo",
+              "descripcion"
+            ],
+            "additionalProperties": false,
+            "description": "El plano que el director pide para la escena."
+          },
+          "duracionEstimada": {
+            "type": "number",
+            "minimum": 0.5,
+            "maximum": 60,
+            "description": "Segundos que el director cree que dura la escena."
+          },
+          "textoEnPantalla": {
+            "description": "Título o rótulo superpuesto, si la escena lo lleva.",
+            "type": "string",
+            "maxLength": 80
+          },
+          "ritmo": {
+            "default": [],
+            "description": "Marcas de ritmo sobre la narración.",
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "tipo": {
+                  "type": "string",
+                  "enum": [
+                    "corte",
+                    "pausa",
+                    "enfasis",
+                    "pulso"
+                  ],
+                  "description": "corte: cambio de plano; pausa: silencio breve; enfasis: palabra que se remarca; pulso: golpe de música."
+                },
+                "palabra": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991,
+                  "description": "Índice (desde 0) de la palabra de `narracion` donde cae la marca."
+                },
+                "nota": {
+                  "description": "Aclaración breve para quien edita.",
+                  "type": "string",
+                  "maxLength": 120
+                }
+              },
+              "required": [
+                "tipo",
+                "palabra"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "id",
+          "narracion",
+          "plano",
+          "duracionEstimada"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Escenas en orden de aparición."
+    }
+  },
+  "required": [
+    "titulo",
+    "tema",
+    "duracionObjetivo",
+    "escenas"
+  ],
+  "additionalProperties": false,
+  "description": "Salida del director de G1: escenas con narración, plano pedido, duración estimada y marcas de ritmo. Referencia: src/lib/director.ts."
+}

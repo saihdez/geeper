@@ -53,7 +53,7 @@ export const Foco = z.object({
   muestras: z.number().int().positive(),
   /** Detector que lo calculó (p. ej. yunet-2023mar). */
   modelo: z.string().min(1),
-});
+}).describe("Dónde está la cara principal de un asset visual, en fracciones del cuadro (0..1).");
 export type Foco = z.infer<typeof Foco>;
 
 export const Asset = z.object({
@@ -72,7 +72,7 @@ export const Asset = z.object({
   regenerar: z.record(z.string(), z.unknown()).default({}),
   /** Sólo video o imagen: cara principal detectada; sin ancla fijada, el encuadre la sigue. */
   foco: Foco.optional(),
-});
+}).describe("Archivo del proyecto (video, audio o imagen) con su origen, licencia y lo necesario para regenerarlo.");
 export type Asset = z.infer<typeof Asset>;
 
 /** Encuadre de un clip visual: escala 1 = llena el cuadro; x/y desplazan (−1..1 = medio cuadro). */
@@ -80,7 +80,7 @@ export const Encuadre = z.object({
   escala: z.number().min(0.1).max(4).default(1),
   x: z.number().min(-1).max(1).default(0),
   y: z.number().min(-1).max(1).default(0),
-});
+}).describe("Encuadre de un clip visual: escala 1 = llena el cuadro; x/y desplazan (−1..1 = medio cuadro).");
 export type Encuadre = z.infer<typeof Encuadre>;
 
 export const Transicion = z.object({
@@ -89,14 +89,14 @@ export const Transicion = z.object({
   /** Segundos; el fundido se monta sobre el final del clip anterior. */
   duracion: z.number().min(0.1).max(2).default(0.4),
   ...OpcionesMascara,
-});
+}).describe("Transición de entrada sobre la escena anterior.");
 export type Transicion = z.infer<typeof Transicion>;
 
 export const Color = z.object({
   brillo: z.number().min(0).max(2).default(1),
   contraste: z.number().min(0).max(2).default(1),
   saturacion: z.number().min(0).max(3).default(1),
-});
+}).describe("Ajuste de color (1 = sin cambio).");
 export type Color = z.infer<typeof Color>;
 
 export const Clip = z.object({
@@ -133,7 +133,7 @@ export const Clip = z.object({
   fusion: Fusion.optional(),
   /** Sólo audio: ganancia lineal. */
   volumen: z.number().min(0).max(4).optional(),
-});
+}).describe("Clip de una pista. En visual y voz hay uno por escena, en el mismo orden; en las pistas libres lleva `inicio`.");
 export type Clip = z.infer<typeof Clip>;
 
 export const Pista = z.object({
@@ -141,7 +141,7 @@ export const Pista = z.object({
   id: z.string().regex(/^[a-z0-9-]+$/),
   tipo: z.enum(["video", "audio"]),
   clips: z.array(Clip),
-});
+}).describe("Pista de la línea de tiempo: visual, voz, musica o una pista libre.");
 export type Pista = z.infer<typeof Pista>;
 
 /** Texto superpuesto (título, rótulo o cita), aparte de los subtítulos. */
@@ -152,7 +152,7 @@ export const Texto = z.object({
   duracion: z.number().min(0.3).max(60),
   estilo: z.enum(["titulo", "rotulo", "cita"]).default("rotulo"),
   posicion: z.enum(["arriba", "centro", "abajo"]).default("arriba"),
-});
+}).describe("Texto superpuesto (título, rótulo o cita), aparte de los subtítulos.");
 export type Texto = z.infer<typeof Texto>;
 
 /** Tiempo por palabra, en el tiempo del asset de voz de la escena. */
@@ -162,7 +162,7 @@ export const Palabra = z.object({
   fin: Segundos,
   /** 0..1: qué tan creíble es el tiempo (ver confianza.ts). Ausente = sin medir. */
   confianza: z.number().min(0).max(1).optional(),
-});
+}).describe("Tiempo de una palabra, en el tiempo del asset de voz de la escena.");
 export type Palabra = z.infer<typeof Palabra>;
 
 /**
@@ -173,7 +173,7 @@ export const Correccion = z.object({
   desde: z.number().int().min(0),
   hasta: z.number().int().positive(),
   texto: z.string(),
-});
+}).describe("Cambia lo que se muestra sobre las palabras oídas [desde, hasta) sin cambiar lo que se oye.");
 export type Correccion = z.infer<typeof Correccion>;
 
 /** Tramo que se quita de la voz de la escena (edición por texto), en tiempo del asset de voz. */
@@ -181,7 +181,7 @@ export const Recorte = z.object({
   inicio: Segundos,
   fin: Segundos,
   motivo: z.enum(["palabras", "silencio", "muletilla"]),
-});
+}).describe("Tramo que se quita de la voz de la escena (edición por texto).");
 export type Recorte = z.infer<typeof Recorte>;
 
 export const Escena = z.object({
@@ -191,11 +191,13 @@ export const Escena = z.object({
   palabras: z.array(Palabra),
   correcciones: z.array(Correccion).default([]),
   recortes: z.array(Recorte).default([]),
-});
+}).describe("Escena: lo que se oye, sus palabras con tiempos, correcciones y recortes.");
 export type Escena = z.infer<typeof Escena>;
 
 /** «GTA seis=GTA VI»: cambia lo que se lee sin cambiar lo que se oye (--mostrar de mpt-acabado). */
-export const Mostrar = z.object({ de: z.string().min(1), a: z.string().min(1) });
+export const Mostrar = z
+  .object({ de: z.string().min(1), a: z.string().min(1) })
+  .describe("Cambia lo que se lee sin cambiar lo que se oye (p. ej. «GTA seis» → «GTA VI»).");
 export type Mostrar = z.infer<typeof Mostrar>;
 
 export const Marcador = z.object({
@@ -203,14 +205,14 @@ export const Marcador = z.object({
   tiempo: Segundos,
   nombre: z.string(),
   tipo: z.enum(["corte", "nota", "pulso"]),
-});
+}).describe("Marca en la línea de tiempo: corte, nota o pulso de la música.");
 
 export const Voz = z.object({
   motor: z.enum(["kokoro", "mpt"]),
   voz: z.string().min(1),
   velocidad: z.number().min(0.5).max(2).default(1),
   idioma: z.string().default("es"),
-});
+}).describe("Cómo se genera la próxima voz.");
 export type Voz = z.infer<typeof Voz>;
 
 /**
@@ -222,45 +224,46 @@ export const EstiloVideo = z.object({
   efectos: z.array(Efecto).max(8).optional(),
   transicion: Transicion.optional(),
   curva: Curva.optional(),
-});
+}).describe("Estilo del video: lo heredan las escenas que no fijan el suyo.");
 export type EstiloVideo = z.infer<typeof EstiloVideo>;
 
 export const Fps = z.union([z.literal(24), z.literal(25), z.literal(30), z.literal(60)]);
 
 export const Proyecto = z
   .object({
-    schemaVersion: z.literal(SCHEMA_VERSION),
+    schemaVersion: z.literal(SCHEMA_VERSION).describe("Versión del esquema (2). Un v1 se migra solo al leerlo."),
     id: z.string().min(1),
     nombre: z.string().min(1),
-    tema: z.string(),
-    formato: Formato,
-    plantilla: z.string().min(1),
-    fps: Fps.default(30),
+    tema: z.string().describe("De qué trata el video."),
+    formato: Formato.describe("Relación de aspecto del video."),
+    plantilla: z.string().min(1).describe("Slug de la plantilla del canal."),
+    fps: Fps.default(30).describe("Cuadros por segundo: 24, 25, 30 o 60."),
     voz: Voz,
-    guion: z.object({ texto: z.string() }),
-    mostrar: z.array(Mostrar).default([]),
-    assets: z.record(z.string(), Asset),
-    pistas: z.array(Pista),
-    textos: z.array(Texto).default([]),
-    escenas: z.record(z.string(), Escena),
-    marcadores: z.array(Marcador).default([]),
+    guion: z.object({ texto: z.string() }).describe("El guion que se oye."),
+    mostrar: z.array(Mostrar).default([]).describe("Reemplazos de lo que se lee."),
+    assets: z.record(z.string(), Asset).describe("Assets por id."),
+    pistas: z.array(Pista).describe("Pistas: visual y voz (un clip por escena, mismo orden), musica opcional y pistas libres."),
+    textos: z.array(Texto).default([]).describe("Textos superpuestos."),
+    escenas: z.record(z.string(), Escena).describe("Escenas por id."),
+    marcadores: z.array(Marcador).default([]).describe("Cortes, notas y pulsos de la música."),
     /** Si el video se va a monetizar o usar con fines comerciales: el QC bloquea licencias dudosas. */
-    comercial: z.boolean().default(false),
+    comercial: z.boolean().default(false).describe("Si se monetiza o usa con fines comerciales: el QC bloquea licencias no comerciales o dudosas."),
     /** Dónde se va a publicar: ajusta la banda segura a lo que tapa cada interfaz. */
-    plataformas: z.array(Plataforma).default([]),
-    entrega: z.object({ master: z.boolean().default(false) }).default({ master: false }),
+    plataformas: z.array(Plataforma).default([]).describe("Dónde se publica: en 9:16 estrecha la banda segura."),
+    entrega: z.object({ master: z.boolean().default(false) }).default({ master: false }).describe("entrega.master: también un máster .mov de archivo."),
     /** Estilo del video: lo heredan las escenas que no fijan el suyo (ver `aplicarEstilo`). */
     estilo: EstiloVideo.optional(),
     /** Botón de la tarjeta final sólo para este video (variantes de anuncios). Sin él, el de la plantilla. */
-    cta: z.string().trim().min(1).max(60).optional(),
+    cta: z.string().trim().min(1).max(60).optional().describe("Botón de la tarjeta final sólo para este video."),
     /** La etiqueta de marca arriba durante el video (la tarjeta final la lleva siempre). En clips react
      *  tapa la cara del streamer: ahí se oculta. */
-    marca: z.boolean().default(true),
-    origen: z.record(z.string(), z.unknown()).default({}),
+    marca: z.boolean().default(true).describe("Etiqueta de marca arriba durante el video."),
+    origen: z.record(z.string(), z.unknown()).default({}).describe("Datos de origen (tarea de MPT, fuente del clip…)."),
   })
   .superRefine((p, ctx) => {
     for (const e of erroresDeConsistencia(p)) ctx.addIssue({ code: "custom", message: e });
-  });
+  })
+  .describe("Proyecto de Geeper (geeper.json).");
 export type Proyecto = z.infer<typeof Proyecto>;
 
 /** Convierte un geeper.json de una versión anterior a la actual (sin tocar lo que ya tenía). */

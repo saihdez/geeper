@@ -19,6 +19,20 @@ guarda su licencia en `geeper.json` y en la tabla `Asset`; el QC avisa (sin bloq
 | YuNet 2023mar (232 KB) | Dónde está la cara, para reencuadrar (`src/lib/caras.ts`) | CPU (OpenCV del venv `geeper-clips`) | [opencv_zoo](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet), URL fijada a un commit y SHA-256 comprobado | MIT (pesos); entrenado con WIDER FACE, cuyos términos no cubre esa licencia | Sí (los pesos); detecta, no identifica |
 | Wan 2.2 TI2V-5B | Plano generativo (M5, opcional) | GPU | [Wan-AI/Wan2.2-TI2V-5B-Diffusers](https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B-Diffusers) | Apache 2.0 (verificado en la ficha descargada, ver ESTUDIO.md) | Sí |
 
+## Formatos y descargas (regla, 2026-11-20)
+
+- **Pesos nuevos sólo en SafeTensors, GGUF, GGML (whisper.cpp) u ONNX.** Nunca pesos *pickle* de
+  PyTorch (`.pt`, `.pth`, `.ckpt` o un `.bin` que no sea GGML): ejecutan código al cargarse. Lo que
+  entra en `PESOS` (`src/lib/modelos.ts`) pasa por `formatoDePesos()` y una prueba lo exige.
+- **Cada descarga fijada y comprobada:** de Hugging Face, con `revision` = un commit (no `main`); de
+  GitHub, una URL con commit o release fijo. Siempre con su SHA-256 en el código y comprobado antes de
+  usarlo, como YuNet en `src/lib/caras.ts`. ModelScope sólo como espejo si Hugging Face falla, con el
+  mismo SHA-256.
+- Los modelos dentro de los contenedores de MPT (Z-Image, RealVisXL, Gemma en Ollama, faster-whisper)
+  no los descarga Geeper: se anotan por nombre y licencia, como hasta ahora.
+- Estado hoy: whisper `medium` es GGML (`ggml-medium.bin`), Kokoro y YuNet son ONNX, Parakeet es ONNX
+  (sherpa-onnx), Gemma es GGUF (Ollama) y Wan 2.2 se baja en SafeTensors (Diffusers). Ninguno es *pickle*.
+
 ## Motores y bibliotecas
 
 | Pieza | Licencia | Cómo la usa Geeper |

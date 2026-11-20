@@ -1,0 +1,275 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://geeper.local/esquemas/propuesta-anuncio.schema.json",
+  "$comment": "Generado desde Zod con `pnpm run esquemas`; no editar a mano. La validación real es Zod: las reglas de consistencia (refinamientos) no están aquí.",
+  "title": "Propuesta a una campaña de anuncios",
+  "type": "object",
+  "properties": {
+    "brief": {
+      "type": "object",
+      "properties": {
+        "marca": {
+          "default": "",
+          "type": "string",
+          "maxLength": 120
+        },
+        "producto": {
+          "default": "",
+          "type": "string",
+          "maxLength": 200
+        },
+        "objetivo": {
+          "default": "trafico",
+          "type": "string",
+          "enum": [
+            "reconocimiento",
+            "trafico",
+            "interaccion",
+            "clientes",
+            "ventas",
+            "app"
+          ]
+        },
+        "audiencia": {
+          "default": "",
+          "type": "string",
+          "maxLength": 1000
+        },
+        "oferta": {
+          "default": "",
+          "type": "string",
+          "maxLength": 600
+        },
+        "destino": {
+          "default": "",
+          "anyOf": [
+            {
+              "type": "string",
+              "const": ""
+            },
+            {
+              "type": "string",
+              "maxLength": 500,
+              "format": "uri"
+            }
+          ]
+        },
+        "botonCta": {
+          "default": "Más información",
+          "type": "string",
+          "enum": [
+            "Más información",
+            "Comprar",
+            "Registrarte",
+            "Descargar",
+            "Reservar",
+            "Contactar",
+            "Ver más",
+            "Suscribirte",
+            "Instalar"
+          ]
+        },
+        "ubicaciones": {
+          "default": [
+            "youtube-shorts",
+            "tiktok-infeed",
+            "instagram-reels"
+          ],
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "youtube-shorts",
+              "youtube-instream",
+              "tiktok-infeed",
+              "instagram-reels",
+              "instagram-stories",
+              "instagram-feed",
+              "facebook-reels",
+              "facebook-stories",
+              "facebook-feed",
+              "linkedin-video"
+            ]
+          }
+        },
+        "categoria": {
+          "default": "ninguna",
+          "type": "string",
+          "enum": [
+            "ninguna",
+            "salud",
+            "finanzas",
+            "vivienda",
+            "empleo",
+            "alcohol",
+            "apuestas",
+            "politica",
+            "menores",
+            "citas",
+            "cripto",
+            "suscripciones",
+            "otra"
+          ]
+        },
+        "plantilla": {
+          "default": "",
+          "type": "string",
+          "maxLength": 80
+        },
+        "notas": {
+          "default": "",
+          "type": "string",
+          "maxLength": 2000
+        },
+        "afirmaciones": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,40}$"
+              },
+              "texto": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "prueba": {
+                "default": "",
+                "type": "string",
+                "maxLength": 500
+              }
+            },
+            "required": [
+              "texto"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "conceptos": {
+      "maxItems": 30,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "nombre": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "marco": {
+            "default": "ninguno",
+            "type": "string",
+            "enum": [
+              "ninguno",
+              "aida",
+              "pas",
+              "bab",
+              "4p",
+              "fab",
+              "historia"
+            ]
+          },
+          "insight": {
+            "default": "",
+            "type": "string",
+            "maxLength": 600
+          },
+          "gancho": {
+            "default": "",
+            "type": "string",
+            "maxLength": 200
+          },
+          "promesa": {
+            "default": "",
+            "type": "string",
+            "maxLength": 300
+          },
+          "pruebas": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9-]{1,40}$"
+            }
+          },
+          "narrativa": {
+            "default": "",
+            "type": "string",
+            "maxLength": 1500
+          },
+          "cta": {
+            "default": "",
+            "type": "string",
+            "maxLength": 120
+          },
+          "objeciones": {
+            "default": "",
+            "type": "string",
+            "maxLength": 600
+          },
+          "hipotesis": {
+            "default": "",
+            "type": "string",
+            "maxLength": 400
+          },
+          "guion": {
+            "default": "",
+            "type": "string",
+            "maxLength": 4000
+          },
+          "principal": {
+            "default": "youtube-shorts",
+            "type": "string",
+            "enum": [
+              "youtube-shorts",
+              "youtube-instream",
+              "tiktok-infeed",
+              "instagram-reels",
+              "instagram-stories",
+              "instagram-feed",
+              "facebook-reels",
+              "facebook-stories",
+              "facebook-feed",
+              "linkedin-video"
+            ]
+          },
+          "ubicaciones": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "youtube-shorts",
+                "youtube-instream",
+                "tiktok-infeed",
+                "instagram-reels",
+                "instagram-stories",
+                "instagram-feed",
+                "facebook-reels",
+                "facebook-stories",
+                "facebook-feed",
+                "linkedin-video"
+              ]
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "quitar": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "description": "Lo que un agente propone a una campaña (brief, conceptos, quitar). Se aplica con scripts/anuncio.ts proponer. Referencia: src/lib/anuncios/propuesta.ts."
+}

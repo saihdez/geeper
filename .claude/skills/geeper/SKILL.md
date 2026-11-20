@@ -12,7 +12,8 @@ y deja que Geeper lo valide, muestre las diferencias y lo guarde como versión n
 
 ## El esquema (v2), en corto
 
-Definido con Zod en `src/lib/esquema.ts` (la referencia exacta). Un `geeper.json` v1 se migra solo al
+Definido con Zod en `src/lib/esquema.ts` (la referencia exacta). El esquema completo como JSON Schema
+2020-12 está en `docs/esquemas/geeper.schema.json` (sin las reglas de consistencia, que sólo están en Zod). Un `geeper.json` v1 se migra solo al
 leerlo (`migrar`): v2 sólo agrega campos con valor por defecto.
 
 - `schemaVersion: 2`, `id`, `nombre`, `tema`, `formato` (`9:16 | 16:9 | 1:1`), `plantilla` (slug),

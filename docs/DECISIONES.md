@@ -335,3 +335,31 @@ casilla y la UX simple primero en clips (el resto de la app, después).
   del worktree la página se recarga en bucle (también `/trabajos`, que no se tocó): las pruebas de UI
   se hicieron con `next build` + `next start`, donde no pasa.
 
+## 23. Contratos para agentes: AGENTS.md, JSON Schema desde Zod y pesos sin *pickle*
+
+Paso 1 de `docs/STACK-AGENTICO.md` (A1, A2, E2), 2026-11-20.
+
+- **`AGENTS.md` es la única fuente de instrucciones para agentes**; `CLAUDE.md` sólo lo importa
+  (`@AGENTS.md`). El detalle del esquema y de las ediciones sigue en la skill `geeper`, sin duplicarlo.
+- **JSON Schema 2020-12 generado desde Zod** (`z.toJSONSchema`, `src/lib/contratos.ts`), en
+  `docs/esquemas/`: `geeper`, `propuesta-anuncio`, `ganchos`, `titulos` y `director`. Se generan en modo
+  `input` (lo que un agente escribe: los campos con valor por defecto son opcionales). `pnpm run
+  esquemas` los escribe; `tests/esquemas.test.ts` falla si quedaron viejos. La validación real sigue
+  siendo Zod: los refinamientos (escenas y pistas alineadas, ids únicos) no pasan al JSON Schema y así
+  lo dice el `$comment` de cada archivo. `$id` en `https://geeper.local/esquemas/…` (no resuelve).
+- **Ganchos y títulos con esquema Zod exportado** (`RespuestaGanchos`, `RespuestaTitulos`). La limpieza
+  de títulos sigue aceptando texto suelto línea por línea: el modelo no siempre devuelve JSON.
+- **Contrato del director** (`src/lib/director.ts`, G1): título, tema, formato, duración objetivo y
+  escenas con narración, plano pedido (tipo, descripción, encuadre, movimiento), duración estimada,
+  texto en pantalla y marcas de ritmo por índice de palabra. Estricto (rechaza campos desconocidos).
+  Se define antes que el flujo G1 porque el MCP (B1) y Ollama con esquema (A3) lo usan; puede cambiar
+  cuando G1 se implemente.
+- **Pesos sólo SafeTensors, GGUF, GGML u ONNX** (`MODELOS.md`); `formatoDePesos()` lo comprueba para
+  todo lo de `PESOS`. Un `.bin` sólo vale si es GGML (`ggml-*.bin`).
+- **Descartado:** validar con Ajv en las pruebas (una dependencia más para comprobar lo que Zod ya
+  valida; la prueba revisa que las claves del JSON Schema coincidan con un proyecto real) y escribir el
+  JSON Schema a mano (se desincroniza).
+- **Pendiente (segunda opinión de Nemotron Ultra):** `formatoDePesos()` mira el nombre del archivo; el
+  doctor podría además leer los primeros bytes (GGUF, ONNX, cabecera de SafeTensors) para detectar un
+  archivo renombrado. Descartado de Nemotron: que Zod emita `uniqueItems` (no lo hace) y que `ritmo`
+  quede obligatorio en el JSON Schema (en modo `input` es opcional).

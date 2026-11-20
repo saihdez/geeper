@@ -24,6 +24,20 @@ export const PESOS: Record<string, string> = {
   [YUNET.id]: rutaYunet(),
 };
 
+/**
+ * Formatos de pesos permitidos (docs/STACK-AGENTICO.md E2): los que no ejecutan código al cargarse.
+ * `.bin` sólo si es GGML de whisper.cpp (`ggml-*.bin`); un `.bin`, `.pt`, `.pth` o `.ckpt` de PyTorch es
+ * *pickle* y queda fuera.
+ */
+export function formatoDePesos(ruta: string): "safetensors" | "gguf" | "ggml" | "onnx" | null {
+  const nombre = path.basename(ruta).toLowerCase();
+  if (nombre.endsWith(".safetensors")) return "safetensors";
+  if (nombre.endsWith(".gguf")) return "gguf";
+  if (nombre.endsWith(".onnx")) return "onnx";
+  if (/^ggml-.+\.bin$/.test(nombre)) return "ggml";
+  return null;
+}
+
 interface Entrada {
   tamano: number;
   modificado: number;

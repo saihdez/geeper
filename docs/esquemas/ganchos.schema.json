@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://geeper.local/esquemas/ganchos.schema.json",
+  "$comment": "Generado desde Zod con `pnpm run esquemas`; no editar a mano. La validación real es Zod: las reglas de consistencia (refinamientos) no están aquí.",
+  "title": "Respuesta del modelo: ganchos de un clip",
+  "type": "object",
+  "properties": {
+    "ganchos": {
+      "default": [],
+      "description": "Tres ganchos distintos.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "description": "Gancho de 3 a 9 palabras para los primeros 2 segundos, sin comillas."
+      }
+    },
+    "titulo": {
+      "description": "Título del clip (de reacción si es react).",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "description": "Salida del modelo local al sugerir ganchos y título de reacción. Referencia: src/lib/ganchos.ts."
+}

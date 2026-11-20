@@ -4,6 +4,7 @@
  * Gemma usa la GPU: se toma el `gpu-lock` sin esperar; si está ocupada o Docker está apagado, se devuelven
  * títulos sugeridos sin IA y el motivo en palabras simples.
  */
+import { z } from "zod";
 import { tomarGpu } from "./gpu";
 import { correr } from "./proceso";
 
@@ -17,6 +18,11 @@ export interface Propuesta {
   /** Por qué no se usó la IA (si no se usó). */
   motivo?: string;
 }
+
+/** Lo que se le pide al modelo (docs/esquemas/titulos.schema.json). Largo y repetidos los filtra `limpiarTitulos`. */
+export const RespuestaTitulos = z
+  .object({ titulos: z.array(z.string().describe(`Título en español, máximo ${MAX_TITULO} caracteres, sin comillas, hashtags ni emojis.`)).describe("Tres títulos de estilos distintos.") })
+  .describe("Títulos propuestos para la portada.");
 
 /** Prompt para el LLM (función pura). */
 export function promptTitulos(o: { tema: string; guion: string; formato: string }): string {
@@ -39,8 +45,9 @@ export function limpiarTitulos(texto: string): string[] {
   const json = texto.match(/\{[\s\S]*\}/);
   if (json) {
     try {
-      const d = JSON.parse(json[0]) as { titulos?: unknown };
-      if (Array.isArray(d.titulos)) crudos = d.titulos;
+      // Se valida sólo la forma; los títulos sueltos se filtran uno por uno abajo.
+      const d = z.object({ titulos: z.array(z.unknown()) }).safeParse(JSON.parse(json[0]));
+      if (d.success) crudos = d.data.titulos;
     } catch {
       /* sigue con las líneas */
     }

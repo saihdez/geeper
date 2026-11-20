@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://geeper.local/esquemas/titulos.schema.json",
+  "$comment": "Generado desde Zod con `pnpm run esquemas`; no editar a mano. La validación real es Zod: las reglas de consistencia (refinamientos) no están aquí.",
+  "title": "Respuesta del modelo: títulos de portada",
+  "type": "object",
+  "properties": {
+    "titulos": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "description": "Título en español, máximo 70 caracteres, sin comillas, hashtags ni emojis."
+      },
+      "description": "Tres títulos de estilos distintos."
+    }
+  },
+  "required": [
+    "titulos"
+  ],
+  "description": "Salida del modelo local al proponer títulos de portada. Referencia: src/lib/titulos.ts."
+}
