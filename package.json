@@ -27,6 +27,7 @@
   "dependencies": {
     "@hyperframes/core": "0.9.27",
     "@hyperframes/player": "0.9.27",
+    "@modelcontextprotocol/server": "2.4.0",
     "@prisma/adapter-better-sqlite3": "^7.10.1",
     "@prisma/client": "^7.10.1",
     "better-sqlite3": "^13.2.0",
@@ -38,6 +39,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.7",
+    "@modelcontextprotocol/client": "2.4.0",
     "@tailwindcss/postcss": "^4.3.5",
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^24.19.2",

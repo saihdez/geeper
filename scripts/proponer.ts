@@ -17,31 +17,8 @@
 import fs from "node:fs";
 import { guardarProyecto } from "../src/lib/almacen";
 import { db } from "../src/lib/db";
-import { aplicarPasos, type Paso } from "../src/lib/encadenar";
-import { validarProyecto, type Proyecto } from "../src/lib/esquema";
-import { escenasEnLinea, todosLosGrupos } from "../src/lib/linea";
+import { evaluarPropuesta } from "../src/lib/propuestas";
 import { versionDeProyecto } from "../src/lib/render";
-
-function resumen(p: Proyecto) {
-  return {
-    "formato/plantilla": `${p.formato} · ${p.plantilla}`,
-    voz: `${p.voz.voz} a ${p.voz.velocidad}`,
-    mostrar: p.mostrar.map((m) => `${m.de}=${m.a}`).join(", ") || "—",
-    destino: `uso comercial ${p.comercial ? "sí" : "no"} · plataformas ${p.plataformas.join(", ") || "—"} · máster ${p.entrega.master ? "sí" : "no"} · marca arriba ${p.marca ? "sí" : "no"}`,
-    textos: p.textos.map((t) => `${t.id} ${t.inicio.toFixed(1)}+${t.duracion.toFixed(1)} s ${t.estilo}/${t.posicion}: ${t.texto}`),
-    escenas: escenasEnLinea(p).map((e) => `${e.escena.id} ${e.duracion.toFixed(2)} s [${p.assets[e.visual.asset]!.ruta}] ${e.escena.texto.slice(0, 50)}`),
-    subtitulos: todosLosGrupos(p).map((g) => `${g.inicio.toFixed(2)} ${g.texto}`),
-  };
-}
-
-function diff(a: string[], b: string[]): string[] {
-  const out: string[] = [];
-  const sa = new Set(a);
-  const sb = new Set(b);
-  for (const x of a) if (!sb.has(x)) out.push(`- ${x}`);
-  for (const x of b) if (!sa.has(x)) out.push(`+ ${x}`);
-  return out;
-}
 
 async function main() {
   const args = process.argv.slice(2);
@@ -52,21 +29,8 @@ async function main() {
   const fila = await db.proyecto.findUniqueOrThrow({ where: { slug } });
   const { p: actual, numero } = await versionDeProyecto(fila.id);
   const entrada = JSON.parse(fs.readFileSync(ruta, "utf8")) as unknown;
-  let nuevo: Proyecto | null;
-  let pasos: Paso[] = [];
-  if (Array.isArray(entrada)) ({ nuevo, pasos } = aplicarPasos(actual, entrada));
-  else nuevo = validarProyecto(entrada);
-
-  const fallo = pasos.find((x) => x.estado === "error");
-  const diferencias: Record<string, string[]> = {};
-  if (nuevo) {
-    const a = resumen(actual);
-    const b = resumen(nuevo);
-    for (const k of Object.keys(a) as (keyof typeof a)[]) {
-      const d = diff(([] as string[]).concat(a[k]), ([] as string[]).concat(b[k]));
-      if (d.length) diferencias[k] = d;
-    }
-  }
+  const { nuevo, pasos, diferencias, fallo, error } = evaluarPropuesta(actual, entrada);
+  if (error) throw new Error(error);
   let aplicada: number | null = null;
   if (nuevo && banderas.has("--aplicar")) {
     aplicada = await guardarProyecto(fila.id, nuevo, "Propuesta aplicada desde la línea de comandos");

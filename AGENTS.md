@@ -40,6 +40,10 @@ de `src/lib/contratos.ts`, corre `pnpm run esquemas` (una prueba falla si te olv
 de compilación. **Nunca edites `geeper.json` ni `build/` a mano**: propone el cambio y deja que Geeper lo
 valide, muestre las diferencias y lo guarde como versión nueva.
 
+**Con MCP** (`.mcp.json` registra el servidor `geeper`): `proponer_cambio` → visto bueno de la persona →
+`aplicar_cambio` → `encolar`, y `fotograma` para mirar el resultado. Es lo preferido. Sin MCP, los
+scripts:
+
 ```bash
 pnpm tsx scripts/proponer.ts <slug> propuesta.json             # valida y muestra diferencias
 pnpm tsx scripts/proponer.ts <slug> propuesta.json --aplicar   # sólo con el visto bueno de la persona
@@ -52,6 +56,12 @@ pnpm tsx scripts/encolar.ts <slug> render.entregar
   sólo están ahí.
 - Otros contratos en `docs/esquemas/`: `propuesta-anuncio` (campañas), `ganchos` y `titulos` (salida
   del modelo local), `director` (storyboard de G1).
+
+## Cambios en la UI
+
+Si tocas `src/app` o `src/components`, mira la página de verdad con el MCP `playwright` (Chromium sin
+ventana, sólo `http://localhost:3300`; levanta antes `pnpm run dev:up`) a 1440 px y a 390 px. Para
+capturas repetibles están `scripts/ui/`.
 
 ## Reglas duras
 

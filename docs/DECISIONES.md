@@ -383,3 +383,28 @@ Paso 2 de `docs/STACK-AGENTICO.md`, 2026-11-20.
 - **Cambio de contenedor para ganchos y títulos:** antes `docker exec mpt-ollama ollama run`; ahora el
   puente en `moneyprinterturbo-api`. Si sólo Ollama estuviera encendido, ahora falla con «MPT no está
   corriendo»; en la práctica se levantan juntos.
+
+## 25. Servidor MCP de Geeper, Playwright MCP y la skill por partes (B1, D1, A4)
+
+Paso 3 de `docs/STACK-AGENTICO.md`, 2026-11-20.
+
+- **SDK v2 (`@modelcontextprotocol/server` 2.4.0), no el v1.** El plan pedía la revisión 2026-07-28;
+  `@modelcontextprotocol/sdk` 1.32.2 (el último v1) sólo llega a 2025-11-25. El v2 la implementa y, con
+  `serveStdio`, atiende también a los clientes de 2025 (con *handshake*), que es lo que usa Claude Code
+  hoy. Sólo stdio; sin Sampling, Roots ni Logging.
+- **9 herramientas** (`src/lib/mcp.ts`), todas sobre `src/lib`. La lógica de `scripts/proponer.ts` pasó
+  a `src/lib/propuestas.ts` (`evaluarPropuesta`) y la usan los dos. `aplicar_cambio` exige la
+  `versionBase` que devolvió `proponer_cambio`: si alguien guardó otra versión entre medio, no aplica.
+- **`encolar` sólo acepta render, voz y reencuadre**, y la `cadena` la fija Geeper: un `payload` con
+  `cadena: ["publicar.subir"]` encadenaría una publicación sin pasar por la UI (lo encontró el
+  typecheck). Generar con MPT (GPU cara) tampoco: se pide en la UI.
+- **`momentos_buscar` encola** el trabajo `clip.momentos` (como la página Clips) en vez de correrlo
+  dentro del MCP: baja videos y transcribe, tarda minutos. No es de sólo lectura (escribe en
+  `_fuentes/`), pero tampoco destructivo.
+- **Playwright MCP 0.0.84** en `.mcp.json`: sin ventana, sesión aislada, sólo `localhost:3300` y el
+  Chromium que ya está en `~/.cache/ms-playwright` (nada que bajar).
+- **Skill `geeper`**: cumple Agent Skills (`name` 6 car., `description` 595 de 1024, 153 líneas de 500).
+  El esquema campo por campo pasó a `references/esquema.md`; el `SKILL.md` dice que prefiera el MCP.
+- **Verificado:** pruebas con un cliente MCP en memoria (una por herramienta, incluido un PNG real de un
+  render de prueba), `initialize` + `tools/list` + `proyectos_listar` por stdio contra los datos reales
+  (5 proyectos) y Playwright MCP arrancando con su Chromium.

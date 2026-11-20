@@ -43,6 +43,8 @@ guarda su licencia en `geeper.json` y en la tabla `Asset`; el QC avisa (sin bloq
 | ffmpeg 6.1 (Ubuntu) | LGPL/GPL según build | Binario aparte (`~/.local/bin/ffmpeg`) |
 | OpenMontage | AGPLv3 | Sólo M5, como proceso aparte por CLI; Geeper no importa su código |
 | Next.js, React, Prisma, Zod, better-sqlite3 | MIT / Apache 2.0 | Dependencias de la app |
+| `@modelcontextprotocol/server` 2.4.0 (SDK v2, revisión 2026-07-28) | Apache 2.0 | Servidor MCP de Geeper por stdio (`mcp/servidor.ts`); `@modelcontextprotocol/client` sólo en pruebas |
+| `@playwright/mcp` 0.0.84 | Apache 2.0 | Sólo desarrollo: lo lanza `.mcp.json` con `npx`, no es dependencia de la app |
 
 ## Material
 
