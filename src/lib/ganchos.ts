@@ -6,11 +6,9 @@
  */
 import { z } from "zod";
 import { terminosProhibidos } from "./clips";
-import { tomarGpu } from "./gpu";
-import { correr } from "./proceso";
+import { ErrorLlm, pedirJson, type OpcionesLlm } from "./llm-local";
 
 export const MODELO_GANCHOS = process.env.GEEPER_OLLAMA_MODELO ?? "gemma4:26b";
-const CONTENEDOR = process.env.GEEPER_OLLAMA_CONTENEDOR ?? "mpt-ollama";
 
 export interface Sugerencias {
   ganchos: string[];
@@ -41,17 +39,8 @@ export const RespuestaGanchos = z
   })
   .describe("Sugerencias de gancho y título para un clip.");
 
-/** Limpia lo que devuelve el modelo: quita comillas, términos prohibidos, vacíos, largos y repetidos. */
-export function limpiarSugerencias(crudo: string): Sugerencias {
-  const inicio = crudo.indexOf("{");
-  const fin = crudo.lastIndexOf("}");
-  if (inicio < 0 || fin <= inicio) return { ganchos: [], titulo: null };
-  let datos: z.infer<typeof RespuestaGanchos>;
-  try {
-    datos = RespuestaGanchos.parse(JSON.parse(crudo.slice(inicio, fin + 1)));
-  } catch {
-    return { ganchos: [], titulo: null };
-  }
+/** Filtra lo que devolvió el modelo: quita comillas, términos prohibidos, vacíos, largos y repetidos. */
+export function filtrarSugerencias(datos: z.infer<typeof RespuestaGanchos>): Sugerencias {
   const bueno = (s: string, max: number) => {
     const t = s.replace(/\s+/g, " ").trim();
     if (!t || t.length > max) return null;
@@ -67,26 +56,30 @@ export function limpiarSugerencias(crudo: string): Sugerencias {
   return { ganchos, titulo: datos.titulo ? bueno(datos.titulo, 100) : null };
 }
 
-export async function sugerirGanchos(d: { texto: string; canal: string | null; idioma: string; react: boolean }): Promise<Sugerencias> {
-  if (!d.texto.trim()) throw new Error("Este momento no tiene palabras transcritas: escribe el gancho a mano.");
-  const candado = await tomarGpu("sugerir ganchos", { esperar: false });
-  if (!candado) throw new Error("La tarjeta de video está ocupada (renderizando o generando). Prueba en un rato o escribe el gancho a mano.");
+/** Lo mismo desde texto crudo (con o sin JSON alrededor). */
+export function limpiarSugerencias(crudo: string): Sugerencias {
+  const inicio = crudo.indexOf("{");
+  const fin = crudo.lastIndexOf("}");
+  if (inicio < 0 || fin <= inicio) return { ganchos: [], titulo: null };
   try {
-    const r = await correr("docker", ["exec", "-i", CONTENEDOR, "ollama", "run", MODELO_GANCHOS, "--format", "json", "--keepalive", "0s"], {
-      entrada: promptGanchos(d),
-      timeout: 150_000,
-      permitirFallo: true,
-    });
-    if (r.codigo !== 0) {
-      if (/docker API|daemon|No such container|cannot connect/i.test(r.stderr)) {
-        throw new Error("Las sugerencias usan el modelo local de MoneyPrinterTurbo: abre Docker Desktop y vuelve a intentar, o escribe el gancho a mano.");
-      }
-      throw new Error(`El modelo local no respondió (${r.stderr.trim().split("\n").pop()?.slice(0, 160) ?? r.codigo}).`);
-    }
-    const s = limpiarSugerencias(r.stdout);
+    return filtrarSugerencias(RespuestaGanchos.parse(JSON.parse(crudo.slice(inicio, fin + 1))));
+  } catch {
+    return { ganchos: [], titulo: null };
+  }
+}
+
+export async function sugerirGanchos(
+  d: { texto: string; canal: string | null; idioma: string; react: boolean },
+  op: Pick<OpcionesLlm, "ejecutar" | "candado"> = {},
+): Promise<Sugerencias> {
+  if (!d.texto.trim()) throw new Error("Este momento no tiene palabras transcritas: escribe el gancho a mano.");
+  try {
+    const r = await pedirJson(MODELO_GANCHOS, promptGanchos(d), RespuestaGanchos, { tarea: "sugerir ganchos", timeoutMs: 150_000, ...op });
+    const s = filtrarSugerencias(r.datos);
     if (!s.ganchos.length && !s.titulo) throw new Error("El modelo no dio ideas que cumplan las reglas: prueba otra vez o escribe el gancho a mano.");
     return s;
-  } finally {
-    candado.liberar();
+  } catch (e) {
+    if (e instanceof ErrorLlm) throw new Error(`${e.message} Mientras tanto, puedes escribir el gancho a mano.`);
+    throw e;
   }
 }

@@ -363,3 +363,23 @@ Paso 1 de `docs/STACK-AGENTICO.md` (A1, A2, E2), 2026-11-20.
   doctor podría además leer los primeros bytes (GGUF, ONNX, cabecera de SafeTensors) para detectar un
   archivo renombrado. Descartado de Nemotron: que Zod emita `uniqueItems` (no lo hace) y que `ritmo`
   quede obligatorio en el JSON Schema (en modo `input` es opcional).
+
+## 24. El modelo local responde con esquema (A3)
+
+Paso 2 de `docs/STACK-AGENTICO.md`, 2026-11-20.
+
+- **Vía elegida: la API HTTP de Ollama desde un puente de Python en el contenedor de la API de MPT**
+  (la que ya usaban las ideas de anuncios). Ve a `ollama` por la red de Docker: no hace falta `curl` en
+  la imagen de Ollama ni publicar `11434` en el compose de MPT. `ollama run --format` sólo acepta `json`;
+  `/api/chat` acepta un JSON Schema en `format` y Ollama lo convierte en gramática.
+- **Un solo módulo, `src/lib/llm-local.ts` (`pedirJson`)**, para ganchos, títulos e ideas de anuncios:
+  toma `gpu-lock` sin esperar, manda el esquema de salida de Zod (`io: "output"`: los campos con valor
+  por defecto quedan obligatorios, así el modelo los escribe), descarga el modelo (`keep_alive: 0`) y
+  **siempre** valida con Zod. Los errores se clasifican (`ErrorLlm.causa`: Docker apagado, MPT
+  apagado, modelo que falta, GPU ocupada, tiempo, respuesta inválida) y cada llamador los dice en sus
+  palabras. Ganchos y títulos siguen pasando por sus filtros (comillas, términos prohibidos, largos).
+- Si un esquema no entra en la gramática, `formato: "json"` deja el JSON libre y Zod sigue validando.
+  `scripts/probar-llm.ts` mide las dos variantes contra el modelo real.
+- **Cambio de contenedor para ganchos y títulos:** antes `docker exec mpt-ollama ollama run`; ahora el
+  puente en `moneyprinterturbo-api`. Si sólo Ollama estuviera encendido, ahora falla con «MPT no está
+  corriendo»; en la práctica se levantan juntos.

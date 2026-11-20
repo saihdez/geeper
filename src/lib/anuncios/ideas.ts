@@ -9,9 +9,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { tomarGpu } from "../gpu";
-import { correr } from "../proceso";
-import { MPT_CONTENEDOR, MPT_DIR } from "../rutas";
+import { ErrorLlm, pedirJson, type OpcionesLlm } from "../llm-local";
+import { MPT_DIR } from "../rutas";
 import { MARCOS, OBJETIVOS, ubicacion } from "./catalogo";
 import type { DatosCampana } from "./esquema";
 import { normalizar } from "./revision";
@@ -100,40 +99,14 @@ async function modeloLocal(): Promise<string> {
   return "gemma4:26b";
 }
 
-// Corre dentro del contenedor de MPT: lee el pedido por stdin y habla con Ollama por la red de Docker.
-const PUENTE = `
-import json, sys, urllib.request
-cuerpo = sys.stdin.read().encode()
-r = urllib.request.Request("http://ollama:11434/api/chat", data=cuerpo, headers={"content-type": "application/json"})
-with urllib.request.urlopen(r, timeout=170) as resp:
-    print(json.load(resp)["message"]["content"])
-`;
-
-export async function pedirIdeas(d: DatosCampana): Promise<string> {
-  const candado = await tomarGpu("ideas de anuncios (Ollama)", { esperar: false });
-  if (!candado) throw new Error("La GPU está ocupada (generando o renderizando). Prueba de nuevo cuando termine.");
+/** Pide ideas al modelo local con la salida restringida al esquema `RespuestaLlm`; devuelve el JSON crudo. */
+export async function pedirIdeas(d: DatosCampana, op: Pick<OpcionesLlm, "ejecutar" | "candado"> = {}): Promise<string> {
+  const { sistema, usuario } = construirPrompt(d);
   try {
-    const { sistema, usuario } = construirPrompt(d);
-    const cuerpo = {
-      model: await modeloLocal(),
-      stream: false,
-      format: "json",
-      // Libera la VRAM al terminar: los trabajos de video la necesitan.
-      keep_alive: 0,
-      options: { temperature: 0.8 },
-      messages: [{ role: "system", content: sistema }, { role: "user", content: usuario }],
-    };
-    const r = await correr("docker", ["exec", "-i", MPT_CONTENEDOR, "python", "-c", PUENTE], { entrada: JSON.stringify(cuerpo), timeout: 180_000, permitirFallo: true });
-    if (r.codigo !== 0) {
-      const causa = /docker API|daemon|dockerDesktop|cannot find the file|no puede encontrar/i.test(r.stderr) ? "Docker Desktop no está abierto. Ábrelo, espera a que arranque MPT y vuelve a intentar"
-        : /No such container|is not running/i.test(r.stderr) ? "MPT no está corriendo (`pnpm run doctor` dice qué falta)"
-        : /Connection refused|Name or service not known|URLError/i.test(r.stderr) ? "el contenedor de Ollama de MPT no responde"
-        : /timed out/i.test(r.stderr) ? "el modelo tardó demasiado"
-        : r.stderr.trim().split("\n").pop() ?? "error desconocido";
-      throw new Error(`No se pudieron pedir ideas al modelo local: ${causa}.`);
-    }
-    return r.stdout;
-  } finally {
-    candado.liberar();
+    const r = await pedirJson(await modeloLocal(), usuario, RespuestaLlm, { tarea: "ideas de anuncios (Ollama)", sistema, temperatura: 0.8, ...op });
+    return r.crudo;
+  } catch (e) {
+    if (e instanceof ErrorLlm) throw new Error(`No se pudieron pedir ideas al modelo local: ${e.message}`);
+    throw e;
   }
 }
