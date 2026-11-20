@@ -337,7 +337,7 @@ export function reglaAmpliacion(lista: Ampliacion[] | undefined): Regla | null {
 /** Ritmo: qué parte de los cortes cae en un pulso de la música. Informativo (aviso). */
 /** Notas de trabajo que no deben llegar al video: «(corregido)», TODO, marcas de ritmo «[pulso]», {{variables}}. */
 const NOTA_DE_TRABAJO = [
-  /\((?:corregido|corregida|correcci[oó]n|revisar|pendiente|ojo|nota|todo|tbd)\)/i,
+  /\((?:corregido|corregida|correcci[oó]n|revisar|pendiente|ojo|nota|todo|tbd)\)|\((?:pausa|pulso|corte|[ée]nfasis)\b/i,
   /\[[^\]]{1,40}\]|\{\{|\}\}/,
   // Sueltas sólo como marcador: «TODO:» o «FIXME» (no «lo dan TODO», que es énfasis).
   /\b(?:TODO|FIXME|TBD):|\b(?:FIXME|XXX)\b/,

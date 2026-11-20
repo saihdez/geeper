@@ -56,6 +56,8 @@ describe("contrato del director (G1)", () => {
     const base = { titulo: "x", tema: "y", duracionObjetivo: 30 };
     expect(() => validarDirector({ ...base, escenas: [escena("e01", "Uno dos."), escena("e01", "Tres.")] })).toThrow(/mismo id/);
     expect(() => validarDirector({ ...base, escenas: [escena("e01", "Uno dos.", [{ tipo: "corte", palabra: 2 }])] })).toThrow(/fuera de la narración/);
+    expect(() => validarDirector({ ...base, escenas: [escena("e01", "Tienes el GPS, (pausa: 4) pero ¿ves el camino?", [])] })).toThrow(/marcas de ritmo como texto/);
+    expect(() => validarDirector({ ...base, escenas: [escena("e01", "Un faro (el más alto) en la costa.", [])] })).not.toThrow();
     expect(() => validarDirector({ ...base, escenas: [escena("e01", "Uno.")], extra: 1 })).toThrow();
     expect(() => validarDirector({ ...base, escenas: [escena("escena-1", "Uno.")] })).toThrow();
   });

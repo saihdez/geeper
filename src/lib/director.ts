@@ -54,6 +54,9 @@ export const EscenaDirector = z
   })
   .strict();
 
+/** «(pausa: 4)», «[pulso]», «(énfasis)»… escritos dentro de la narración. */
+export const MARCA_EN_TEXTO = /[([]\s*(?:pausa|pulso|corte|[ée]nfasis)\b/i;
+
 export const Director = z
   .object({
     titulo: z.string().trim().min(1).max(100).describe("Nombre de trabajo del video."),
@@ -67,6 +70,10 @@ export const Director = z
     const ids = d.escenas.map((e) => e.id);
     if (new Set(ids).size !== ids.length) ctx.addIssue({ code: "custom", message: "Hay escenas con el mismo id" });
     d.escenas.forEach((e, i) => {
+      // Las marcas van en «ritmo», no en el texto: la voz las leería en voz alta (pasó con gemma4:26b).
+      if (MARCA_EN_TEXTO.test(e.narracion)) {
+        ctx.addIssue({ code: "custom", path: ["escenas", i, "narracion"], message: `${e.id}: la narración trae marcas de ritmo como texto («(pausa: 4)»); van en «ritmo»` });
+      }
       const palabras = e.narracion.split(/\s+/).filter(Boolean).length;
       for (const m of e.ritmo) {
         if (m.palabra >= palabras) {
