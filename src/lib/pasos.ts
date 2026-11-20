@@ -8,6 +8,7 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
+import { enSpan } from "./trazas";
 import { escribirAtomico, existe, jsonEstable, rutaTemporal, sha256Archivo, sha256Texto } from "./archivos";
 import type { Registro } from "./proceso";
 
@@ -57,6 +58,20 @@ async function vigente<T>(ctx: Contexto, ruta: string): Promise<Manifiesto<T> | 
  * Corre `fn` sólo si hace falta. `fn` recibe una ruta temporal por cada salida y debe escribir ahí.
  */
 export async function paso<T>(
+  ctx: Contexto,
+  nombre: string,
+  entradas: Entradas,
+  salidas: string[],
+  fn: (temporales: string[], inputHash: string) => Promise<T>,
+): Promise<{ saltado: boolean; resultado: T; inputHash: string }> {
+  return enSpan(`paso ${nombre}`, { "geeper.paso": nombre, ...(entradas.motor ? { "geeper.paso.motor": entradas.motor } : {}) }, async (span) => {
+    const r = await pasoSinTraza(ctx, nombre, entradas, salidas, fn);
+    span.setAttributes({ "geeper.input_hash": r.inputHash, "geeper.paso.saltado": r.saltado });
+    return r;
+  });
+}
+
+async function pasoSinTraza<T>(
   ctx: Contexto,
   nombre: string,
   entradas: Entradas,

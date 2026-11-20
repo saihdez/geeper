@@ -434,3 +434,26 @@ Paso 4 de `docs/STACK-AGENTICO.md`, 2026-11-20. Cumple el «SBOM desde F1» de P
 - **De paso (E2):** el arreglo que sugería el doctor para YuNet bajaba de `raw/main`; ahora usa la URL
   fijada a un commit y comprueba el sha256.
 - **Descartado:** SPDX 3.0.1 además de CycloneDX (un formato basta; CycloneDX describe modelos de ML).
+
+## 27. Trazas con OpenTelemetry (C1)
+
+Paso 5 de `docs/STACK-AGENTICO.md`, 2026-11-20.
+
+- **Qué queda trazado:** cada trabajo del worker (*span* raíz `trabajo <tipo>` con id, tipo, motor,
+  intento y proyecto), cada paso con manifiesto (`paso <nombre>`, con `geeper.input_hash` y si se
+  saltó), la espera de `gpu-lock` (`geeper.gpu.espera_ms`, quién la tenía) y cada llamada al modelo
+  local (`chat <modelo>` con las convenciones GenAI: `gen_ai.request.model`, `gen_ai.usage.*_tokens`,
+  `error.type`). La web (`src/instrumentation.ts`) y el MCP también trazan sus llamadas.
+- **Dónde:** `~/geeper-data/trazas/AAAA-MM-DD.jsonl`, una línea por *span*, borrado a los 14 días.
+  Sin servicios. `GEEPER_TRAZAS=0` las apaga. Todo texto pasa por `tapar()` (los tokens registrados
+  y los de patrón conocido; hay prueba).
+- **En la UI:** al abrir un trabajo en /trabajos, una tabla «Pasos» (árbol con sangría, tiempo y
+  detalle: «ya hecho, se saltó», «esperó la GPU 40 s», tokens) arriba del log. No había página
+  `/trabajos/<id>` como suponía el plan; se puso donde ya se abre el log.
+- **Opcional, OTLP:** con `GEEPER_OTLP_URL` además se mandan por OTLP/HTTP. Para mirarlas en una UI:
+  `docker run -d --name geeper-phoenix -p 127.0.0.1:6006:6006 arizephoenix/phoenix` y
+  `GEEPER_OTLP_URL=http://127.0.0.1:6006/v1/traces pnpm run dev:up`. No se instala por defecto.
+- **Versiones:** la línea 3 de OpenTelemetry (`@opentelemetry/sdk-trace` 3.0.0, api 1.10). La línea 2
+  (`sdk-trace-node`/`sdk-trace-base`) está marcada como obsoleta en npm a favor de `sdk-trace`.
+- **Descartado:** Langfuse (autoalojado pide Postgres, ClickHouse y Redis) y el SDK completo de
+  OTel para Node con autoinstrumentación (trazaría cada consulta de Prisma y cada `fs`: ruido).

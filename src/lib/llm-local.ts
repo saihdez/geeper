@@ -15,6 +15,7 @@ import { z } from "zod";
 import { tomarGpu, type Candado } from "./gpu";
 import { correr } from "./proceso";
 import { MPT_CONTENEDOR } from "./rutas";
+import { enSpan } from "./trazas";
 
 export type CausaLlm =
   | "gpu-ocupada"
@@ -133,7 +134,37 @@ function sinCercas(t: string): string {
   return t.trim().replace(/^```(?:json)?\s*|\s*```$/g, "");
 }
 
+/**
+ * Pide JSON al modelo local. Queda en la traza como un *span* `chat <modelo>` con las convenciones
+ * GenAI de OpenTelemetry (modelo, tokens de entrada y salida) y `error.type` si falla.
+ */
 export async function pedirJson<T>(modelo: string, prompt: string, esquema: z.ZodType<T>, op: OpcionesLlm): Promise<RespuestaLlm<T>> {
+  const atributos = {
+    "gen_ai.operation.name": "chat",
+    "gen_ai.provider.name": "ollama",
+    "gen_ai.request.model": modelo,
+    "gen_ai.output.type": "json",
+    "geeper.llm.tarea": op.tarea,
+    "geeper.llm.formato": op.formato ?? "esquema",
+    ...(op.temperatura === undefined ? {} : { "gen_ai.request.temperature": op.temperatura }),
+  };
+  return enSpan(`chat ${modelo}`, atributos, async (span) => {
+    try {
+      const r = await pedirJsonSinTraza(modelo, prompt, esquema, op);
+      span.setAttributes({
+        "gen_ai.response.model": modelo,
+        ...(r.tokensEntrada === undefined ? {} : { "gen_ai.usage.input_tokens": r.tokensEntrada }),
+        ...(r.tokensSalida === undefined ? {} : { "gen_ai.usage.output_tokens": r.tokensSalida }),
+      });
+      return r;
+    } catch (e) {
+      span.setAttribute("error.type", e instanceof ErrorLlm ? e.causa : "otro");
+      throw e;
+    }
+  });
+}
+
+async function pedirJsonSinTraza<T>(modelo: string, prompt: string, esquema: z.ZodType<T>, op: OpcionesLlm): Promise<RespuestaLlm<T>> {
   const tomar = op.candado ?? ((t: string, esperar: boolean) => tomarGpu(t, { esperar }));
   const candado = await tomar(op.tarea, op.esperarGpu ?? false);
   if (!candado) throw new ErrorLlm("gpu-ocupada");

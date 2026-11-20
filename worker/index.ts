@@ -11,6 +11,7 @@ import {
 import { db, prepararDb } from "@/lib/db";
 import { tapar } from "@/lib/redes/secretos";
 import { dirProyecto } from "@/lib/rutas";
+import { cerrarTrazas, enSpan, iniciarTrazas } from "@/lib/trazas";
 import { EJECUTORES, rutaLog } from "./ejecutores";
 
 const workerId = nuevoWorkerId();
@@ -52,17 +53,24 @@ async function correrUno(motor: Motor): Promise<boolean> {
   }, LATIDO_MS);
   const proyecto = t.proyectoId ? await db.proyecto.findUnique({ where: { id: t.proyectoId } }) : null;
   try {
-    const salida = await EJECUTORES[t.tipo as TipoTrabajo](
-      { id: t.id, tipo: t.tipo, proyectoId: t.proyectoId, payload: t.payload as Payload },
-      {
-        dir: proyecto ? dirProyecto(proyecto.slug) : dirProyecto("sistema"),
-        log: escribir,
-        signal: ctrl.signal,
-        etapa: async (e, p) => {
-          escribir(`— ${e}`);
-          await marcarEtapa(t.id, e, p);
-        },
-      },
+    const atributos = { "geeper.trabajo.id": t.id, "geeper.trabajo.tipo": t.tipo, "geeper.motor": motor, "geeper.trabajo.intento": t.intentos, "geeper.proyecto": proyecto?.slug ?? "" };
+    const salida = await enSpan(
+      `trabajo ${t.tipo}`,
+      atributos,
+      () =>
+        EJECUTORES[t.tipo as TipoTrabajo](
+          { id: t.id, tipo: t.tipo, proyectoId: t.proyectoId, payload: t.payload as Payload },
+          {
+            dir: proyecto ? dirProyecto(proyecto.slug) : dirProyecto("sistema"),
+            log: escribir,
+            signal: ctrl.signal,
+            etapa: async (e, p) => {
+              escribir(`— ${e}`);
+              await marcarEtapa(t.id, e, p);
+            },
+          },
+        ),
+      { noEsError: (e) => e instanceof Espera },
     );
     await terminar(t.id, workerId, salida.resultado, salida.siguiente && { ...salida.siguiente, proyectoId: t.proyectoId });
     escribir(`== hecho${salida.siguiente ? `; sigue ${salida.siguiente.tipo}` : ""}`);
@@ -104,6 +112,7 @@ async function bucle(motor: Motor) {
 }
 
 async function main() {
+  iniciarTrazas("geeper-worker");
   await prepararDb();
   const r = await recuperarAlArrancar();
   avisar(`id ${workerId}. ${r.reinicio.hubo ? "REINICIO DETECTADO: " + r.reinicio.motivo : "Sin reinicio desde la última corrida"}.`);
@@ -119,7 +128,8 @@ async function main() {
     avisar(`${senal}: apagando; los trabajos en curso quedan «interrumpidos»`);
     for (const c of enCurso.values()) c.abort();
     clearInterval(latidoSistema);
-    setTimeout(() => process.exit(0), 4000).unref();
+    // Las trazas por OTLP van en lote: se vacían antes de salir (las del JSONL ya están escritas).
+    setTimeout(() => void cerrarTrazas().finally(() => process.exit(0)), 4000).unref();
   };
   process.on("SIGINT", () => void apagar("SIGINT"));
   process.on("SIGTERM", () => void apagar("SIGTERM"));

@@ -46,6 +46,8 @@ guarda su licencia en `geeper.json` y en la tabla `Asset`; el QC avisa (sin bloq
 | `@modelcontextprotocol/server` 2.4.0 (SDK v2, revisión 2026-07-28) | Apache 2.0 | Servidor MCP de Geeper por stdio (`mcp/servidor.ts`); `@modelcontextprotocol/client` sólo en pruebas |
 | `@playwright/mcp` 0.0.84 | Apache 2.0 | Sólo desarrollo: lo lanza `.mcp.json` con `npx`, no es dependencia de la app |
 | `@cyclonedx/cyclonedx-library` 10.4.0, `packageurl-js`, `ajv` (+ formatos) | Apache 2.0 / MIT | Sólo desarrollo: arman y validan el SBOM (`pnpm run sbom`) |
+| OpenTelemetry (`@opentelemetry/api` 1.10, `sdk-trace` 3.0, `context-async-hooks` 3.0, `exporter-trace-otlp-http` 0.300) | Apache 2.0 | Trazas de trabajos, pasos, GPU y modelo local (`src/lib/trazas.ts`) |
+| Phoenix (Arize), opcional | Elastic 2.0 (uso interno permitido) | Sólo si se quiere mirar las trazas en una UI: no se instala por defecto |
 
 ## Material
 

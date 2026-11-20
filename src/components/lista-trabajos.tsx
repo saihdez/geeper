@@ -50,6 +50,60 @@ function Log({ id, vivo }: { id: string; vivo: boolean }) {
   return <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-all rounded bg-black/60 p-3 text-xs leading-relaxed text-slate-300">{texto}</pre>;
 }
 
+interface FilaPaso {
+  nombre: string;
+  nivel: number;
+  duracionMs: number;
+  estado: "ok" | "error" | "sin-estado";
+  detalle: string;
+}
+
+function segundos(ms: number) {
+  return ms >= 60_000 ? `${Math.floor(ms / 60_000)} min ${Math.round((ms % 60_000) / 1000)} s` : ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`;
+}
+
+/** Cuánto tardó cada paso (de las trazas). No aparece si el trabajo no dejó trazas. */
+function Pasos({ id, vivo }: { id: string; vivo: boolean }) {
+  const [filas, setFilas] = useState<FilaPaso[] | null>(null);
+  useEffect(() => {
+    let activo = true;
+    const cargar = () =>
+      fetch(`/api/trabajos/${id}/pasos`).then((r) => r.json() as Promise<{ pasos: FilaPaso[] }>).then((d) => activo && setFilas(d.pasos)).catch(() => undefined);
+    void cargar();
+    const i = vivo ? setInterval(cargar, 4000) : undefined;
+    return () => {
+      activo = false;
+      if (i) clearInterval(i);
+    };
+  }, [id, vivo]);
+  if (!filas?.length) return null;
+  return (
+    <div className="mt-2 overflow-x-auto">
+      <table className="w-full text-left text-xs">
+        <caption className="mb-1 text-left text-tenue">Pasos</caption>
+        <thead>
+          <tr className="text-tenue">
+            <th scope="col" className="py-1 pr-3 font-normal">Paso</th>
+            <th scope="col" className="py-1 pr-3 text-right font-normal">Tiempo</th>
+            <th scope="col" className="py-1 font-normal">Detalle</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filas.map((f, i) => (
+            <tr key={i} className="border-t border-white/5">
+              <td className="py-1 pr-3" style={{ paddingLeft: `${f.nivel * 1}rem` }}>
+                <span className={f.estado === "error" ? "text-red-300" : undefined}>{f.estado === "error" ? "✗ " : ""}{f.nombre}</span>
+              </td>
+              <td className="py-1 pr-3 text-right tabular-nums">{segundos(f.duracionMs)}</td>
+              <td className="py-1 text-tenue break-words">{f.detalle}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function ListaTrabajos({ proyectoId }: { proyectoId?: string }) {
   const { datos, error, recargar } = useSondeo<{ trabajos: Trabajo[]; workerVivo: boolean; ahora: number }>(
     `/api/trabajos${proyectoId ? `?proyecto=${proyectoId}` : ""}`,
@@ -106,7 +160,12 @@ export function ListaTrabajos({ proyectoId }: { proyectoId?: string }) {
                 </div>
               )}
               {t.error && <p className="mt-2 whitespace-pre-wrap text-xs text-red-300">{t.error.split("\n").slice(0, 4).join("\n")}</p>}
-              {abierto === t.id && <Log id={t.id} vivo={vivo} />}
+              {abierto === t.id && (
+                <>
+                  <Pasos id={t.id} vivo={vivo} />
+                  <Log id={t.id} vivo={vivo} />
+                </>
+              )}
             </li>
           );
         })}

@@ -4,6 +4,9 @@
  */
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { crearServidor } from "../src/lib/mcp";
+import { iniciarTrazas } from "../src/lib/trazas";
+
+iniciarTrazas("geeper-mcp");
 
 const conexion = serveStdio(crearServidor);
 

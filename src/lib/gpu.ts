@@ -6,6 +6,7 @@
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { GPU_LOCK_BIN } from "./rutas";
+import { enSpan } from "./trazas";
 
 export interface Candado {
   liberar(): void;
@@ -19,7 +20,24 @@ export interface OpcionesCandado {
   signal?: AbortSignal;
 }
 
+/** Toma el candado; la espera queda en la traza (`geeper.gpu.espera_ms`). */
 export function tomarGpu(descripcion: string, op: OpcionesCandado): Promise<Candado | null> {
+  const t0 = Date.now();
+  let ocupadaPor = "";
+  return enSpan("gpu-lock", { "geeper.gpu.para": descripcion, "geeper.gpu.esperar": op.esperar }, async (span) => {
+    const c = await tomarGpuSinTraza(descripcion, {
+      ...op,
+      alEsperar: (quien) => {
+        ocupadaPor = quien;
+        op.alEsperar?.(quien);
+      },
+    });
+    span.setAttributes({ "geeper.gpu.espera_ms": Date.now() - t0, "geeper.gpu.obtenida": c !== null, ...(ocupadaPor ? { "geeper.gpu.ocupada_por": ocupadaPor } : {}) });
+    return c;
+  });
+}
+
+function tomarGpuSinTraza(descripcion: string, op: OpcionesCandado): Promise<Candado | null> {
   return new Promise((ok, mal) => {
     let hijo: ChildProcess;
     try {
