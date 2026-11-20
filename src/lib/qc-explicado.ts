@@ -24,6 +24,7 @@ const MAPA: Record<string, Explicacion> = {
   subtitulos: { que: "Que los subtítulos se puedan leer: líneas cortas y no más de dos.", hacer: "Abre las escenas marcadas y acorta el texto que se muestra (no cambia lo que se oye)." },
   "visual-ia": { que: "Que no haya manos, caras o letras deformes ni logos ajenos en las imágenes.", hacer: "Es un aviso de la IA y puede equivocarse: mira la hoja de contacto y, si ves el defecto, cambia la imagen de esa escena." },
   "subtitulos-ritmo": { que: "Que los subtítulos no pasen demasiado rápido.", hacer: "Es un aviso: la persona habla rápido. Si quieres, recorta palabras de relleno." },
+  "notas-en-subtitulos": { que: "Que no se vean notas de trabajo en los subtítulos: «(corregido)», TODO, marcas como [pulso] o {{variables}}.", hacer: "Abre la escena marcada y quita la nota del texto en pantalla." },
   "zonas-seguras": { que: "Que ningún texto quede tapado por los botones de la red social.", hacer: "Acorta el texto en pantalla o cambia su posición." },
   "hyperframes-check": { que: "Que la composición no tenga errores (textos ilegibles, piezas rotas).", hacer: "Mira el detalle: si dice «contrast», cambia el texto o su posición; si no, avisa." },
   licencias: { que: "Que tengas derecho a usar todo lo que aparece.", hacer: "Si es un clip de otra persona, publica sólo con su permiso o dentro de su campaña. La música sin licencia clara: cámbiala." },

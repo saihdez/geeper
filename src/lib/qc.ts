@@ -335,6 +335,27 @@ export function reglaAmpliacion(lista: Ampliacion[] | undefined): Regla | null {
 }
 
 /** Ritmo: qué parte de los cortes cae en un pulso de la música. Informativo (aviso). */
+/** Notas de trabajo que no deben llegar al video: «(corregido)», TODO, marcas de ritmo «[pulso]», {{variables}}. */
+const NOTA_DE_TRABAJO = [
+  /\((?:corregido|corregida|correcci[oó]n|revisar|pendiente|ojo|nota|todo|tbd)\)/i,
+  /\[[^\]]{1,40}\]|\{\{|\}\}/,
+  // Sueltas sólo como marcador: «TODO:» o «FIXME» (no «lo dan TODO», que es énfasis).
+  /\b(?:TODO|FIXME|TBD):|\b(?:FIXME|XXX)\b/,
+];
+
+/** Regla: ningún subtítulo lleva notas de trabajo (pasó: «(corregido)» en un render publicado). Función pura. */
+export function reglaNotasEnSubtitulos(grupos: { texto: string; inicio: number }[]): Regla {
+  const malos = grupos.filter((g) => NOTA_DE_TRABAJO.some((r) => r.test(g.texto)));
+  return {
+    id: "notas-en-subtitulos",
+    nombre: "Subtítulos sin notas de trabajo",
+    ok: malos.length === 0,
+    medido: malos.length,
+    objetivo: "ningún «(corregido)», TODO, [marca] ni {{variable}} en pantalla",
+    detalle: malos.slice(0, 8).map((g) => `${g.inicio.toFixed(1)} s: «${g.texto}»`).join("\n") || undefined,
+  };
+}
+
 export function reglaRitmo(r: Ritmo | null | undefined): Regla | null {
   if (!r || r.cortes === 0) return null;
   return {
@@ -413,6 +434,7 @@ export async function correrQc(archivo: string, esp: Esperado, dirHoja: string, 
     objetivo: soloForma ? `≤ ${OBJETIVO.maxCaracteresLinea} car./línea, ≤ ${OBJETIVO.maxLineas} líneas` : `≤ ${OBJETIVO.maxCaracteresLinea} car./línea, ≤ ${OBJETIVO.maxLineas} líneas, ≤ ${OBJETIVO.maxCps} car./s`,
     detalle: (soloForma ? sub.malosForma : sub.malos).slice(0, 12).join("\n") || undefined,
   });
+  reglas.push(reglaNotasEnSubtitulos(esp.grupos));
   if (soloForma) {
     const rapidos = sub.malos.filter((m) => !sub.malosForma.includes(m));
     reglas.push({
