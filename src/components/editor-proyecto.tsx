@@ -51,7 +51,7 @@ interface Render {
   duracion: number | null;
   segundos: number | null;
   creado: string;
-  informeQc: { aprobado: boolean; reglas: Regla[]; hojaContacto?: string; fotogramas: { t: number; ruta: string; nota: string }[]; master?: string } | null;
+  informeQc: { aprobado: boolean; reglas: Regla[]; hojaContacto?: string; fotogramas: { t: number; ruta: string; nota: string }[]; master?: string; procedencia?: string; firmaProcedencia?: string } | null;
 }
 interface Vista {
   fila: {
@@ -382,6 +382,10 @@ export function EditorProyecto({ id }: { id: string }) {
                         <a className="boton" title="Para subirlos junto al video (accesibilidad y búsqueda)"
                           href={archivo(`${fila.slug}/${render.ruta.replace(/\.mp4$/, ".srt")}`, true)}>Subtítulos (.srt)</a>
                         {render.informeQc?.master && <a className="boton" href={archivo(`${fila.slug}/${render.informeQc.master}`, true)}>Máster (.mov)</a>}
+                        {render.informeQc?.procedencia && (
+                          <a className="boton" title={render.informeQc.firmaProcedencia ? "Qué entró en este video (modelos, licencias, QC), firmado con la clave local" : "Qué entró en este video: modelos, licencias, QC (sin firmar)"}
+                            href={archivo(`${fila.slug}/${render.informeQc.procedencia}`, true)}>Procedencia</a>
+                        )}
                       </>
                     : <span className="ml-auto text-xs text-red-300">No se descarga: no pasó el QC</span>}
                 </div>

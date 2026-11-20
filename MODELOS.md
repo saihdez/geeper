@@ -49,6 +49,7 @@ guarda su licencia en `geeper.json` y en la tabla `Asset`; el QC avisa (sin bloq
 | OpenTelemetry (`@opentelemetry/api` 1.10, `sdk-trace` 3.0, `context-async-hooks` 3.0, `exporter-trace-otlp-http` 0.300) | Apache 2.0 | Trazas de trabajos, pasos, GPU y modelo local (`src/lib/trazas.ts`) |
 | Phoenix (Arize), opcional | Elastic 2.0 (uso interno permitido) | Sólo si se quiere mirar las trazas en una UI: no se instala por defecto |
 | Promptfoo 0.125.1 (fijado, por `npx`) | MIT | Sólo desarrollo: `pnpm run evals` compara modelos y prompts; telemetría, actualizaciones y «compartir» apagados |
+| cosign v3.1.4 (Sigstore), opcional | Apache 2.0 | Binario en `~/.local/bin`: firma local de la procedencia de cada render, sin Rekor |
 
 ## Material
 

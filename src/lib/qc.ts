@@ -51,6 +51,9 @@ export interface InformeQc {
   fotogramas: { t: number; ruta: string; nota: string }[];
   /** Máster de archivo (si el proyecto lo pide): ProRes/MOV del mismo render. */
   master?: string;
+  /** Declaración de procedencia in-toto del render y su firma local (src/lib/procedencia.ts). */
+  procedencia?: string;
+  firmaProcedencia?: string;
 }
 
 export interface Esperado {

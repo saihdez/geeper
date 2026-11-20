@@ -80,3 +80,23 @@ export async function chequeoImagenes(): Promise<Chequeo> {
   }
   return { nombre, ok: true, detalle: r.primeraVez ? `${n} registrada(s) por primera vez` : `${n} sin cambios` };
 }
+
+/** Firma de la procedencia (C4): cosign y una clave local. Opcional: sin ellos, la procedencia va sin firmar. */
+export async function chequeoFirma(): Promise<Chequeo> {
+  const { COSIGN, dirClaves } = await import("./procedencia");
+  const nombre = "Firma de la procedencia (cosign)";
+  const clave = path.join(dirClaves(), "cosign.key");
+  const bin = await correr(COSIGN, ["version"], { permitirFallo: true, timeout: 10_000 }).catch(() => null);
+  if (!bin || bin.codigo !== 0) {
+    return { nombre, ok: true, aviso: true, detalle: "cosign no está: la procedencia de cada render va sin firmar", arreglo: "Opcional: instala cosign en ~/.local/bin (release fijada y SHA-256, ver DECISIONES §30)." };
+  }
+  const v = bin.stdout.match(/GitVersion:\s*(\S+)/)?.[1] ?? "?";
+  const hay = await fs.access(clave).then(() => true, () => false);
+  if (!hay) {
+    return {
+      nombre, ok: true, aviso: true, detalle: `cosign ${v}, pero sin clave`,
+      arreglo: `mkdir -p ${dirClaves()} && cd ${dirClaves()} && COSIGN_PASSWORD= ${COSIGN} generate-key-pair && chmod 600 cosign.key`,
+    };
+  }
+  return { nombre, ok: true, detalle: `cosign ${v} con clave local (sin Rekor)` };
+}

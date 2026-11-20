@@ -14,6 +14,7 @@ import { resumirConfianza } from "./confianza";
 import { pistasLibres, validarProyecto, type Proyecto } from "./esquema";
 import { metricas } from "./formatos";
 import { tomarGpu } from "./gpu";
+import { escribirProcedencia } from "./procedencia";
 import { aSrt, duracionEscenas, escenasEnLinea, opcionesDe } from "./linea";
 import { huellaFfmpeg, probar } from "./media";
 import { mezclar } from "./mezcla";
@@ -241,14 +242,31 @@ export async function renderEntregar(
     path.join(dir, "renders", `${base}-hoja`),
     ctx.log,
   );
-  await fs.writeFile(path.join(dir, "renders", `${base}.srt`), aSrt(comp.grupos, comp.inicioTarjeta));
+  const srt = path.join(dir, "renders", `${base}.srt`);
+  await fs.writeFile(srt, aSrt(comp.grupos, comp.inicioTarjeta));
   const rel = (x: string) => path.relative(dir, x);
+
+  // 7. Procedencia (in-toto, firmada en local si hay cosign y clave): qué entró en este video.
+  const version = await db.version.findUnique({ where: { proyectoId_numero: { proyectoId, numero } } });
+  const procedencia = await escribirProcedencia(
+    path.join(dir, "renders", base),
+    {
+      archivos: [final, srt, ...(master ? [master] : [])],
+      proyecto: { slug: fila.slug, version: numero, hashVersion: version?.hash ?? null },
+      p,
+      assetsUsados,
+      qc: informe,
+    },
+    ctx.log,
+  );
   const informeRel = {
     ...informe,
     archivo: rel(informe.archivo),
     hojaContacto: informe.hojaContacto && rel(informe.hojaContacto),
     fotogramas: informe.fotogramas.map((f) => ({ ...f, ruta: rel(f.ruta) })),
     master: master && rel(master),
+    procedencia: procedencia ? rel(procedencia.ruta) : undefined,
+    firmaProcedencia: procedencia?.firma ? rel(procedencia.firma) : undefined,
   };
   await fs.writeFile(path.join(dir, "renders", `${base}.qc.json`), JSON.stringify(informeRel, null, 2));
   for (const r of informe.reglas) ctx.log(`QC ${r.ok ? "✓" : r.aviso ? "!" : "✗"} ${r.nombre}: ${JSON.stringify(r.medido).slice(0, 160)}`);

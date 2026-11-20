@@ -501,3 +501,22 @@ Paso 7 de `docs/STACK-AGENTICO.md`, 2026-11-20. **Código listo; falta medir el 
   decide el modelo y si algún tipo (p. ej. manos graves) puede bloquear.
 - **Pendiente:** usar el mismo modelo para puntuar momentos de clips (G5) sólo si mejora a
   `buscar-momentos.ts` medido con una suite de evals.
+
+## 30. Procedencia de cada render: in-toto y firma local con cosign (C4)
+
+Paso 8 de `docs/STACK-AGENTICO.md`, 2026-11-20.
+
+- **Al terminar el QC**, junto al render: `renders/<base>.procedencia.json`, una *Statement* in-toto v1.
+  `subject`: el MP4, el `.srt` y el máster (si hay) con su sha256. `predicate`
+  (`https://geeper.local/procedencia/v1`, vocabulario de W3C PROV): versión y commit de Geeper,
+  versión y hash de `geeper.json`, cada asset usado (sha256, `source`, licencia, modelo, pesos,
+  prompt, tarea y digests de MPT), ffmpeg e Hyperframes, y el resultado del QC regla por regla.
+  Nunca hace fallar el render. Botón «Procedencia» junto a «Descargar MP4».
+- **Firma opcional y local:** `cosign sign-blob --key ~/geeper-data/claves/cosign.key
+  --tlog-upload=false --use-signing-config=false --bundle <archivo>.sigstore.json`. **Nada va a
+  Rekor**: su registro es público y Geeper es interno. La clave se genera con contraseña vacía
+  (`COSIGN_PASSWORD=`), queda en `~/geeper-data/claves/` con permisos 600 y nunca entra al repo. Sin
+  cosign o sin clave, la procedencia va sin firmar y el log y el doctor lo dicen.
+- **cosign v3.1.4** (Apache 2.0) en `~/.local/bin/cosign`, bajado de la release oficial y comprobado con
+  el SHA-256 que publica GitHub (`424e2c97…bbfa`).
+- **Descartado:** SLSA (es para paquetes que se publican) y firmar con `age` (cifra, no firma).
