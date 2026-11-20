@@ -69,6 +69,12 @@ export interface OpcionesLlm {
   esperarGpu?: boolean;
   /** `esquema` (por defecto): JSON Schema en `format`. `json`: sólo JSON libre (respaldo si un esquema no entra en la gramática). */
   formato?: "esquema" | "json";
+  /**
+   * Dejar que el modelo «piense» antes de responder (gemma4, qwen3). Apagado por defecto: con salida
+   * estructurada no mejora el JSON y gasta el contexto; medido el 2026-11-20 (DECISIONES §34), con
+   * pensamiento el director de gemma4:12b se cortaba a la mitad en 32 s y sin él sale completo en 9 s.
+   */
+  pensar?: boolean;
   ejecutar?: EjecutorLlm;
   /** Para pruebas: cómo se toma la GPU. */
   candado?: (tarea: string, esperar: boolean) => Promise<Candado | null>;
@@ -176,6 +182,7 @@ async function pedirJsonSinTraza<T>(modelo: string, prompt: string, esquema: z.Z
       stream: false,
       format: op.formato === "json" ? "json" : esquemaParaOllama(esquema),
       keep_alive: 0,
+      think: op.pensar ?? false,
       options: op.temperatura === undefined ? {} : { temperature: op.temperatura },
       messages: [
         ...(op.sistema ? [{ role: "system", content: op.sistema }] : []),
@@ -188,13 +195,14 @@ async function pedirJsonSinTraza<T>(modelo: string, prompt: string, esquema: z.Z
       const detalle = r.stderr.trim().split("\n").pop()?.slice(0, 200) ?? "";
       throw new ErrorLlm(causa, detalle, causa === "modelo-falta" ? `Falta el modelo ${modelo} en la IA local.` : undefined);
     }
-    let respuesta: { message?: { content?: string }; prompt_eval_count?: number; eval_count?: number };
+    let respuesta: { message?: { content?: string }; prompt_eval_count?: number; eval_count?: number; done_reason?: string };
     try {
       respuesta = JSON.parse(r.stdout);
     } catch {
       throw new ErrorLlm("ollama-no-responde", r.stdout.slice(0, 200));
     }
     const crudo = respuesta.message?.content ?? "";
+    if (respuesta.done_reason === "length") throw new ErrorLlm("respuesta-invalida", `respuesta cortada: se acabó el contexto (${respuesta.eval_count ?? "?"} tokens de salida)`);
     let json: unknown;
     try {
       json = JSON.parse(sinCercas(crudo));

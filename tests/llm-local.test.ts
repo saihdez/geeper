@@ -33,6 +33,7 @@ describe("pedirJson (A3)", () => {
     expect(liberado).toBe(true);
     const p = o.pedidos[0]!;
     expect(p.keep_alive).toBe(0);
+    expect(p.think).toBe(false);
     expect(p.stream).toBe(false);
     expect((p.format as { type: string }).type).toBe("object");
     expect((p.messages as { role: string }[]).map((m) => m.role)).toEqual(["system", "user"]);
@@ -44,6 +45,14 @@ describe("pedirJson (A3)", () => {
     await expect(p).rejects.toMatchObject({ causa: "respuesta-invalida" });
     expect(liberado).toBe(true);
     await expect(pedirJson("m", "p", Esquema, { tarea: "t", ejecutar: ollama("no es json").ejecutar, candado: libre })).rejects.toMatchObject({ causa: "respuesta-invalida" });
+  });
+
+  it("una respuesta cortada por falta de contexto lo dice; `pensar` lo pide explícito", async () => {
+    const corta = ollama('{"titulos":["a"', { done_reason: "length", eval_count: 3808 });
+    await expect(pedirJson("m", "p", Esquema, { tarea: "t", ejecutar: corta.ejecutar, candado: libre })).rejects.toMatchObject({ causa: "respuesta-invalida", detalle: expect.stringMatching(/cortada.*3808/) });
+    const o = ollama({ titulos: ["a"] });
+    await pedirJson("m", "p", Esquema, { tarea: "t", ejecutar: o.ejecutar, candado: libre, pensar: true });
+    expect(o.pedidos[0]!.think).toBe(true);
   });
 
   it("acepta JSON con cercas de Markdown", async () => {

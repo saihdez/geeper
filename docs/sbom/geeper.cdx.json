@@ -4,7 +4,7 @@
   "specVersion": "1.7",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-11-20T09:29:37.777Z",
+    "timestamp": "2026-11-20T14:40:38.563Z",
     "tools": {
       "components": [
         {
@@ -17,18 +17,83 @@
     "component": {
       "type": "application",
       "name": "geeper",
-      "version": "0.1.0+465fc1460230",
+      "version": "0.1.0+aaf37f7f65d6",
       "bom-ref": "geeper",
       "description": "Estudio de video local de Dimerso (uso interno)."
     },
     "properties": [
       {
         "name": "geeper:pnpm-lock:sha256",
-        "value": "5bc38a0d427adead62fea54b4d68f99d26a6e9d7c79989a0980c9711cef9c61f"
+        "value": "122ff881fd262bd2e45e793492f407c05780bbc57940ab1e3a1e559d130a6f71"
       }
     ]
   },
   "components": [
+    {
+      "type": "container",
+      "name": "ghcr.io/harry0703/moneyprinterturbo:latest",
+      "version": "sha256:7b88d608a66ccaefd3380377ac1d60a8d03d8d0fe7687697e2a04bb300cab917",
+      "bom-ref": "contenedor:moneyprinterturbo-api",
+      "description": "Imagen del contenedor moneyprinterturbo-api (MoneyPrinterTurbo).",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "7b88d608a66ccaefd3380377ac1d60a8d03d8d0fe7687697e2a04bb300cab917"
+        }
+      ]
+    },
+    {
+      "type": "container",
+      "name": "ghcr.io/harry0703/moneyprinterturbo:latest",
+      "version": "sha256:7b88d608a66ccaefd3380377ac1d60a8d03d8d0fe7687697e2a04bb300cab917",
+      "bom-ref": "contenedor:moneyprinterturbo-webui",
+      "description": "Imagen del contenedor moneyprinterturbo-webui (MoneyPrinterTurbo).",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "7b88d608a66ccaefd3380377ac1d60a8d03d8d0fe7687697e2a04bb300cab917"
+        }
+      ]
+    },
+    {
+      "type": "container",
+      "name": "moneyprinterturbo-image-server",
+      "version": "sha256:33fe27cfdf678946fed04e2ac7f0147a1031b3664bdf85b4a38db2a01b7d9a06",
+      "bom-ref": "contenedor:mpt-image-server",
+      "description": "Imagen del contenedor mpt-image-server (MoneyPrinterTurbo).",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "33fe27cfdf678946fed04e2ac7f0147a1031b3664bdf85b4a38db2a01b7d9a06"
+        }
+      ]
+    },
+    {
+      "type": "container",
+      "name": "ghcr.io/remsky/kokoro-fastapi-cpu:latest",
+      "version": "sha256:f54c5960c2b9387f6349080a9944f8bc7e8cdb98a4ef9238cb0b0f9ff9795f44",
+      "bom-ref": "contenedor:mpt-kokoro",
+      "description": "Imagen del contenedor mpt-kokoro (MoneyPrinterTurbo).",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "f54c5960c2b9387f6349080a9944f8bc7e8cdb98a4ef9238cb0b0f9ff9795f44"
+        }
+      ]
+    },
+    {
+      "type": "container",
+      "name": "ollama/ollama:latest",
+      "version": "sha256:0e59999e0e8f9fd4e704bd788a89b7e4cad399367fb1365f8c102ac662288761",
+      "bom-ref": "contenedor:mpt-ollama",
+      "description": "Imagen del contenedor mpt-ollama (MoneyPrinterTurbo).",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "0e59999e0e8f9fd4e704bd788a89b7e4cad399367fb1365f8c102ac662288761"
+        }
+      ]
+    },
     {
       "type": "application",
       "name": "anicraft",
@@ -970,6 +1035,160 @@
         }
       ],
       "purl": "pkg:npm/%40next/swc-linux-x64-gnu@16.4.6"
+    },
+    {
+      "type": "library",
+      "name": "@opentelemetry/api",
+      "version": "1.10.0",
+      "bom-ref": "npm:@opentelemetry/api@1.10.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "purl": "pkg:npm/%40opentelemetry/api@1.10.0"
+    },
+    {
+      "type": "library",
+      "name": "@opentelemetry/context-async-hooks",
+      "version": "3.0.0",
+      "bom-ref": "npm:@opentelemetry/context-async-hooks@3.0.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "purl": "pkg:npm/%40opentelemetry/context-async-hooks@3.0.0"
+    },
+    {
+      "type": "library",
+      "name": "@opentelemetry/core",
+      "version": "3.0.0",
+      "bom-ref": "npm:@opentelemetry/core@3.0.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "purl": "pkg:npm/%40opentelemetry/core@3.0.0"
+    },
+    {
+      "type": "library",
+      "name": "@opentelemetry/exporter-trace-otlp-http",
+      "version": "0.300.0",
+      "bom-ref": "npm:@opentelemetry/exporter-trace-otlp-http@0.300.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "purl": "pkg:npm/%40opentelemetry/exporter-trace-otlp-http@0.300.0"
+    },
+    {
+      "type": "library",
+      "name": "@opentelemetry/otlp-exporter-base",
+      "version": "0.300.0",
+      "bom-ref": "npm:@opentelemetry/otlp-exporter-base@0.300.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "purl": "pkg:npm/%40opentelemetry/otlp-exporter-base@0.300.0"
+    },
+    {
+      "type": "library",
+      "name": "@opentelemetry/otlp-transformer",
+      "version": "0.300.0",
+      "bom-ref": "npm:@opentelemetry/otlp-transformer@0.300.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "purl": "pkg:npm/%40opentelemetry/otlp-transformer@0.300.0"
+    },
+    {
+      "type": "library",
+      "name": "@opentelemetry/resources",
+      "version": "3.0.0",
+      "bom-ref": "npm:@opentelemetry/resources@3.0.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "purl": "pkg:npm/%40opentelemetry/resources@3.0.0"
+    },
+    {
+      "type": "library",
+      "name": "@opentelemetry/sdk-logs",
+      "version": "3.0.0",
+      "bom-ref": "npm:@opentelemetry/sdk-logs@3.0.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "purl": "pkg:npm/%40opentelemetry/sdk-logs@3.0.0"
+    },
+    {
+      "type": "library",
+      "name": "@opentelemetry/sdk-metrics",
+      "version": "3.0.0",
+      "bom-ref": "npm:@opentelemetry/sdk-metrics@3.0.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "purl": "pkg:npm/%40opentelemetry/sdk-metrics@3.0.0"
+    },
+    {
+      "type": "library",
+      "name": "@opentelemetry/sdk-trace",
+      "version": "3.0.0",
+      "bom-ref": "npm:@opentelemetry/sdk-trace@3.0.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "purl": "pkg:npm/%40opentelemetry/sdk-trace@3.0.0"
+    },
+    {
+      "type": "library",
+      "name": "@opentelemetry/semantic-conventions",
+      "version": "1.45.0",
+      "bom-ref": "npm:@opentelemetry/semantic-conventions@1.45.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "purl": "pkg:npm/%40opentelemetry/semantic-conventions@1.45.0"
     },
     {
       "type": "library",
@@ -4370,6 +4589,21 @@
   ],
   "dependencies": [
     {
+      "ref": "contenedor:moneyprinterturbo-api"
+    },
+    {
+      "ref": "contenedor:moneyprinterturbo-webui"
+    },
+    {
+      "ref": "contenedor:mpt-image-server"
+    },
+    {
+      "ref": "contenedor:mpt-kokoro"
+    },
+    {
+      "ref": "contenedor:mpt-ollama"
+    },
+    {
       "ref": "craft:anicraft"
     },
     {
@@ -4572,6 +4806,39 @@
     },
     {
       "ref": "npm:@next/swc-linux-x64-gnu@16.4.6"
+    },
+    {
+      "ref": "npm:@opentelemetry/api@1.10.0"
+    },
+    {
+      "ref": "npm:@opentelemetry/context-async-hooks@3.0.0"
+    },
+    {
+      "ref": "npm:@opentelemetry/core@3.0.0"
+    },
+    {
+      "ref": "npm:@opentelemetry/exporter-trace-otlp-http@0.300.0"
+    },
+    {
+      "ref": "npm:@opentelemetry/otlp-exporter-base@0.300.0"
+    },
+    {
+      "ref": "npm:@opentelemetry/otlp-transformer@0.300.0"
+    },
+    {
+      "ref": "npm:@opentelemetry/resources@3.0.0"
+    },
+    {
+      "ref": "npm:@opentelemetry/sdk-logs@3.0.0"
+    },
+    {
+      "ref": "npm:@opentelemetry/sdk-metrics@3.0.0"
+    },
+    {
+      "ref": "npm:@opentelemetry/sdk-trace@3.0.0"
+    },
+    {
+      "ref": "npm:@opentelemetry/semantic-conventions@1.45.0"
     },
     {
       "ref": "npm:@prisma/adapter-better-sqlite3@7.10.1"
