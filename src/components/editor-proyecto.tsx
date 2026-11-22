@@ -1,8 +1,8 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import { Aviso, Estado, archivo, pedir, postJson, segundos, useSondeo } from "./comun";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Aviso, Barra, Estado, archivo, pedir, postJson, segundos, useSondeo } from "./comun";
 import { ACCEPT_IMAGEN, esVector } from "@/lib/formatos-vector";
-import { explicar, resumirQc } from "@/lib/qc-explicado";
+import { avisoSubtitulosRapidos, explicarRegla, LIMITES_SUBTITULOS, porQueFalla, resumirQc, type FraseQc, type SubtitulosRapidos } from "@/lib/qc-explicado";
 import { VistaEnVivo } from "./vista-en-vivo";
 import { ListaTrabajos } from "./lista-trabajos";
 import { ListaPublicaciones, PanelPublicar, type PublicacionV } from "./panel-publicar";
@@ -17,6 +17,9 @@ import { PanelAvatarEscena, PanelAvatarVideo } from "./panel-avatar";
 import { SelectorEncuadre, type EncuadreV } from "./selector-encuadre";
 import { PanelOtroEditor } from "./panel-otro-editor";
 import { useAccionesProyecto } from "./acciones-proyecto";
+import { FranjaAviso, type MensajeEditor } from "./franja-aviso";
+import { avisoRitmo, correccionesVacias, enLista, haceCuanto, mensajeSinCambios, opcionesRitmo, versionParaDeshacer, errorSubtitulo, escenasConOtraVoz, estaActivo, estadoCreacion, mismoContenido, pasoRender, preguntaVozEscena, renderEnCurso, verTrabajos, type TrabajoV, type VocesV } from "./editor-estado";
+import { Plegable } from "./plegable";
 import { EdicionPorTexto, EfectosEscena, PanelAvanzado, PanelEstilo, type EfectosV, type EstiloV, type ExtrasV, type PalabraV } from "./edicion-avanzada";
 
 /** Miniatura de una escena (la misma que su tarjeta). */
@@ -33,6 +36,8 @@ interface Grupo {
   lineas: number;
   cruza: boolean;
   mostradoPropio: string;
+  /** Letras por segundo con que pasa (la misma cuenta que la regla del QC). */
+  cps: number;
 }
 interface EscenaV {
   id: string;
@@ -45,7 +50,7 @@ interface EscenaV {
   efectos: EfectosV;
   correcciones: { desde: number; hasta: number; texto: string }[];
   visual: { asset: string; ruta: string; source: string; licencia: string; tipo: string; inicio: number; ajuste: string; ancla: string; prompt: unknown; encuadre: EncuadreV };
-  voz: { asset: string; source: string; ruta: string };
+  voz: { asset: string; source: string; ruta: string; voz?: string | null };
   grupos: Grupo[];
 }
 interface Regla { id: string; nombre: string; ok: boolean; aviso?: boolean; medido: unknown; objetivo: string; detalle?: string }
@@ -58,14 +63,16 @@ interface Render {
   duracion: number | null;
   segundos: number | null;
   creado: string;
+  /** UX-28: si existe su .srt (sólo se sabe del último render). */
+  srt?: boolean;
   informeQc: { aprobado: boolean; reglas: Regla[]; hojaContacto?: string; fotogramas: { t: number; ruta: string; nota: string }[]; master?: string } | null;
 }
 interface Vista {
   fila: {
     id: string; slug: string; nombre: string; tema: string; formato: string; plantilla: string; estado: string; versionActual: number;
-    versiones: { numero: number; nota: string; creado: string }[];
+    versiones: { numero: number; nota: string; creado: string; hash?: string | null }[];
     renders: Render[];
-    trabajos: { tipo: string; estado: string }[];
+    trabajos: TrabajoV[];
     lote: { nombre: string } | null;
     publicaciones: PublicacionV[];
   };
@@ -75,7 +82,15 @@ interface Vista {
   extras: ExtrasV | null;
   /** Importado antes del reencuadre por cara: se analiza una vez al abrirlo. */
   carasPendientes: boolean;
+  /** REN-04: escenas con subtítulos rápidos, sabido antes de renderizar. */
+  subtitulosRapidos: SubtitulosRapidos | null;
+  /** UX-12: la voz elegida y los nombres de las que suenan. */
+  voces?: VocesV | null;
 }
+
+/** UX-26: lo que se pregunta tras elegir una voz (todavía no suena en el video). */
+export const preguntaUsarVoz = (nombre: string) =>
+  `Elegiste «${nombre}». ¿La ponemos ya en el video? Se vuelve a decir todo el guion (unos 2 minutos) y se acomodan los subtítulos.`;
 
 /** Mensaje de una subida: el de éxito más lo que VectorCraft avisó al convertir (p. ej. una fuente que faltaba). */
 const conAvisos = (r: { avisos?: string[] }, ok: string) => (r.avisos?.length ? `${ok} Ojo: ${r.avisos.join(" · ")}` : ok);
@@ -103,7 +118,12 @@ interface Vectorizar {
   ocupado: boolean;
 }
 
-function InformeQc({ r, slug, vectorizar }: { r: Render; slug: string; vectorizar?: Vectorizar }) {
+/** Escena donde está hoy una frase que marcó el QC (el informe puede ser de una versión anterior). */
+export function escenaDeFrase(f: Pick<FraseQc, "texto">, escenas: { id: string; indice: number; grupos: { texto: string }[] }[]) {
+  return escenas.find((e) => e.grupos.some((g) => g.texto === f.texto)) ?? null;
+}
+
+export function InformeQc({ r, slug, vectorizar, escenas = [] }: { r: Render; slug: string; vectorizar?: Vectorizar; escenas?: { id: string; indice: number; grupos: { texto: string }[] }[] }) {
   const inf = r.informeQc;
   if (!inf) return null;
   const res = resumirQc(inf.reglas);
@@ -112,11 +132,26 @@ function InformeQc({ r, slug, vectorizar }: { r: Render; slug: string; vectoriza
     <div className="space-y-3">
       <p className={`text-base font-medium ${color}`}>{res.estado === "listo" ? "✓ " : res.estado === "con-avisos" ? "! " : "✗ "}{res.titulo}</p>
       {[...res.bloquean.map((x) => ({ ...x, bloquea: true })), ...res.avisos.map((x) => ({ ...x, bloquea: false }))].map((x) => {
-        const e = explicar(x.id);
+        const e = explicarRegla(x);
         return (
           <div key={x.id} className={`rounded-lg border p-3 text-sm ${x.bloquea ? "border-red-900 bg-red-950/30" : "border-amber-900 bg-amber-950/20"}`}>
             <p className="font-medium">{x.bloquea ? "Hay que arreglarlo: " : "Para mirar: "}{e.que}</p>
             <p className="mt-1 text-tenue">Qué hacer: {e.hacer}</p>
+            {e.frases.length > 0 && (
+              <ul className="mt-2 space-y-1">
+                {e.frases.map((f) => {
+                  const esc = escenaDeFrase(f, escenas);
+                  return (
+                    <li key={`${f.t}-${f.texto}`}>
+                      «{f.texto}» {porQueFalla(f)}.{" "}
+                      {esc
+                        ? <a className="text-acento hover:underline" href={`#escena-${esc.id}`}>Ir a la escena {esc.indice + 1}</a>
+                        : <span className="text-tenue">(ya cambió desde que se hizo este video)</span>}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
         );
       })}
@@ -156,40 +191,64 @@ function InformeQc({ r, slug, vectorizar }: { r: Render; slug: string; vectoriza
   );
 }
 
-function EditorGrupo({ g, onGuardar, onQuitar, corregido }: { g: Grupo; corregido: boolean; onGuardar: (texto: string) => Promise<void>; onQuitar: () => Promise<void> }) {
-  const [texto, setTexto] = useState(g.mostradoPropio);
+export function EditorGrupo({ g, onGuardar, onQuitar, corregido }: { g: Grupo; corregido: boolean; onGuardar: (texto: string) => Promise<boolean>; onQuitar: () => Promise<void> }) {
+  // UX-02: lo escrito es un borrador sobre lo guardado; al guardar bien (o con Esc) el campo vuelve a
+  // mostrar lo que quedó en la fila, así «Guardar» no queda pegado.
+  const [borrador, setBorrador] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
-  const cambiado = texto.trim() !== g.mostradoPropio;
+  const texto = borrador ?? g.mostradoPropio;
+  const cambiado = borrador !== null && borrador.trim() !== g.mostradoPropio;
+  const error = cambiado ? errorSubtitulo(texto) : null;
+  const guardar = async () => {
+    if (!cambiado || error || guardando) return;
+    setGuardando(true);
+    try {
+      if (await onGuardar(texto.trim())) setBorrador(null);
+    } finally {
+      setGuardando(false);
+    }
+  };
+  const idError = `error-sub-${g.desde}-${g.hasta}`;
   return (
     <li className="flex flex-wrap items-center gap-2 text-sm">
       <span className="w-16 shrink-0 font-mono text-xs text-tenue">{g.inicio.toFixed(2)} s</span>
-      <input aria-label={`Subtítulo en ${g.inicio.toFixed(2)} s`} className="campo min-w-0 flex-1 py-1" value={texto} onChange={(e) => setTexto(e.target.value)} />
+      <input aria-label={`Subtítulo en ${g.inicio.toFixed(2)} s`} className="campo min-w-0 flex-1 py-1" value={texto}
+        aria-invalid={error ? true : undefined} aria-describedby={error ? idError : undefined}
+        onChange={(e) => setBorrador(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); void guardar(); }
+          if (e.key === "Escape") setBorrador(null);
+        }} />
       {cambiado && (
-        <button type="button" className="boton boton-primario py-1" disabled={guardando}
-          onClick={async () => { setGuardando(true); try { await onGuardar(texto); } finally { setGuardando(false); } }}>Guardar</button>
+        <button type="button" className="boton boton-primario py-1" disabled={guardando || !!error} title="También con Enter; Esc lo deja como estaba"
+          onClick={() => void guardar()}>{guardando ? "Guardando…" : "Guardar"}</button>
       )}
       {corregido && !cambiado && <button type="button" className="boton py-1" onClick={() => void onQuitar()} title={`Se oye: «${g.oido}»`}>Deshacer</button>}
       {g.cruza && <span className="text-xs text-tenue">sigue en la escena siguiente</span>}
+      {error && <span id={idError} className="w-full pl-[4.5rem] text-xs text-red-300">{error}</span>}
+      {!cambiado && g.cps > LIMITES_SUBTITULOS.maxCps && (
+        <span className="w-full pl-[4.5rem] text-xs text-amber-200">Pasa muy rápido ({g.cps.toFixed(1).replace(".", ",")} letras por segundo): acórtalo un poco para que dé tiempo a leerlo.</span>
+      )}
       {g.oido !== g.mostradoPropio && <span className="w-full pl-[4.5rem] text-xs text-tenue">Se oye: «{g.oido}»</span>}
     </li>
   );
 }
 
-/** «2», «2 y 5», «2, 4 y 5». */
-function lista(n: number[]): string {
-  return n.length <= 1 ? String(n[0] ?? "") : `${n.slice(0, -1).join(", ")} y ${n[n.length - 1]}`;
-}
-
-function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, editar, subirClip, regenerarVoz, reencuadrar, animar, ocupado, vozReal }: {
-  e: EscenaV; anterior?: EscenaV; slug: string; proyectoId: string; total: number; ocupado: boolean; formato: string; estilo: EstiloV | null;
+function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, editar, editarOk, subirClip, regenerarVoz, reencuadrar, animar, ocupado, vozReal, preguntaVoz }: {
+  e: EscenaV; anterior?: EscenaV;
+  /** UX-12: si regenerar sólo esta escena deja el video con dos voces, qué preguntar antes. */
+  preguntaVoz: string | null; slug: string; proyectoId: string; total: number; ocupado: boolean; formato: string; estilo: EstiloV | null;
   /** Clip de material largo: la voz es la del creador (la revisión de dudosas corrige texto). */
   vozReal: boolean;
   editar: (ed: object) => Promise<void>;
+  /** Como `editar`, pero dice si se guardó (el campo del subtítulo sólo se limpia si salió bien). */
+  editarOk: (ed: object) => Promise<boolean>;
   subirClip: (escena: string, f: File) => Promise<void>;
-  regenerarVoz: (escena: string) => Promise<void>;
+  regenerarVoz: (escena: string | null) => Promise<void>;
   reencuadrar: (escena: string, layout: string) => Promise<void>;
   animar: (escena: string, opciones: OpcionesAnimar) => Promise<void>;
 }) {
+  const [preguntando, setPreguntando] = useState(false);
   return (
     <li id={`escena-${e.id}`} className="tarjeta flex scroll-mt-4 flex-col gap-3 p-3 md:flex-row">
       <div className="shrink-0">
@@ -209,10 +268,16 @@ function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, 
           {e.grupos.map((g) => (
             <EditorGrupo key={`${g.desde}-${g.hasta}-${g.mostradoPropio}`} g={g}
               corregido={e.correcciones.some((c) => c.desde >= g.desde && c.hasta <= g.hasta)}
-              onGuardar={(texto) => editar({ tipo: "corregirSubtitulo", escena: e.id, desde: g.desde, hasta: g.hasta, texto })}
+              onGuardar={(texto) => editarOk({ tipo: "corregirSubtitulo", escena: e.id, desde: g.desde, hasta: g.hasta, texto })}
               onQuitar={async () => { for (const c of e.correcciones.filter((c) => c.desde >= g.desde && c.hasta <= g.hasta)) await editar({ tipo: "quitarCorreccion", escena: e.id, desde: c.desde }); }} />
           ))}
         </ul>
+        {correccionesVacias(e.detalle, e.correcciones).map((c) => (
+          <p key={c.desde} className="flex flex-wrap items-center gap-2 text-xs text-amber-200">
+            Se oye «{c.oido}» y no tiene subtítulo.
+            <button type="button" className="boton py-0.5 text-xs" disabled={ocupado} onClick={() => void editar({ tipo: "quitarCorreccion", escena: e.id, desde: c.desde })}>Volver a mostrarlo</button>
+          </p>
+        ))}
         <div className="flex flex-wrap gap-2 pt-1">
           <button type="button" className="boton" disabled={ocupado || e.indice === 0} onClick={() => void editar({ tipo: "moverEscena", escena: e.id, a: e.indice - 1 })} aria-label={`Subir escena ${e.indice + 1}`}>↑ Subir</button>
           <button type="button" className="boton" disabled={ocupado || e.indice === total - 1} onClick={() => void editar({ tipo: "moverEscena", escena: e.id, a: e.indice + 1 })} aria-label={`Bajar escena ${e.indice + 1}`}>↓ Bajar</button>
@@ -230,11 +295,21 @@ function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, 
             </select>
           )}
           {e.voz.source !== "archivo" && (
-            <button type="button" className="boton" disabled={ocupado} onClick={() => void regenerarVoz(e.id)}>Regenerar voz de la escena</button>
+            <button type="button" className="boton" disabled={ocupado} onClick={() => { if (preguntaVoz) setPreguntando(true); else void regenerarVoz(e.id); }}>Regenerar voz de la escena</button>
           )}
           <button type="button" className="boton boton-peligro" disabled={ocupado || total <= 1}
             onClick={() => { if (confirm(`¿Quitar la escena ${e.indice + 1}? Se quita también lo que se oye en ella. Puedes volver atrás en el historial.`)) void editar({ tipo: "quitarEscena", escena: e.id }); }}>Quitar</button>
         </div>
+        {preguntando && preguntaVoz && (
+          <div className="rounded-lg border border-amber-700 bg-amber-950/40 p-3 text-sm" role="group" aria-label="¿Cambiar la voz de todo el video?">
+            <p>{preguntaVoz} ¿Cambias la voz de todo el video para que suene igual?</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button type="button" className="boton boton-primario py-1" disabled={ocupado} onClick={() => { setPreguntando(false); void regenerarVoz(null); }}>Cambiar todas</button>
+              <button type="button" className="boton py-1" disabled={ocupado} onClick={() => { setPreguntando(false); void regenerarVoz(e.id); }}>Sólo ésta</button>
+              <button type="button" className="boton py-1" onClick={() => setPreguntando(false)}>Cancelar</button>
+            </div>
+          </div>
+        )}
         <EfectosEscena escena={e.id} indice={e.indice} efectos={e.efectos} estilo={estilo} formato={formato}
           imgA={anterior ? miniatura(slug, anterior) : undefined} imgB={miniatura(slug, e)} editar={editar} ocupado={ocupado} />
         <PanelAnimar proyectoId={proyectoId} escena={e.id} numero={e.indice + 1} ocupado={ocupado} animar={animar} />
@@ -248,7 +323,8 @@ function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, 
 export function EditorProyecto({ id }: { id: string }) {
   const { datos: v, error, recargar } = useSondeo<Vista>(`/api/proyectos/${id}`, 3000);
   const { datos: pl } = useSondeo<{ plantillas: { slug: string; nombre: string }[] }>("/api/plantillas", 60_000);
-  const [msg, setMsg] = useState<{ tipo: "ok" | "error"; texto: string } | null>(null);
+  const [msg, setMsg] = useState<MensajeEditor | null>(null);
+  const cerrarMsg = useCallback(() => setMsg(null), []);
   const [ocupado, setOcupado] = useState(false);
   // Reencuadre por cara en proyectos viejos: se pide una sola vez al abrir; el aviso deja deshacerlo.
   const [caras, setCaras] = useState<{ fase: "buscando" } | { fase: "listo"; escenas: { id: string; numero: number }[] } | null>(null);
@@ -268,23 +344,41 @@ export function EditorProyecto({ id }: { id: string }) {
   }, "Listo: esas escenas quedaron encuadradas como antes. Puedes cambiar cada una en «¿Qué se ve?».");
   const [mostrarTxt, setMostrarTxt] = useState<string | null>(null);
   const [pestana, setPestana] = useState<"vivo" | "render" | null>(null);
+  /** null: la persona no la tocó (se abre sola mientras hay algo en marcha). */
+  const [trabajosAbiertos, setTrabajosAbiertos] = useState<boolean | null>(null);
 
-  /** Si `fn` devuelve un texto, ése es el mensaje de éxito (p. ej. con avisos); si no, `ok`. */
-  async function hacer(fn: () => Promise<unknown>, ok: string) {
+  /**
+   * Si `fn` devuelve un texto, ése es el mensaje de éxito (p. ej. con avisos); si no, `ok`. Devuelve si
+   * salió bien, para que quien llama no siga como si hubiera guardado (UX-02, UX-26).
+   */
+  async function intentar(fn: () => Promise<unknown>, ok: string | Omit<MensajeEditor, "tipo">): Promise<boolean> {
     setOcupado(true);
     setMsg(null);
     try {
       const r = await fn();
-      setMsg({ tipo: "ok", texto: typeof r === "string" ? r : ok });
+      setMsg({ tipo: "ok", ...(typeof r === "string" ? { texto: r } : typeof ok === "string" ? { texto: ok } : ok) });
       await recargar();
+      return true;
     } catch (e) {
       setMsg({ tipo: "error", texto: e instanceof Error ? e.message : String(e) });
+      return false;
     } finally {
       setOcupado(false);
     }
   }
-  const editar = (ed: object) => hacer(() => postJson(`/api/proyectos/${id}/editar`, { edicion: ed }), "Guardado como versión nueva. Ya se ve en «En vivo»; renderiza para el QC y la descarga.");
-  const editarVarias = (eds: object[]) => hacer(() => postJson(`/api/proyectos/${id}/editar`, { ediciones: eds }), "Guardado como versión nueva. Ya se ve en «En vivo»; renderiza para el QC y la descarga.");
+  const hacer = async (fn: () => Promise<unknown>, ok: string | Omit<MensajeEditor, "tipo">) => { await intentar(fn, ok); };
+  // UX-19: el aviso sale abajo, junto a lo que se edita, con el paso siguiente al lado.
+  const guardado = { texto: "Guardado. Ya se ve en «En vivo». Para descargarlo, crea el video otra vez.", accion: { texto: "Crear el video", hacer: () => void renderizar() } };
+  /** Guarda una edición y dice si salió bien. */
+  // UX-18: si nada cambió, se dice eso (sin «Guardado» ni «Crear el video»).
+  const guardar = async (eds: object[]) => {
+    const r = await postJson(`/api/proyectos/${id}/editar`, eds.length === 1 ? { edicion: eds[0] } : { ediciones: eds });
+    const nada = mensajeSinCambios(eds as { tipo?: unknown }[], r);
+    return nada ?? r; // un texto reemplaza al «Guardado» (y a su «Crear el video»)
+  };
+  const editarOk = (ed: object) => intentar(() => guardar([ed]), guardado);
+  const editar = async (ed: object) => { await editarOk(ed); };
+  const editarVarias = (eds: object[]) => hacer(() => guardar(eds), guardado);
   const subirClip = (escena: string, f: File) => hacer(async () => {
     const fd = new FormData();
     fd.set("escena", escena);
@@ -299,10 +393,16 @@ export function EditorProyecto({ id }: { id: string }) {
     "Voz en cola (Kokoro y whisper en CPU). Al terminar se realinean los subtítulos y se vuelve a renderizar.");
   /** Cambia la voz del proyecto y ofrece ponerla ya en el video (regenerar el guion completo). */
   const usarVoz = async (motor: MotorVoz, voz: string, nombre: string) => {
-    await editar({ tipo: "cambiarVoz", motor, voz });
-    if (confirm(`Listo: la voz del video ahora es «${nombre}». ¿La ponemos ya? Se vuelve a decir todo el guion con esa voz, se acomodan los subtítulos y se renderiza (unos minutos).`)) await regenerarVoz(null);
+    // UX-26: si no se pudo guardar la voz elegida, no se ofrece decir el guion (saldría con la anterior).
+    if (!(await editarOk({ tipo: "cambiarVoz", motor, voz }))) return;
+    if (confirm(preguntaUsarVoz(nombre))) await regenerarVoz(null);
   };
-  const renderizar = () => hacer(() => postJson(`/api/proyectos/${id}/render`, {}), "Render en cola: sólo compila y renderiza, no genera nada con la GPU.");
+  const renderizar = async () => {
+    // REN-04: si el QC lo va a rechazar por subtítulos rápidos, se pregunta antes de esperar el render.
+    const aviso = avisoSubtitulosRapidos(v?.subtitulosRapidos);
+    if (aviso?.confirmar && !confirm(aviso.confirmar)) return;
+    await hacer(() => postJson(`/api/proyectos/${id}/render`, {}), "Render en cola: sólo compila y renderiza, no genera nada con la GPU.");
+  };
   const alinearMusica = () => hacer(async () => {
     const r = await postJson<{ cambio: boolean; motivo?: string }>(`/api/proyectos/${id}/musica`, {});
     if (!r.cambio) throw new Error(r.motivo ?? "No se pudo alinear la música");
@@ -323,7 +423,7 @@ export function EditorProyecto({ id }: { id: string }) {
     id, slug: v.fila.slug, formato: v.p.formato, plantilla: v.p.plantilla, plantillas: pl?.plantillas ?? [],
     renderAprobado: v.fila.renders[0]?.estado === "aprobado" ? v.fila.renders[0].ruta : null,
     hayMusica: !!v.extras?.musica, dudosas: v.extras?.confianza.dudosas ?? 0,
-    versionAnterior: v.fila.versiones.find((x) => x.numero < v.fila.versionActual)?.numero ?? null,
+    versionAnterior: versionParaDeshacer(v.fila.versiones, v.fila.versionActual)?.numero ?? null,
     ocupado, editar, renderizar, alinearMusica, regenerarVoz,
     volverA: (numero) => hacer(() => postJson(`/api/proyectos/${id}/version`, { numero }), `Volviste a la versión ${numero} (guardada como versión nueva).`),
   } : null);
@@ -332,13 +432,28 @@ export function EditorProyecto({ id }: { id: string }) {
   if (!v) return <p className="text-tenue">Cargando…</p>;
   const { fila, p, escenas } = v;
   const render = fila.renders[0];
+  // UX-21: «al día» por contenido (hash), no por número de versión.
+  const alDia = (numero: number) => mismoContenido(fila.versiones, numero, fila.versionActual);
+  const renderAlDia = !!render && alDia(render.versionNumero);
   // Por defecto: el render si está al día; si hay cambios sin renderizar, la vista en vivo.
-  const modo = pestana ?? (render && render.versionNumero === fila.versionActual ? "render" : "vivo");
-  const activos = fila.trabajos.filter((t) => t.estado === "pendiente" || t.estado === "corriendo");
+  const modo = pestana ?? (renderAlDia ? "render" : "vivo");
+  const activos = fila.trabajos.filter(estaActivo);
+  const enCurso = renderEnCurso(fila.trabajos);
+  /** Otro trabajo en marcha que no es el render (ése ya tiene su franja). */
+  const otroActivo = activos.find((t) => t !== enCurso) ?? null;
+  const deshacer = versionParaDeshacer(fila.versiones, fila.versionActual);
+  const notaActual = fila.versiones.find((x) => x.numero === fila.versionActual)?.nota ?? "el último cambio";
+  const volverA = (numero: number, pregunta: string) => {
+    if (confirm(pregunta)) void hacer(() => postJson(`/api/proyectos/${id}/version`, { numero }), `Volviste a la versión ${numero} (guardada como versión nueva).`);
+  };
+  const otraVoz = v.extras?.clip ? [] : escenasConOtraVoz(escenas, v.voces?.elegida ?? null);
+  const qc = render?.informeQc ? resumirQc(render.informeQc.reglas) : null;
+  const avisoRapidos = avisoSubtitulosRapidos(v.subtitulosRapidos);
   const textoMostrar = mostrarTxt ?? (p?.mostrar ?? []).map((m) => `${m.de}=${m.a}`).join("\n");
 
   return (
-    <div className="space-y-6">
+    <div className={`space-y-6 ${msg ? "pb-24" : ""}`}>
+      <FranjaAviso msg={msg} cerrar={cerrarMsg} />
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">{fila.nombre}</h1>
@@ -352,16 +467,60 @@ export function EditorProyecto({ id }: { id: string }) {
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Estado valor={fila.estado} />
-          <button type="button" className="boton boton-primario" disabled={ocupado || !p} onClick={() => void renderizar()}>Renderizar (sin GPU para generar)</button>
+          {/* UX-38: deshacer a la vista, sin bajar al historial. Con un trabajo en marcha podría pisar su resultado. */}
+          {deshacer && (
+            <button type="button" className="boton" disabled={ocupado || activos.length > 0}
+              title={activos.length > 0 ? "Espera a que termine lo que está en marcha" : `Vuelve a como estaba antes de «${notaActual}»`}
+              onClick={() => volverA(deshacer.numero, `¿Deshacer el último cambio («${notaActual}»)? Vuelve a la versión ${deshacer.numero}; se guarda como versión nueva y no se pierde nada.`)}>↶ Deshacer</button>
+          )}
+          <a className="boton" href="#historial">Historial</a>
+          {fila.estado === "entregado" && render && !renderAlDia
+            ? <span className="inline-block rounded-full bg-amber-800 px-2 py-0.5 text-xs font-medium text-amber-100">Con cambios sin exportar</span>
+            : <Estado valor={fila.estado} />}
+          <button type="button" className="boton boton-primario" disabled={ocupado || !p || !!enCurso} onClick={() => void renderizar()}>{enCurso ? "Creando el video…" : "Renderizar (sin GPU para generar)"}</button>
         </div>
       </header>
-      {msg && <Aviso tipo={msg.tipo}>{msg.texto}</Aviso>}
+      {/* UX-10: el avance y el resultado del render, junto al botón (antes, la barra quedaba al final de la página). */}
+      {enCurso ? (
+        <div className="tarjeta space-y-2 p-3 text-sm" role="status">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="min-w-0 flex-1 font-medium">Creando tu video: {pasoRender(enCurso)}</p>
+            <button type="button" className="boton py-1" disabled={ocupado}
+              onClick={() => { if (confirm("¿Dejar de crear el video? Lo que editaste no se pierde; puedes crearlo otra vez cuando quieras.")) void hacer(() => postJson(`/api/trabajos/${enCurso.id}`, { accion: "cancelar" }), "Listo: dejé de crear el video."); }}>Cancelar</button>
+          </div>
+          <Barra valor={enCurso.progreso ?? 0} etiqueta="Avance del video" />
+          {render?.segundos ? <p className="text-xs text-tenue">La última vez tardó {segundos(render.segundos)}. Puedes seguir editando o cerrar esta página.</p> : null}
+        </div>
+      ) : render && renderAlDia && qc ? (
+        <div className={`flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm ${qc.estado === "falta" ? "border-red-900 bg-red-950/30" : "border-emerald-800 bg-emerald-950/40"}`}>
+          {qc.estado === "falta" ? (
+            <>
+              <p className="min-w-0 flex-1">{qc.titulo}.</p>
+              <a className="boton py-1" href="#listo">Ver qué falta</a>
+            </>
+          ) : (
+            <>
+              <p className="min-w-0 flex-1">Tu video está listo.</p>
+              {render.estado === "aprobado" && <a className="boton py-1" href={archivo(`${fila.slug}/${render.ruta}`, true)}>Descargar</a>}
+            </>
+          )}
+        </div>
+      ) : null}
+      {avisoRapidos && (
+        <Aviso tipo={v.subtitulosRapidos?.bloquea ? "alerta" : "info"}>
+          <p>{avisoRapidos.texto}</p>
+          <p className="mt-1 flex flex-wrap gap-2">
+            {v.subtitulosRapidos!.escenas.filter((e) => e.indice >= 0).map((e) => (
+              <a key={e.id} className="text-acento hover:underline" href={`#escena-${e.id}`}>Ir a la escena {e.indice + 1}</a>
+            ))}
+          </p>
+        </Aviso>
+      )}
       {caras?.fase === "buscando" && <p className="text-sm text-tenue" role="status">Revisando los clips para encuadrar mejor las caras…</p>}
       {caras?.fase === "listo" && (
         <Aviso tipo="ok">
           <p>
-            Encontramos caras en {caras.escenas.length === 1 ? "la escena" : "las escenas"} {lista(caras.escenas.map((e) => e.numero))} y
+            Encontramos caras en {caras.escenas.length === 1 ? "la escena" : "las escenas"} {enLista(caras.escenas.map((e) => e.numero))} y
             {caras.escenas.length === 1 ? " la encuadramos" : " las encuadramos"} para que la persona se vea a pantalla completa, en vez de achicada con fondo borroso.
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -371,10 +530,28 @@ export function EditorProyecto({ id }: { id: string }) {
           </div>
         </Aviso>
       )}
-      {activos.length > 0 && <Aviso tipo="info">Hay {activos.length} trabajo(s) en curso para este proyecto; abajo ves su avance y su log.</Aviso>}
-      {!p && (activos.some((t) => t.tipo === "proyecto.traducir")
-        ? <Aviso tipo="info">Geeper está haciendo esta versión en otro idioma: traduce el guion, graba la voz nueva, acomoda los subtítulos y la renderiza. Tarda unos minutos; puedes cerrar esta página y volver después. Abajo ves en qué paso va.</Aviso>
-        : <Aviso tipo="info">Todavía no hay geeper.json: el proyecto se está generando o importando.</Aviso>)}
+      {p && otroActivo && (
+        <Aviso tipo="info">Geeper está trabajando en este video{otroActivo.etapa ? `: ${otroActivo.etapa}` : ""}. Abajo, en «Trabajos de este proyecto», ves el avance.</Aviso>
+      )}
+      {!p && (() => {
+        // UX-29: sin jerga, con cuánto tarda, y si falló no se dice que «se está generando».
+        const c = estadoCreacion(fila.trabajos);
+        if (c.fase === "fallo") return (
+          <Aviso tipo="error">
+            <p>No se pudo hacer el video. Puedes volver a intentarlo; si vuelve a fallar, abajo en «Trabajos de este proyecto» ves qué pasó.</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button type="button" className="boton py-1" disabled={ocupado} onClick={() => void hacer(() => postJson(`/api/trabajos/${c.trabajo!.id}`, { accion: "relanzar" }), "Listo: lo estamos intentando otra vez.")}>Volver a intentar</button>
+              {c.trabajo?.error && <details className="text-xs"><summary className="cursor-pointer text-tenue">Ver el error</summary><p className="mt-1 whitespace-pre-wrap break-words">{c.trabajo.error}</p></details>}
+            </div>
+          </Aviso>
+        );
+        if (activos.some((t) => t.tipo === "proyecto.traducir")) return <Aviso tipo="info">Geeper está haciendo esta versión en otro idioma: traduce el guion, graba la voz nueva, acomoda los subtítulos y la renderiza. Tarda unos minutos; puedes cerrar esta página y volver después. Abajo ves en qué paso va.</Aviso>;
+        return (
+          <Aviso tipo="info">
+            Estamos haciendo tu video{c.trabajo?.etapa && c.fase === "en-curso" ? ` (ahora: ${c.trabajo.etapa})` : ""}. Tarda unos minutos; puedes cerrar esta página y volver. Abajo ves en qué paso va.
+          </Aviso>
+        );
+      })()}
       {p?.origen?.traduccion && <InformeTraduccion informe={p.origen.traduccion} escenas={escenas.map((e) => ({ id: e.id, numero: e.indice + 1 }))} />}
 
       {p && (
@@ -392,19 +569,30 @@ export function EditorProyecto({ id }: { id: string }) {
                 ))}
               </div>
             </div>
-            {modo === "vivo" ? <VistaEnVivo proyectoId={id} version={fila.versionActual} /> : render ? (
+            {modo === "vivo" ? (
+              <>
+                <VistaEnVivo proyectoId={id} version={fila.versionActual} />
+                {/* UX-28: con cambios sin exportar se abre «En vivo»; la descarga del último video queda a mano. */}
+                {render?.estado === "aprobado" && (
+                  <p className="text-sm">
+                    <a className="text-acento hover:underline" href={archivo(`${fila.slug}/${render.ruta}`, true)}>Descargar el último video (versión {render.versionNumero})</a>
+                    {!renderAlDia && <span className="text-tenue"> · no tiene los últimos cambios</span>}
+                  </p>
+                )}
+              </>
+            ) : render ? (
               <>
                 <video key={render.id} src={archivo(`${fila.slug}/${render.ruta}`)} controls preload="metadata"
                   className={`mx-auto max-h-[70vh] w-full rounded bg-black ${render.perfil === "shorts-9x16" ? "max-w-sm" : ""}`} />
                 <div className="flex flex-wrap items-center gap-2 text-sm">
                   <Estado valor={render.estado} />
                   <span className="text-tenue">v{render.versionNumero} · {render.perfil} · {segundos(render.duracion)} · render en {segundos(render.segundos)}</span>
-                  {render.versionNumero !== fila.versionActual && <span className="text-amber-300">Hay cambios sin renderizar</span>}
+                  {!renderAlDia && <span className="text-amber-300">Hay cambios sin renderizar</span>}
                   {render.estado === "aprobado"
                     ? <>
                         <a className="boton ml-auto" href={archivo(`${fila.slug}/${render.ruta}`, true)}>Descargar MP4</a>
-                        <a className="boton" title="Para subirlos junto al video (accesibilidad y búsqueda)"
-                          href={archivo(`${fila.slug}/${render.ruta.replace(/\.mp4$/, ".srt")}`, true)}>Subtítulos (.srt)</a>
+                        {render.srt && <a className="boton" title="Para subirlos junto al video (accesibilidad y búsqueda)"
+                          href={archivo(`${fila.slug}/${render.ruta.replace(/\.mp4$/, ".srt")}`, true)}>Subtítulos (.srt)</a>}
                         {render.informeQc?.master && <a className="boton" href={archivo(`${fila.slug}/${render.informeQc.master}`, true)}>Máster (.mov)</a>}
                       </>
                     : <span className="ml-auto text-xs text-red-300">No se descarga: no pasó el QC</span>}
@@ -441,20 +629,34 @@ export function EditorProyecto({ id }: { id: string }) {
             {!v.extras?.clip && (
               <div className="border-t border-borde pt-3">
                 <ElegirVoz actual={p.voz} idioma={p.voz.idioma} usar={usarVoz} ocupado={ocupado} />
+                {otraVoz.length > 0 && v.voces?.elegida && (
+                  // UX-12: mientras la voz elegida no sea la que suena, se dice y se ofrece ponerla.
+                  <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-amber-700 bg-amber-950/40 px-3 py-2 text-sm" role="status">
+                    <p className="min-w-0 flex-1">
+                      Elegiste la voz {v.voces.nombres[v.voces.elegida] ?? v.voces.elegida}, pero {otraVoz.length === escenas.length ? "el video todavía suena" : `${otraVoz.length === 1 ? "la escena" : "las escenas"} ${enLista(otraVoz)} todavía ${otraVoz.length === 1 ? "suena" : "suenan"}`} con otra voz.
+                    </p>
+                    <button type="button" className="boton py-1" disabled={ocupado || !!otroActivo}
+                      onClick={() => { if (confirm("Se vuelve a decir todo el guion con la voz elegida, se acomodan los subtítulos y se crea el video (unos minutos).")) void regenerarVoz(null); }}>Ponerla en todo el video</button>
+                  </div>
+                )}
               </div>
             )}
-            <div className="flex flex-wrap items-end gap-2 border-t border-borde pt-3">
-              <div>
-                <label className="etiqueta" htmlFor="vel">Velocidad de la voz (para la próxima regeneración)</label>
-                <select id="vel" className="campo w-auto" value={String(p.voz.velocidad)} disabled={ocupado}
-                  onChange={(e) => void editar({ tipo: "cambiarVoz", velocidad: Number(e.target.value) })}>
-                  {[0.85, 0.9, 0.95, 1, 1.05].map((x) => <option key={x} value={String(x)}>{x}</option>)}
-                </select>
+            {/* UX-27: en un clip la voz es la del creador: ni ritmo ni regenerar. */}
+            {!v.extras?.clip && (
+              <div className="flex flex-wrap items-end gap-2 border-t border-borde pt-3">
+                <div>
+                  <label className="etiqueta" htmlFor="vel">Ritmo de la voz (cuenta la próxima vez que se diga el guion)</label>
+                  <select id="vel" className="campo w-auto" value={String(p.voz.velocidad)} disabled={ocupado} aria-describedby={avisoRitmo(p.voz.velocidad) ? "aviso-ritmo" : undefined}
+                    onChange={(e) => void editar({ tipo: "cambiarVoz", velocidad: Number(e.target.value) })}>
+                    {opcionesRitmo(p.voz.velocidad).map((x) => <option key={x.valor} value={String(x.valor)}>{x.nombre}</option>)}
+                  </select>
+                </div>
+                <button type="button" className="boton" disabled={ocupado} onClick={() => { if (confirm("¿Regenerar la voz de todo el guion? Se realinean los subtítulos y se vuelve a renderizar. No usa la GPU.")) void regenerarVoz(null); }}>
+                  Regenerar voz del guion completo
+                </button>
+                {avisoRitmo(p.voz.velocidad) && <p id="aviso-ritmo" className="w-full text-xs text-amber-200">{avisoRitmo(p.voz.velocidad)}</p>}
               </div>
-              <button type="button" className="boton" disabled={ocupado || Boolean(v.extras?.clip)} title={v.extras?.clip ? "Es un clip: la voz es la del creador" : undefined} onClick={() => { if (confirm("¿Regenerar la voz de todo el guion? Se realinean los subtítulos y se vuelve a renderizar. No usa la GPU.")) void regenerarVoz(null); }}>
-                Regenerar voz del guion completo
-              </button>
-            </div>
+            )}
           </div>
         </section>
       )}
@@ -474,7 +676,7 @@ export function EditorProyecto({ id }: { id: string }) {
 
       {p && !v.extras?.clip && <PanelPresentador proyectoId={id} escenas={escenas.map((e) => ({ id: e.id, numero: e.indice + 1, texto: e.texto }))} ocupado={ocupado} alCambiar={() => void recargar()} usarVoz={usarVoz} />}
 
-      {p && <PanelPortada proyectoId={id} nombre={fila.nombre} version={fila.versionActual} vertical={fila.formato === "9:16"} />}
+      {p && <PanelPortada proyectoId={id} nombre={fila.nombre} version={fila.versionActual} vertical={fila.formato === "9:16"} alDia={alDia} />}
 
       {render?.estado === "aprobado" ? (
         <PanelPublicar proyectoId={id} render={render} nombre={fila.nombre} tema={v.extras?.clip?.descripcion || fila.tema} publicaciones={fila.publicaciones} alCambiar={() => void recargar()} />
@@ -489,9 +691,9 @@ export function EditorProyecto({ id }: { id: string }) {
       {p && <PanelOtroEditor proyectoId={id} version={fila.versionActual} />}
 
       {render?.informeQc && (
-        <section className="tarjeta p-4">
+        <section id="listo" className="tarjeta scroll-mt-4 p-4">
           <h2 className="mb-3 font-medium">¿Está listo para publicar?</h2>
-          <InformeQc r={render} slug={fila.slug} vectorizar={{ hacer: vectorizarImagen, sigue: (a) => !!v && (v.escenas.some((e) => e.visual.asset === a) || !!v.extras?.libres.some((pi) => pi.clips.some((c) => c.asset === a))), ocupado }} />
+          <InformeQc r={render} slug={fila.slug} escenas={escenas} vectorizar={{ hacer: vectorizarImagen, sigue: (a) => !!v && (v.escenas.some((e) => e.visual.asset === a) || !!v.extras?.libres.some((pi) => pi.clips.some((c) => c.asset === a))), ocupado }} />
         </section>
       )}
 
@@ -501,25 +703,25 @@ export function EditorProyecto({ id }: { id: string }) {
           <ol className="space-y-3">
             {escenas.map((e, i) => (
               <TarjetaEscena key={e.id} e={e} anterior={escenas[i - 1]} slug={fila.slug} total={escenas.length} formato={p?.formato ?? fila.formato}
-                estilo={v.extras?.estilo ?? null} editar={editar} subirClip={subirClip} regenerarVoz={regenerarVoz} reencuadrar={reencuadrar} animar={animar} proyectoId={id} ocupado={ocupado}
-                vozReal={Boolean(v.extras?.clip)} />
+                estilo={v.extras?.estilo ?? null} editar={editar} editarOk={editarOk} subirClip={subirClip} regenerarVoz={regenerarVoz} reencuadrar={reencuadrar} animar={animar} proyectoId={id} ocupado={ocupado}
+                vozReal={Boolean(v.extras?.clip)} preguntaVoz={preguntaVozEscena(e.id, escenas, v.voces ?? null)} />
             ))}
           </ol>
         </section>
       )}
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <div className="tarjeta p-4">
+        <div id="historial" className="tarjeta scroll-mt-4 p-4">
           <h2 className="mb-2 font-medium">Historial</h2>
           <ul className="max-h-80 space-y-1 overflow-auto text-sm">
             {fila.versiones.map((x) => (
               <li key={x.numero} className="flex items-center gap-2">
                 <span className="w-10 font-mono text-tenue">v{x.numero}</span>
                 <span className="flex-1">{x.nota}</span>
-                <span className="text-xs text-tenue">{new Date(x.creado).toLocaleString("es-MX")}</span>
+                <span className="text-xs text-tenue" title={new Date(x.creado).toLocaleString("es-MX")}>{haceCuanto(x.creado)}</span>
                 {x.numero !== fila.versionActual && (
                   <button type="button" className="boton py-0.5 text-xs" disabled={ocupado}
-                    onClick={() => void hacer(() => postJson(`/api/proyectos/${id}/version`, { numero: x.numero }), `Volviste a la versión ${x.numero} (guardada como versión nueva).`)}>Volver a esta</button>
+                    onClick={() => volverA(x.numero, `¿Volver a la versión ${x.numero} («${x.nota}»)? Se guarda como versión nueva: no se pierde nada.`)}>Volver a esta</button>
                 )}
               </li>
             ))}
@@ -538,10 +740,10 @@ export function EditorProyecto({ id }: { id: string }) {
             </>
           )}
         </div>
-        <div>
-          <h2 className="mb-2 font-medium">Trabajos de este proyecto</h2>
+        <Plegable id="trabajos" titulo="Trabajos de este proyecto" detalle="Lo que Geeper hizo o está haciendo con este video, con su registro."
+          abierto={verTrabajos(trabajosAbiertos, activos.length > 0, !p)} alCambiar={setTrabajosAbiertos}>
           <ListaTrabajos proyectoId={id} />
-        </div>
+        </Plegable>
       </section>
     </div>
   );

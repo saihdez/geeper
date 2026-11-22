@@ -1,4 +1,6 @@
 /** Datos que la UI muestra de un proyecto (derivados de geeper.json + la base). */
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { descripcionClip, origenClip } from "./clips";
 import { db } from "./db";
 import { resumirConfianza, UMBRAL_DUDOSA } from "./confianza";
@@ -10,6 +12,21 @@ import { duracionEscenas, escenasEnLinea, gruposDeEscena, opcionesDe, todosLosGr
 import { obtenerPlantilla } from "./plantillas";
 import { cpsDeGrupos, escenasConSubtitulosRapidos, OBJETIVO } from "./qc";
 import { lineas } from "./subtitulos";
+import { KOKORO, listarGuardadas } from "./voces";
+
+/** UX-12: la voz con que se generó un audio, sin el prefijo del motor («kokoro:ef_dora» = «ef_dora»). */
+export function idDeVoz(v: unknown): string | null {
+  return typeof v === "string" && v.trim() ? v.trim().replace(/^kokoro:/, "") : null;
+}
+
+/** Nombre para la persona: el de Kokoro, el de una voz diseñada, o null si no se conoce. */
+export function nombreDeVoz(id: string, guardadas: { id: string; nombre: string }[] = []): string | null {
+  for (const vs of Object.values(KOKORO)) {
+    const k = vs.find((x) => x.voz === id);
+    if (k) return k.nombre;
+  }
+  return guardadas.find((g) => g.id === id)?.nombre ?? null;
+}
 
 /**
  * Topes de lo que viaja en cada sondeo de la vista (SRV-05): las listas crecen con el uso y la vista se
@@ -85,7 +102,8 @@ export async function vistaProyecto(id: string) {
         correcciones: e.escena.correcciones,
         efectos: { transicion: v.transicion ?? null, movimiento: v.movimiento ?? null, velocidad: v.velocidad ?? 1, color: v.color ?? null, efectos: v.efectos ?? null },
         visual: { asset: a.id, ruta: a.ruta, source: a.source, licencia: a.licencia, tipo: a.tipo, inicio: e.visual.rango.inicio, ajuste: e.visual.ajuste ?? "auto", ancla: e.visual.ancla ?? "centro", prompt: a.regenerar.prompt ?? null, encuadre: encuadreDe(e.visual, a, W, H), aspecto: a.ancho && a.alto ? a.ancho / a.alto : null },
-        voz: { asset: vozA.id, source: vozA.source, ruta: vozA.ruta, inicio: e.voz.rango.inicio },
+        // UX-12: con qué voz suena hoy la escena (null en clips o audios propios), para avisar de mezclas.
+        voz: { asset: vozA.id, source: vozA.source, ruta: vozA.ruta, inicio: e.voz.rango.inicio, voz: vozA.source === "archivo" ? null : idDeVoz(vozA.regenerar.voz) },
         grupos: gruposDeEscena(proyecto, e, todos).map((g) => {
           // Si el grupo cruza al corte siguiente, aquí se edita la parte de esta escena.
           const propias = g.fichas.filter((f) => f.escena === e.escena.id);
@@ -131,12 +149,27 @@ export async function vistaProyecto(id: string) {
         })(),
       }
     : null;
+  // UX-12: nombres de la voz elegida y de las que suenan (las diseñadas sólo se leen si hacen falta).
+  const voces = p ? await (async () => {
+    const elegida = idDeVoz(p.voz.voz);
+    const ids = [...new Set([elegida, ...(escenas as { voz: { voz: string | null } }[]).map((e) => e.voz.voz)].filter((x): x is string => !!x))];
+    let guardadas: { id: string; nombre: string }[] = [];
+    if (ids.some((x) => !nombreDeVoz(x))) guardadas = await listarGuardadas().catch(() => []);
+    return { elegida, nombres: Object.fromEntries(ids.map((x) => [x, nombreDeVoz(x, guardadas) ?? x])) as Record<string, string> };
+  })() : null;
   // Proyectos importados antes del reencuadre por cara: la UI pide analizarlos una vez al abrir.
   const carasPendientes = p ? await faltaAuto(dirProyecto(fila.slug)) : false;
   // La vista viaja cada pocos segundos: el informe de QC sólo del último render (el que se muestra) y
   // del proyecto sólo lo liviano; lo pesado (assets, pistas, escenas) ya va digerido en `escenas`/`extras`.
-  const renders = fila.renders.map((r, i) => (i === 0 ? r : { ...r, informeQc: null }));
-  return { fila: { ...fila, renders }, p: p ? proyectoLiviano(p) : null, escenas, total, extras, carasPendientes, subtitulosRapidos };
+  // UX-28: los videos de antes del 18 de noviembre no tienen .srt: el botón sólo sale si existe.
+  const renders = fila.renders.map((r, i) => (i === 0 ? { ...r, srt: tieneSrt(dirProyecto(fila.slug), r.ruta) } : { ...r, informeQc: null }));
+  return { fila: { ...fila, renders }, p: p ? proyectoLiviano(p) : null, escenas, total, extras, carasPendientes, subtitulosRapidos, voces };
+}
+
+/** Los subtítulos (.srt) que se entregan junto al MP4 de un render. */
+export const rutaSrt = (ruta: string) => ruta.replace(/\.mp4$/, ".srt");
+export function tieneSrt(dir: string, ruta: string): boolean {
+  return /\.mp4$/.test(ruta) && existsSync(path.join(dir, rutaSrt(ruta)));
 }
 
 /** El proyecto sin lo pesado (assets, pistas, escenas, marcadores ni el guion entero). */

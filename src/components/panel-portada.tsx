@@ -40,7 +40,11 @@ function avisosDe(o: Opcion): string[] {
  * Portada del video en 3 pasos: elegir la imagen (una por escena), elegir hasta 3 títulos (la IA local
  * propone) y crear las portadas para quedarse con una. Se compone con PhotoCraft, en un segundo.
  */
-export function PanelPortada({ proyectoId, nombre, version, vertical }: { proyectoId: string; nombre: string; version: number; vertical: boolean }) {
+export function PanelPortada({ proyectoId, nombre, version, vertical, alDia = (n) => n === version }: {
+  proyectoId: string; nombre: string; version: number; vertical: boolean;
+  /** UX-21: si la versión de la portada tiene el mismo contenido que la actual (por hash). */
+  alDia?: (version: number) => boolean;
+}) {
   const { datos: e, recargar } = useSondeo<Estado>(`/api/proyectos/${proyectoId}/portada`, 120_000);
   const [escena, setEscena] = useState<number | null>(null);
   const [titulos, setTitulos] = useState<string[] | null>(null);
@@ -130,7 +134,7 @@ export function PanelPortada({ proyectoId, nombre, version, vertical }: { proyec
           <img src={`${archivo(e.elegida.archivo)}?v=${encodeURIComponent(e.elegida.creada)}`} alt={`Portada elegida: ${e.elegida.titulo}`} className={vertical ? "h-56 rounded" : "w-72 rounded"} />
           <div className="space-y-2 text-sm">
             <p><span aria-hidden className="text-emerald-400">✓</span> <strong>Esta es la portada del video.</strong> Se usa al publicar en YouTube.</p>
-            {e.elegida.version !== version && <p className="text-amber-300">El video cambió desde que la hiciste: conviene crearla otra vez.</p>}
+            {!alDia(e.elegida.version) && <p className="text-amber-300">El video cambió desde que la hiciste: conviene crearla otra vez.</p>}
             <a className="boton inline-block" href={archivo(e.elegida.archivo, true)}>Descargar</a>
           </div>
         </div>
