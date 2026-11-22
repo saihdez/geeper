@@ -91,10 +91,13 @@ export function motivoFallo(stderr: string): string {
 }
 
 /**
- * `docker exec … ollama run` para los títulos. `--keepalive 0s`: el modelo sale de la tarjeta al responder
- * (si no, quedaba 5 min con 7–9 GB tomados y el candado ya suelto, WEB-02), como en ganchos.ts.
+ * `docker exec … ollama run` para los títulos (WEB-02), como en ganchos.ts y traducir.ts:
+ * - `--keepalive 0s`: el modelo sale de la tarjeta al responder (si no, quedaba 5 min con 7–9 GB tomados
+ *   y el candado ya suelto).
+ * - `--think=false --hidethinking`: sin «pensar en voz alta»; gemma4 razona antes y repite el formato
+ *   pedido con llaves, lo que tarda y rompe la lectura del JSON.
  */
-export const argsOllamaTitulos = () => ["exec", "-i", CONTENEDOR_LLM, "ollama", "run", MODELO_TITULOS, "--format", "json", "--nowordwrap", "--keepalive", "0s"];
+export const argsOllamaTitulos = () => ["exec", "-i", CONTENEDOR_LLM, "ollama", "run", MODELO_TITULOS, "--format", "json", "--think=false", "--hidethinking", "--nowordwrap", "--keepalive", "0s"];
 
 export async function proponerTitulos(o: { nombre: string; tema: string; guion: string; formato: string }): Promise<Propuesta> {
   const respaldo = (motivo: string): Propuesta => ({ titulos: titulosSugeridos(o.nombre, o.tema), fuente: "sugeridos", motivo });
