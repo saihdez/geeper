@@ -6,13 +6,14 @@ import { appendFileSync } from "node:fs";
 import path from "node:path";
 import {
   Espera, esperar, fallar, guardarLatidoWorker, latido, LATIDO_MS, marcarEtapa, MOTORES, nuevoWorkerId, reclamar,
-  recuperarAlArrancar, recuperarVencidos, terminar, type Motor, type Payload, type TipoTrabajo,
+  recuperarAlArrancar, terminar, type Motor, type Payload, type TipoTrabajo,
 } from "@/lib/cola";
 import { db, prepararDb } from "@/lib/db";
 import { enTrabajo } from "@/lib/proceso";
 import { tapar } from "@/lib/redes/secretos";
 import { dirProyecto } from "@/lib/rutas";
 import { EJECUTORES, rutaLog } from "./ejecutores";
+import { barrerLeases } from "./sistema";
 
 const workerId = nuevoWorkerId();
 let apagando = false;
@@ -125,8 +126,11 @@ async function main() {
   await guardarLatidoWorker();
   const latidoSistema = setInterval(() => {
     guardarLatidoWorker().catch((e: unknown) => avisar(`No se pudo guardar el latido del worker: ${mensaje(e)} (se reintenta en ${LATIDO_MS / 1000} s)`));
-    recuperarVencidos().then(
-      (n) => n && avisar(`${n} trabajo(s) con lease vencido recuperados`),
+    barrerLeases(enCurso.keys(), workerId).then(
+      ({ recuperados, perdidos }) => {
+        if (recuperados) avisar(`${recuperados} trabajo(s) con lease vencido recuperados`);
+        for (const id of perdidos) enCurso.get(id)?.abort();
+      },
       (e: unknown) => avisar(`No se pudo revisar los leases vencidos: ${mensaje(e)} (se reintenta en ${LATIDO_MS / 1000} s)`),
     );
   }, LATIDO_MS);
