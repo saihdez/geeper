@@ -34,7 +34,7 @@ guarda su licencia en `geeper.json` y en la tabla `Asset`; el QC avisa (sin bloq
 
 | Pieza | Licencia | Cómo la usa Geeper |
 |---|---|---|
-| MoneyPrinterTurbo 1.3.10 | MIT | API HTTP en `127.0.0.1:8080` |
+| MoneyPrinterTurbo `main` @ `c2353548` (imagen del 2026-11-07, no la 1.3.10; fijada por digest en `docker-compose.local.yml`, TER-05) | MIT | API HTTP en `127.0.0.1:8080` |
 | Hyperframes 0.9.27 (fijado) | Apache 2.0 | CLI (`npx hyperframes@0.9.27`), telemetría apagada |
 | GSAP 3.15 | Licencia estándar de GSAP (sin costo, también comercial) | Lo carga la composición de Hyperframes |
 | ffmpeg 6.1 (Ubuntu) | LGPL/GPL según build | Binario aparte (`~/.local/bin/ffmpeg`) |

@@ -310,10 +310,12 @@
       "id": "moneyprinterturbo",
       "repo": "harry0703/MoneyPrinterTurbo",
       "tipo": "release",
+      "version": "main",
+      "commit": "c2353548",
       "como": [
         "servicio"
       ],
-      "revisado": "2026-11-19",
+      "revisado": "2026-11-22",
       "que": "Genera guion, voz y clips (corre en Docker). Geeper usa su API HTTP.",
       "archivos": [
         "src/lib/mpt.ts",
