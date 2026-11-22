@@ -17,6 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import { build } from "esbuild";
 import { unzipSync } from "fflate";
+import { copiarStandalone, revisarStandalone } from "./armado";
 
 const REPO = path.resolve(__dirname, "..", "..");
 const APP = path.join(REPO, "escritorio-app");
@@ -143,9 +144,11 @@ async function main() {
   correr("pnpm", ["exec", "next", "build"], { env: { GEEPER_STANDALONE: "1", NEXT_TELEMETRY_DISABLED: "1" } });
   const standalone = path.join(APP, "standalone");
   const dist = path.join(REPO, ".next-escritorio");
-  copiar(path.join(dist, "standalone"), standalone);
+  // Sólo server.js, package.json y .next-escritorio: el standalone arrastra la raíz del repo (ESC-15).
+  copiarStandalone(path.join(dist, "standalone"), standalone);
   copiar(path.join(dist, "static"), path.join(standalone, ".next-escritorio", "static"));
   if (fs.existsSync(path.join(REPO, "public"))) copiar(path.join(REPO, "public"), path.join(standalone, "public"));
+  revisarStandalone(standalone);
 
   // 2. Bundles.
   await bundles();
@@ -169,7 +172,6 @@ async function main() {
   // son enlaces en .next-escritorio/node_modules. electron-builder descarta todo node_modules que no esté
   // en la raíz de la app, así que se declaran como alias de npm (`npm:@prisma/client@7.10.1`): npm los
   // instala en escritorio-app/node_modules, y el servidor los encuentra subiendo carpetas.
-  const dirAlias = path.join(standalone, ".next-escritorio", "node_modules");
   const aliasDe = (dir: string): string[] =>
     !fs.existsSync(dir) ? [] : fs.readdirSync(dir).flatMap((n) => (n.startsWith("@") ? fs.readdirSync(path.join(dir, n)).map((m) => `${n}/${m}`) : [n]));
   for (const nombreAlias of aliasDe(path.join(dist, "standalone", ".next-escritorio", "node_modules"))) {
@@ -178,7 +180,6 @@ async function main() {
     deps[nombreAlias] = `npm:${pkg.name}@${pkg.version}`;
     console.log(`alias ${nombreAlias} → ${deps[nombreAlias]}`);
   }
-  fs.rmSync(dirAlias, { recursive: true, force: true });
   fs.writeFileSync(path.join(APP, "package.json"), JSON.stringify({
     name: "geeper", productName: "Geeper", version: raiz.version, private: true, main: "main.cjs",
     description: "Estudio de video local de Dimerso", author: "Dimerso", dependencies: deps,
