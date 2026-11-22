@@ -21,10 +21,14 @@ const masNueva = (a: string, b: string) => {
 
 const GRUPOS: GrupoCraft[] = ["Imagen y diseño", "Video y sonido", "Documentos", "3D y técnico"];
 const instalando = (e: EstadoInstalacion | null) => !!e && ["descargando", "verificando", "descomprimiendo"].includes(e.fase);
+/** 1,5 s mientras alguna app se instala; 30 s en reposo. */
+export const intervaloMedia = (filas: { instalacion: EstadoInstalacion | null }[] | null) =>
+  filas?.some((a) => instalando(a.instalacion)) ? 1500 : 30_000;
 
 /** Media: las apps Craft con su interfaz original, instalables con un clic y abiertas dentro de Geeper. */
 export function Media() {
-  const { datos, error } = useSondeo<FilaApp[]>("/api/media", 2000);
+  // Seguido sólo mientras algo se instala; en reposo, cada 30 s (por si llega una versión nueva).
+  const { datos, error, recargar } = useSondeo<FilaApp[]>("/api/media", intervaloMedia);
   const [msg, setMsg] = useState<string | null>(null);
 
   async function escritorio(a: FilaApp, accion: "instalar" | "abrir") {
@@ -34,6 +38,7 @@ export function Media() {
     } catch (e) {
       setMsg(e instanceof Error ? e.message : String(e));
     }
+    await recargar();
   }
 
   async function enviar(a: FilaApp, cuerpo: { version?: string; usar?: string } = {}) {
@@ -43,6 +48,7 @@ export function Media() {
     } catch (e) {
       setMsg(e instanceof Error ? e.message : String(e));
     }
+    await recargar();
   }
 
   return (
