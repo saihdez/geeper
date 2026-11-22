@@ -9,6 +9,7 @@ import {
   recuperarAlArrancar, recuperarVencidos, terminar, type Motor, type Payload, type TipoTrabajo,
 } from "@/lib/cola";
 import { db, prepararDb } from "@/lib/db";
+import { enTrabajo } from "@/lib/proceso";
 import { tapar } from "@/lib/redes/secretos";
 import { dirProyecto } from "@/lib/rutas";
 import { EJECUTORES, rutaLog } from "./ejecutores";
@@ -63,7 +64,8 @@ async function correrUno(motor: Motor): Promise<boolean> {
       );
     }, LATIDO_MS);
     proyecto = t.proyectoId ? await db.proyecto.findUnique({ where: { id: t.proyectoId } }) : null;
-    const salida = await EJECUTORES[t.tipo as TipoTrabajo](
+    // Dentro de enTrabajo, cancelar llega a todo correr() del ejecutor, aunque no reciba la señal (WRK-05).
+    const salida = await enTrabajo(ctrl.signal, () => EJECUTORES[t.tipo as TipoTrabajo](
       { id: t.id, tipo: t.tipo, proyectoId: t.proyectoId, payload: t.payload as Payload },
       {
         dir: proyecto ? dirProyecto(proyecto.slug) : dirProyecto("sistema"),
@@ -75,7 +77,7 @@ async function correrUno(motor: Motor): Promise<boolean> {
           await marcarEtapa(t.id, e, p).catch((err: unknown) => escribir(`(no se pudo anotar la etapa: ${mensaje(err)})`));
         },
       },
-    );
+    ));
     await terminar(t.id, workerId, salida.resultado, salida.siguiente && { ...salida.siguiente, proyectoId: t.proyectoId });
     escribir(`== hecho${salida.siguiente ? `; sigue ${salida.siguiente.tipo}` : ""}`);
     avisar(`${motor}: terminó ${t.tipo} ${t.id}`);

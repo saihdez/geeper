@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { spawn, type SpawnOptions } from "node:child_process";
 
 export interface Registro {
@@ -25,8 +26,12 @@ export interface OpcionesCorrer extends Pick<SpawnOptions, "cwd"> {
   log?: Registro;
   /** No lanzar error si el código de salida no es 0. */
   permitirFallo?: boolean;
-  /** Señal para cancelar (mata el proceso). */
-  signal?: AbortSignal;
+  /**
+   * Señal para cancelar (mata el proceso). Si no se pasa, vale la del trabajo en curso (`enTrabajo`), así
+   * cancelar llega también a los ffmpeg y ffprobe de las funciones que no la reciben. `null`: no cancelar
+   * nunca (limpiezas que deben correr aunque el trabajo se haya cancelado).
+   */
+  signal?: AbortSignal | null;
   /** Límite en ms. */
   timeout?: number;
   /** Guardar stdout completo (si no, sólo los últimos 2 MB). */
@@ -47,6 +52,16 @@ export function argsPython(cmd: string, args: string[]): string[] {
   return esPython(cmd) && !args.includes("utf8") ? ["-X", "utf8", ...args] : args;
 }
 
+const trabajo = new AsyncLocalStorage<{ signal: AbortSignal }>();
+
+/** Corre `fn` como parte de un trabajo: todo `correr()` que haga sin señal propia usa `signal` (WRK-05). */
+export function enTrabajo<T>(signal: AbortSignal, fn: () => T): T {
+  return trabajo.run({ signal }, fn);
+}
+
+/** La señal de cancelar del trabajo en curso, si se corre dentro de uno. */
+export const senalDelTrabajo = (): AbortSignal | undefined => trabajo.getStore()?.signal;
+
 /** Corre un comando sin shell, registra su salida línea por línea y devuelve stdout/stderr. */
 export function correr(cmd: string, argsPedidos: string[], op: OpcionesCorrer = {}): Promise<Resultado> {
   const args = argsPython(cmd, argsPedidos);
@@ -57,7 +72,7 @@ export function correr(cmd: string, argsPedidos: string[], op: OpcionesCorrer = 
       cwd: op.cwd,
       env: { ...process.env, PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8", ...op.env },
       stdio: [op.entrada === undefined ? "ignore" : "pipe", "pipe", "pipe"],
-      signal: op.signal,
+      signal: op.signal === null ? undefined : (op.signal ?? senalDelTrabajo()),
       timeout: op.timeout,
       killSignal: "SIGTERM",
     });
