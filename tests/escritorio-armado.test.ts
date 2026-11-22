@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { copiarStandalone, revisarStandalone } from "../scripts/escritorio/armado";
+import { copiarStandalone, podarNodeModules, revisarStandalone } from "../scripts/escritorio/armado";
 
 let tmp: string;
 beforeEach(() => {
@@ -44,5 +44,45 @@ describe("servidor standalone de la app (ESC-15)", () => {
     fs.rmSync(path.join(tmp, "s", ".next-escritorio"), { recursive: true });
     escribir("s/grande.bin", Buffer.alloc(2048));
     expect(() => revisarStandalone(path.join(tmp, "s"), 1024)).toThrow(/pesa/);
+  });
+});
+
+describe("node_modules de la app (ESC-04)", () => {
+  it("borra lo que no se usa al correr y deja lo que el servidor carga", () => {
+    const quedan = [
+      "next/dist/server/next-server.js",
+      "@next/env/index.js",
+      "@prisma/client/runtime/client.js",
+      "@prisma/client/runtime/query_compiler_fast_bg.sqlite.mjs",
+      "@prisma/client-ad5a1/runtime/query_compiler_fast_bg.sqlite.wasm-base64.mjs",
+      "@prisma/adapter-better-sqlite3/dist/index.js",
+      "better-sqlite3/lib/index.js",
+      "better-sqlite3/build/Release/better_sqlite3.node",
+      "hyperframes/dist/hyperframe.runtime.iife.js",
+    ];
+    const van = [
+      "@next/swc-win32-x64-msvc/next-swc.node",
+      "@next/swc-darwin-arm64/next-swc.node",
+      "@img/sharp-win32-x64/lib/sharp.node",
+      "sharp/lib/index.js",
+      "@prisma/client/runtime/query_compiler_fast_bg.postgresql.mjs",
+      "@prisma/client/runtime/query_compiler_small_bg.mysql.js",
+      "@prisma/client-ad5a1/runtime/query_compiler_fast_bg.sqlserver.wasm-base64.js",
+      "@prisma/client-ad5a1/runtime/query_compiler_fast_bg.cockroachdb.mjs",
+      "better-sqlite3/deps/sqlite3/sqlite3.c",
+      "better-sqlite3/src/better_sqlite3.cpp",
+      "better-sqlite3/build/Release/obj.target/better_sqlite3.o",
+      "better-sqlite3/build/Release/obj/x.obj",
+    ];
+    for (const f of [...quedan, ...van]) escribir(path.join("nm", f));
+    const nm = path.join(tmp, "nm");
+    podarNodeModules(nm);
+    for (const f of quedan) expect(fs.existsSync(path.join(nm, f)), f).toBe(true);
+    for (const f of van) expect(fs.existsSync(path.join(nm, f)), f).toBe(false);
+  });
+
+  it("sin nada que podar no falla", () => {
+    fs.mkdirSync(path.join(tmp, "vacio"));
+    expect(podarNodeModules(path.join(tmp, "vacio"))).toEqual([]);
   });
 });

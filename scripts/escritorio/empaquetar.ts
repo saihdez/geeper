@@ -17,7 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import { build } from "esbuild";
 import { unzipSync } from "fflate";
-import { copiarStandalone, revisarStandalone } from "./armado";
+import { copiarStandalone, podarNodeModules, revisarStandalone, tamanoCarpeta } from "./armado";
 
 const REPO = path.resolve(__dirname, "..", "..");
 const APP = path.join(REPO, "escritorio-app");
@@ -187,6 +187,12 @@ async function main() {
   // --legacy-peer-deps: @prisma/client pide `prisma` (la CLI con sus motores) como par; en la app no hace falta.
   correr("npm", ["install", "--omit=dev", "--no-audit", "--no-fund", "--legacy-peer-deps"], { cwd: APP });
   correr("pnpm", ["exec", "electron-rebuild", "--version", ELECTRON, "--module-dir", APP, "--only", "better-sqlite3", "--force"]);
+  // Lo que no se usa al correr (compilador de Next, sharp, Prisma de otras bases, fuentes de SQLite): ESC-04.
+  const nm = path.join(APP, "node_modules");
+  const antes = tamanoCarpeta(nm);
+  const podado = podarNodeModules(nm);
+  console.log(`node_modules: ${((antes - tamanoCarpeta(nm)) / 1048576).toFixed(0)} MB menos (${podado.length} entradas borradas)`);
+  if (!fs.existsSync(path.join(nm, "better-sqlite3", "build", "Release", "better_sqlite3.node"))) throw new Error("Falta better_sqlite3.node en la app tras la poda.");
 
   // El servidor resuelve sus paquetes subiendo hasta escritorio-app/node_modules: su propio node_modules
   // (con enlaces absolutos de pnpm) sobra. Y no puede quedar ningún node_modules fuera de la raíz: el

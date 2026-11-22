@@ -50,3 +50,32 @@ export function revisarStandalone(dir: string, maxBytes = 30 * 1024 * 1024): voi
     throw new Error(`El servidor de la app pesa ${mb(bytes)} (tope ${mb(maxBytes)}): algo de más se coló en ${dir}.`);
   }
 }
+
+/** Motores de Prisma para bases que Geeper no usa (sólo SQLite). */
+const PRISMA_OTRAS_BASES = /(cockroachdb|mysql|postgresql|sqlserver)/;
+
+/**
+ * Borra de node_modules de la app lo que no se usa al correr (ESC-04), tras `npm install` y la
+ * recompilación de better-sqlite3: el compilador de Next (@next/swc-*, sólo hace falta para `next build`),
+ * sharp y @img (Geeper no usa next/image), los motores de Prisma para otras bases y, de better-sqlite3, el
+ * código fuente de SQLite y los objetos intermedios de la compilación (queda el .node ya armado).
+ * Devuelve lo borrado, relativo a `nm`.
+ */
+export function podarNodeModules(nm: string): string[] {
+  const borrar: string[] = [];
+  const hay = (rel: string) => fs.existsSync(path.join(nm, rel));
+  const listar = (rel: string) => (hay(rel) ? fs.readdirSync(path.join(nm, rel)) : []);
+  for (const n of listar("@next")) if (n.startsWith("swc-")) borrar.push(path.join("@next", n));
+  for (const rel of ["@img", "sharp"]) if (hay(rel)) borrar.push(rel);
+  // @prisma/client y sus alias con hash de Turbopack (@prisma/client-ad5a…).
+  for (const n of listar("@prisma")) {
+    if (!n.startsWith("client")) continue;
+    const runtime = path.join("@prisma", n, "runtime");
+    for (const f of listar(runtime)) if (PRISMA_OTRAS_BASES.test(f)) borrar.push(path.join(runtime, f));
+  }
+  for (const rel of ["deps", "src"]) if (hay(path.join("better-sqlite3", rel))) borrar.push(path.join("better-sqlite3", rel));
+  const release = path.join("better-sqlite3", "build", "Release");
+  for (const n of listar(release)) if (n.startsWith("obj")) borrar.push(path.join(release, n));
+  for (const rel of borrar) fs.rmSync(path.join(nm, rel), { recursive: true, force: true });
+  return borrar;
+}
