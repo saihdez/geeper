@@ -17,13 +17,20 @@ interface Fila {
   trabajos: { tipo: string; estado: string; etapa: string; progreso: number }[];
 }
 
+/** El formato en palabras: quien no sabe de video no reconoce «9:16». */
+export function nombreFormato(formato: string): string {
+  return { "9:16": "Vertical (TikTok, Reels, Shorts)", "16:9": "Horizontal (YouTube)", "1:1": "Cuadrado" }[formato] ?? formato;
+}
+
+const VIDEO: Record<string, string> = { renderizado: "hecho, falta mirarlo", aprobado: "aprobado", rechazado: "descartado" };
+
 export function ListaProyectos() {
   const { datos, error } = useSondeo<{ proyectos: Fila[] }>("/api/proyectos", 3000);
   return (
     <section>
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold">Proyectos</h1>
-        <Link href="/nuevo" className="boton boton-primario">Nuevo proyecto o lote</Link>
+        <h1 className="text-xl font-semibold">Mis videos</h1>
+        <Link href="/nuevo" className="boton boton-primario">Nuevo video</Link>
       </div>
       {error && <p className="text-red-300">{error}</p>}
       {datos && datos.proyectos.length === 0 && (
@@ -44,19 +51,19 @@ export function ListaProyectos() {
                   <Estado valor={p.estado} />
                 </div>
                 <p className="text-xs text-tenue">
-                  {p.formato} · {p.plantilla} · v{p.versionActual}
+                  {nombreFormato(p.formato)}
                   {p.lote ? ` · ${p.lote.nombre}` : ""}
                 </p>
                 {activo && (
                   <div className="mt-3 space-y-1">
-                    <p className="truncate text-xs text-sky-200">{t.estado === "pendiente" ? "En cola" : t.etapa}</p>
+                    <p className="truncate text-xs text-sky-200">{t.estado === "pendiente" ? "En la fila, esperando su turno" : t.etapa}</p>
                     <Barra valor={t.progreso} />
                   </div>
                 )}
                 {!activo && t && (t.estado === "fallido" || t.estado === "interrumpido") && (
-                  <p className="mt-3 text-xs text-amber-300">Último trabajo {t.estado}: ábrelo para ver el log y relanzarlo.</p>
+                  <p className="mt-3 text-xs text-amber-300">{t.estado === "fallido" ? "No se pudo terminar" : "Se cortó a la mitad"}: ábrelo para ver qué pasó y volver a intentarlo.</p>
                 )}
-                {r && <p className="mt-3 text-xs text-tenue">Último render: <Estado valor={r.estado} /></p>}
+                {r && <p className="mt-3 text-xs text-tenue">Último video: {VIDEO[r.estado] ?? r.estado}</p>}
               </Link>
             </li>
           );

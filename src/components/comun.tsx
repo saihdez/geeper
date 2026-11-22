@@ -87,7 +87,7 @@ export const NOMBRES: Record<string, string> = {
   qc: "Falta arreglar algo",
   entregado: "Video listo",
   ensamblado: "Listo para revisar",
-  generando: "Haciéndose",
+  generando: "Haciendo el video",
   borrador: "Borrador",
   "en-revision": "En revisión",
   lista: "Lista para lanzar",
