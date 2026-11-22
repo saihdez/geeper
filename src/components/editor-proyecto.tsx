@@ -63,6 +63,8 @@ interface Render {
   duracion: number | null;
   segundos: number | null;
   creado: string;
+  /** UX-28: si existe su .srt (sólo se sabe del último render). */
+  srt?: boolean;
   informeQc: { aprobado: boolean; reglas: Regla[]; hojaContacto?: string; fotogramas: { t: number; ruta: string; nota: string }[]; master?: string } | null;
 }
 interface Vista {
@@ -549,7 +551,18 @@ export function EditorProyecto({ id }: { id: string }) {
                 ))}
               </div>
             </div>
-            {modo === "vivo" ? <VistaEnVivo proyectoId={id} version={fila.versionActual} /> : render ? (
+            {modo === "vivo" ? (
+              <>
+                <VistaEnVivo proyectoId={id} version={fila.versionActual} />
+                {/* UX-28: con cambios sin exportar se abre «En vivo»; la descarga del último video queda a mano. */}
+                {render?.estado === "aprobado" && (
+                  <p className="text-sm">
+                    <a className="text-acento hover:underline" href={archivo(`${fila.slug}/${render.ruta}`, true)}>Descargar el último video (versión {render.versionNumero})</a>
+                    {!renderAlDia && <span className="text-tenue"> · no tiene los últimos cambios</span>}
+                  </p>
+                )}
+              </>
+            ) : render ? (
               <>
                 <video key={render.id} src={archivo(`${fila.slug}/${render.ruta}`)} controls preload="metadata"
                   className={`mx-auto max-h-[70vh] w-full rounded bg-black ${render.perfil === "shorts-9x16" ? "max-w-sm" : ""}`} />
@@ -560,8 +573,8 @@ export function EditorProyecto({ id }: { id: string }) {
                   {render.estado === "aprobado"
                     ? <>
                         <a className="boton ml-auto" href={archivo(`${fila.slug}/${render.ruta}`, true)}>Descargar MP4</a>
-                        <a className="boton" title="Para subirlos junto al video (accesibilidad y búsqueda)"
-                          href={archivo(`${fila.slug}/${render.ruta.replace(/\.mp4$/, ".srt")}`, true)}>Subtítulos (.srt)</a>
+                        {render.srt && <a className="boton" title="Para subirlos junto al video (accesibilidad y búsqueda)"
+                          href={archivo(`${fila.slug}/${render.ruta.replace(/\.mp4$/, ".srt")}`, true)}>Subtítulos (.srt)</a>}
                         {render.informeQc?.master && <a className="boton" href={archivo(`${fila.slug}/${render.informeQc.master}`, true)}>Máster (.mov)</a>}
                       </>
                     : <span className="ml-auto text-xs text-red-300">No se descarga: no pasó el QC</span>}

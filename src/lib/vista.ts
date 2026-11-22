@@ -1,4 +1,6 @@
 /** Datos que la UI muestra de un proyecto (derivados de geeper.json + la base). */
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { descripcionClip, origenClip } from "./clips";
 import { db } from "./db";
 import { resumirConfianza, UMBRAL_DUDOSA } from "./confianza";
@@ -159,8 +161,15 @@ export async function vistaProyecto(id: string) {
   const carasPendientes = p ? await faltaAuto(dirProyecto(fila.slug)) : false;
   // La vista viaja cada pocos segundos: el informe de QC sólo del último render (el que se muestra) y
   // del proyecto sólo lo liviano; lo pesado (assets, pistas, escenas) ya va digerido en `escenas`/`extras`.
-  const renders = fila.renders.map((r, i) => (i === 0 ? r : { ...r, informeQc: null }));
+  // UX-28: los videos de antes del 18 de noviembre no tienen .srt: el botón sólo sale si existe.
+  const renders = fila.renders.map((r, i) => (i === 0 ? { ...r, srt: tieneSrt(dirProyecto(fila.slug), r.ruta) } : { ...r, informeQc: null }));
   return { fila: { ...fila, renders }, p: p ? proyectoLiviano(p) : null, escenas, total, extras, carasPendientes, subtitulosRapidos, voces };
+}
+
+/** Los subtítulos (.srt) que se entregan junto al MP4 de un render. */
+export const rutaSrt = (ruta: string) => ruta.replace(/\.mp4$/, ".srt");
+export function tieneSrt(dir: string, ruta: string): boolean {
+  return /\.mp4$/.test(ruta) && existsSync(path.join(dir, rutaSrt(ruta)));
 }
 
 /** El proyecto sin lo pesado (assets, pistas, escenas, marcadores ni el guion entero). */
