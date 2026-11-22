@@ -64,7 +64,7 @@ export function ListaProyectos() {
                 {activo && (
                   <div className="mt-3 space-y-1">
                     <p className="truncate text-xs text-sky-200">{t.estado === "pendiente" ? "En la fila, esperando su turno" : t.etapa}</p>
-                    <Barra valor={t.progreso} />
+                    <Barra valor={t.progreso} etiqueta={`Avance de «${p.nombre}»`} />
                   </div>
                 )}
                 {!activo && t && (t.estado === "fallido" || t.estado === "interrumpido") && (

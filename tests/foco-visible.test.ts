@@ -18,3 +18,11 @@ describe("foco visible (A11-02)", () => {
     expect(s).toContain("aria-pressed={categoria === c}");
   });
 });
+
+describe("barras de avance con nombre (A11-10)", () => {
+  it.each(["lista-proyectos.tsx", "workflows.tsx", "panel-rehacer.tsx"])("%s dice de qué es cada barra", (r) => {
+    const barras = leer(r).match(/<Barra [^>]*>/g) ?? [];
+    expect(barras.length).toBeGreaterThan(0);
+    for (const b of barras) expect(b).toContain("etiqueta=");
+  });
+});

@@ -335,7 +335,7 @@ function Resultados({ corridas, trabajos, cambio }: { corridas: CorridaV[]; trab
               {t ? (
                 <div className="space-y-1">
                   <p className="text-xs">{t.estado === "pendiente" ? textoEspera(motorVivo) : t.etapa || "Trabajando…"}</p>
-                  <Barra valor={t.progreso} />
+                  <Barra valor={t.progreso} etiqueta={`Avance de «${c.titulo}»`} />
                   <button className="boton text-xs" onClick={async () => { if (confirm("¿Cancelar?")) { await postJson(`/api/trabajos/${t.id}`, { accion: "cancelar" }).catch(() => {}); cambio(); } }}>Cancelar</button>
                 </div>
               ) : c.estado === "fallida" ? (

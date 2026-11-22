@@ -65,7 +65,7 @@ export function PanelRehacer({ proyectoId, escena, numero, ocupado, miniatura }:
           {trabajo ? (
             <div className="space-y-1">
               <p className="text-xs">{trabajo.estado === "pendiente" ? textoEspera(motorVivo) : trabajo.etapa || "Trabajando…"}</p>
-              <Barra valor={trabajo.progreso} />
+              <Barra valor={trabajo.progreso} etiqueta={`Avance de la escena ${numero}`} />
               <p className="text-xs text-tenue">Cuando termine, la escena {numero} cambia sola. Si no te gusta, vuelve atrás en el historial.</p>
             </div>
           ) : (
