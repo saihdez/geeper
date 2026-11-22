@@ -18,6 +18,7 @@ import { SelectorEncuadre, type EncuadreV } from "./selector-encuadre";
 import { PanelOtroEditor } from "./panel-otro-editor";
 import { useAccionesProyecto } from "./acciones-proyecto";
 import { FranjaAviso, type MensajeEditor } from "./franja-aviso";
+import { correccionesVacias, errorSubtitulo } from "./editor-estado";
 import { EdicionPorTexto, EfectosEscena, PanelAvanzado, PanelEstilo, type EfectosV, type EstiloV, type ExtrasV, type PalabraV } from "./edicion-avanzada";
 
 /** Miniatura de una escena (la misma que su tarjeta). */
@@ -157,20 +158,41 @@ function InformeQc({ r, slug, vectorizar }: { r: Render; slug: string; vectoriza
   );
 }
 
-function EditorGrupo({ g, onGuardar, onQuitar, corregido }: { g: Grupo; corregido: boolean; onGuardar: (texto: string) => Promise<void>; onQuitar: () => Promise<void> }) {
-  const [texto, setTexto] = useState(g.mostradoPropio);
+export function EditorGrupo({ g, onGuardar, onQuitar, corregido }: { g: Grupo; corregido: boolean; onGuardar: (texto: string) => Promise<boolean>; onQuitar: () => Promise<void> }) {
+  // UX-02: lo escrito es un borrador sobre lo guardado; al guardar bien (o con Esc) el campo vuelve a
+  // mostrar lo que quedó en la fila, así «Guardar» no queda pegado.
+  const [borrador, setBorrador] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
-  const cambiado = texto.trim() !== g.mostradoPropio;
+  const texto = borrador ?? g.mostradoPropio;
+  const cambiado = borrador !== null && borrador.trim() !== g.mostradoPropio;
+  const error = cambiado ? errorSubtitulo(texto) : null;
+  const guardar = async () => {
+    if (!cambiado || error || guardando) return;
+    setGuardando(true);
+    try {
+      if (await onGuardar(texto.trim())) setBorrador(null);
+    } finally {
+      setGuardando(false);
+    }
+  };
+  const idError = `error-sub-${g.desde}-${g.hasta}`;
   return (
     <li className="flex flex-wrap items-center gap-2 text-sm">
       <span className="w-16 shrink-0 font-mono text-xs text-tenue">{g.inicio.toFixed(2)} s</span>
-      <input aria-label={`Subtítulo en ${g.inicio.toFixed(2)} s`} className="campo min-w-0 flex-1 py-1" value={texto} onChange={(e) => setTexto(e.target.value)} />
+      <input aria-label={`Subtítulo en ${g.inicio.toFixed(2)} s`} className="campo min-w-0 flex-1 py-1" value={texto}
+        aria-invalid={error ? true : undefined} aria-describedby={error ? idError : undefined}
+        onChange={(e) => setBorrador(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); void guardar(); }
+          if (e.key === "Escape") setBorrador(null);
+        }} />
       {cambiado && (
-        <button type="button" className="boton boton-primario py-1" disabled={guardando}
-          onClick={async () => { setGuardando(true); try { await onGuardar(texto); } finally { setGuardando(false); } }}>Guardar</button>
+        <button type="button" className="boton boton-primario py-1" disabled={guardando || !!error} title="También con Enter; Esc lo deja como estaba"
+          onClick={() => void guardar()}>{guardando ? "Guardando…" : "Guardar"}</button>
       )}
       {corregido && !cambiado && <button type="button" className="boton py-1" onClick={() => void onQuitar()} title={`Se oye: «${g.oido}»`}>Deshacer</button>}
       {g.cruza && <span className="text-xs text-tenue">sigue en la escena siguiente</span>}
+      {error && <span id={idError} className="w-full pl-[4.5rem] text-xs text-red-300">{error}</span>}
       {g.oido !== g.mostradoPropio && <span className="w-full pl-[4.5rem] text-xs text-tenue">Se oye: «{g.oido}»</span>}
     </li>
   );
@@ -181,11 +203,13 @@ function lista(n: number[]): string {
   return n.length <= 1 ? String(n[0] ?? "") : `${n.slice(0, -1).join(", ")} y ${n[n.length - 1]}`;
 }
 
-function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, editar, subirClip, regenerarVoz, reencuadrar, animar, ocupado, vozReal }: {
+function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, editar, editarOk, subirClip, regenerarVoz, reencuadrar, animar, ocupado, vozReal }: {
   e: EscenaV; anterior?: EscenaV; slug: string; proyectoId: string; total: number; ocupado: boolean; formato: string; estilo: EstiloV | null;
   /** Clip de material largo: la voz es la del creador (la revisión de dudosas corrige texto). */
   vozReal: boolean;
   editar: (ed: object) => Promise<void>;
+  /** Como `editar`, pero dice si se guardó (el campo del subtítulo sólo se limpia si salió bien). */
+  editarOk: (ed: object) => Promise<boolean>;
   subirClip: (escena: string, f: File) => Promise<void>;
   regenerarVoz: (escena: string) => Promise<void>;
   reencuadrar: (escena: string, layout: string) => Promise<void>;
@@ -210,10 +234,16 @@ function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, 
           {e.grupos.map((g) => (
             <EditorGrupo key={`${g.desde}-${g.hasta}-${g.mostradoPropio}`} g={g}
               corregido={e.correcciones.some((c) => c.desde >= g.desde && c.hasta <= g.hasta)}
-              onGuardar={(texto) => editar({ tipo: "corregirSubtitulo", escena: e.id, desde: g.desde, hasta: g.hasta, texto })}
+              onGuardar={(texto) => editarOk({ tipo: "corregirSubtitulo", escena: e.id, desde: g.desde, hasta: g.hasta, texto })}
               onQuitar={async () => { for (const c of e.correcciones.filter((c) => c.desde >= g.desde && c.hasta <= g.hasta)) await editar({ tipo: "quitarCorreccion", escena: e.id, desde: c.desde }); }} />
           ))}
         </ul>
+        {correccionesVacias(e.detalle, e.correcciones).map((c) => (
+          <p key={c.desde} className="flex flex-wrap items-center gap-2 text-xs text-amber-200">
+            Se oye «{c.oido}» y no tiene subtítulo.
+            <button type="button" className="boton py-0.5 text-xs" disabled={ocupado} onClick={() => void editar({ tipo: "quitarCorreccion", escena: e.id, desde: c.desde })}>Volver a mostrarlo</button>
+          </p>
+        ))}
         <div className="flex flex-wrap gap-2 pt-1">
           <button type="button" className="boton" disabled={ocupado || e.indice === 0} onClick={() => void editar({ tipo: "moverEscena", escena: e.id, a: e.indice - 1 })} aria-label={`Subir escena ${e.indice + 1}`}>↑ Subir</button>
           <button type="button" className="boton" disabled={ocupado || e.indice === total - 1} onClick={() => void editar({ tipo: "moverEscena", escena: e.id, a: e.indice + 1 })} aria-label={`Bajar escena ${e.indice + 1}`}>↓ Bajar</button>
@@ -513,7 +543,7 @@ export function EditorProyecto({ id }: { id: string }) {
           <ol className="space-y-3">
             {escenas.map((e, i) => (
               <TarjetaEscena key={e.id} e={e} anterior={escenas[i - 1]} slug={fila.slug} total={escenas.length} formato={p?.formato ?? fila.formato}
-                estilo={v.extras?.estilo ?? null} editar={editar} subirClip={subirClip} regenerarVoz={regenerarVoz} reencuadrar={reencuadrar} animar={animar} proyectoId={id} ocupado={ocupado}
+                estilo={v.extras?.estilo ?? null} editar={editar} editarOk={editarOk} subirClip={subirClip} regenerarVoz={regenerarVoz} reencuadrar={reencuadrar} animar={animar} proyectoId={id} ocupado={ocupado}
                 vozReal={Boolean(v.extras?.clip)} />
             ))}
           </ol>
