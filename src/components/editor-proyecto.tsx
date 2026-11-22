@@ -18,7 +18,8 @@ import { SelectorEncuadre, type EncuadreV } from "./selector-encuadre";
 import { PanelOtroEditor } from "./panel-otro-editor";
 import { useAccionesProyecto } from "./acciones-proyecto";
 import { FranjaAviso, type MensajeEditor } from "./franja-aviso";
-import { correccionesVacias, errorSubtitulo, estaActivo, estadoCreacion, mismoContenido, pasoRender, renderEnCurso, type TrabajoV } from "./editor-estado";
+import { correccionesVacias, errorSubtitulo, estaActivo, estadoCreacion, mismoContenido, pasoRender, renderEnCurso, verTrabajos, type TrabajoV } from "./editor-estado";
+import { Plegable } from "./plegable";
 import { EdicionPorTexto, EfectosEscena, PanelAvanzado, PanelEstilo, type EfectosV, type EstiloV, type ExtrasV, type PalabraV } from "./edicion-avanzada";
 
 /** Miniatura de una escena (la misma que su tarjeta). */
@@ -327,6 +328,8 @@ export function EditorProyecto({ id }: { id: string }) {
   }, "Listo: esas escenas quedaron encuadradas como antes. Puedes cambiar cada una en «¿Qué se ve?».");
   const [mostrarTxt, setMostrarTxt] = useState<string | null>(null);
   const [pestana, setPestana] = useState<"vivo" | "render" | null>(null);
+  /** null: la persona no la tocó (se abre sola mientras hay algo en marcha). */
+  const [trabajosAbiertos, setTrabajosAbiertos] = useState<boolean | null>(null);
 
   /**
    * Si `fn` devuelve un texto, ése es el mensaje de éxito (p. ej. con avisos); si no, `ok`. Devuelve si
@@ -676,10 +679,10 @@ export function EditorProyecto({ id }: { id: string }) {
             </>
           )}
         </div>
-        <div>
-          <h2 className="mb-2 font-medium">Trabajos de este proyecto</h2>
+        <Plegable id="trabajos" titulo="Trabajos de este proyecto" detalle="Lo que Geeper hizo o está haciendo con este video, con su registro."
+          abierto={verTrabajos(trabajosAbiertos, activos.length > 0, !p)} alCambiar={setTrabajosAbiertos}>
           <ListaTrabajos proyectoId={id} />
-        </div>
+        </Plegable>
       </section>
     </div>
   );

@@ -74,3 +74,11 @@ export function estadoCreacion(trabajos: TrabajoV[]): { fase: "en-curso" | "fall
   if (ultimo && ["fallido", "interrumpido", "cancelado"].includes(ultimo.estado)) return { fase: "fallo", trabajo: ultimo };
   return { fase: "esperando", trabajo: ultimo };
 }
+
+/**
+ * WEB-10: la lista de trabajos pide /api/trabajos cada 2 s mientras está montada. Se monta sólo si la
+ * persona la abrió o si hay algo en marcha (o el proyecto aún se está creando); en reposo, cero.
+ */
+export function verTrabajos(abiertaPorPersona: boolean | null, hayActivos: boolean, creando: boolean): boolean {
+  return abiertaPorPersona ?? (hayActivos || creando);
+}
