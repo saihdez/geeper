@@ -18,13 +18,21 @@ interface Datos {
 
 type Modo = "persona" | "camara";
 
+/** Abierto: cada 3 s. Cerrado: sólo mientras la escena tiene un trabajo, para el avance del título. */
+export function intervaloRehacer(abierto: boolean, conTrabajo: boolean): number {
+  if (abierto) return 3000;
+  return conTrabajo ? 10_000 : Infinity;
+}
+
 /**
  * «Rehacer la toma» (comfy-openjutsu y comfy-reshoot en Geeper): cambiar a la persona del video por un
  * avatar, o volver a filmar la escena con otro movimiento de cámara. Solo aparece en escenas con video.
  */
 export function PanelRehacer({ proyectoId, escena, numero, ocupado, miniatura }: { proyectoId: string; escena: string; numero: number; ocupado: boolean; miniatura: string }) {
   const [abierto, setAbierto] = useState(false);
-  const { datos, recargar } = useSondeo<Datos>(`/api/proyectos/${proyectoId}/rehacer?escena=${encodeURIComponent(escena)}`, abierto ? 3000 : 15_000);
+  // Como «Animar» (WEB-10): cerrado y sin trabajo de esta escena no vuelve a pedir; antes, cada 15 s por escena.
+  const { datos, recargar } = useSondeo<Datos>(`/api/proyectos/${proyectoId}/rehacer?escena=${encodeURIComponent(escena)}`,
+    (d) => intervaloRehacer(abierto, d?.trabajos.some((t) => t.escena === escena) ?? false));
   const [modo, setModo] = useState<Modo | null>(null);
   const [avatar, setAvatar] = useState<string | null>(null);
   const [reiluminar, setReiluminar] = useState(true);
@@ -55,7 +63,11 @@ export function PanelRehacer({ proyectoId, escena, numero, ocupado, miniatura }:
   }
 
   return (
-    <details className="text-sm" open={abierto} onToggle={(ev) => setAbierto((ev.target as HTMLDetailsElement).open)}>
+    <details className="text-sm" open={abierto} onToggle={(ev) => {
+      const abre = (ev.target as HTMLDetailsElement).open;
+      setAbierto(abre);
+      if (abre) void recargar(); // al abrir, datos frescos y vuelve el ritmo de 3 s
+    }}>
       <summary className="cursor-pointer text-tenue">
         Rehacer la toma con IA <span className="text-xs">(cambiar la persona o mover la cámara{trabajo ? ` · ${trabajo.estado === "pendiente" ? "en espera" : trabajo.etapa || "trabajando"}` : ""})</span>
       </summary>
