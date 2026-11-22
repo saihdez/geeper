@@ -3,6 +3,7 @@ import { arrancarComfyui, PUERTO_EDITOR, type Servidor } from "@/lib/comfyui";
 import { json, manejar } from "@/lib/http";
 import { revisarComfyui } from "@/lib/instalar-comfyui";
 import { argsNodos, infoNodos, leerPermisos } from "@/lib/nodos-comfy";
+import { cerrarHuerfanos } from "@/lib/procesos-largos";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,10 @@ export async function POST(req: Request) {
     }
     if (revisarComfyui().falta) throw new Error("ComfyUI no está instalado");
     if (!vivo(e.srv)) {
+      // WRK-04: si un worker o una web anterior murió dejando un ComfyUI vivo, la tarjeta sigue tomada y el
+      // editor no arrancaría (o arrancaría sin memoria). Se cierran antes los que quedaron sin dueño.
+      const cerrados = cerrarHuerfanos((l) => console.log(`[editor comfyui] ${l}`));
+      if (cerrados.length) console.log(`[editor comfyui] Cerrados ${cerrados.length} proceso(s) sin dueño: ${cerrados.join(", ")}`);
       // El editor carga los paquetes de la comunidad que ya permitiste e instalaste, nada más.
       const listos = (await infoNodos(Object.keys(await leerPermisos()))).filter((n) => n.permitido && n.instalado).map((n) => n.id);
       e.arrancando ??= arrancarComfyui({ puerto: PUERTO_EDITOR, gpuSolo: false, nodos: argsNodos(listos) }).finally(() => (e.arrancando = null));

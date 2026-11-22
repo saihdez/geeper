@@ -1,9 +1,13 @@
 import { db } from "@/lib/db";
-import { json } from "@/lib/http";
+import { json, manejar } from "@/lib/http";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
+  return manejar(() => listar(req));
+}
+
+async function listar(req: Request) {
   const u = new URL(req.url);
   const proyectoId = u.searchParams.get("proyecto") ?? undefined;
   const trabajos = await db.trabajo.findMany({

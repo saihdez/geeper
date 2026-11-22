@@ -12,6 +12,7 @@ import { db, prepararDb } from "@/lib/db";
 import { enTrabajo } from "@/lib/proceso";
 import { cerrarHuerfanos } from "@/lib/procesos-largos";
 import { tapar } from "@/lib/redes/secretos";
+import { respaldarSiToca } from "@/lib/respaldo";
 import { dirProyecto } from "@/lib/rutas";
 import { EJECUTORES, rutaLog } from "./ejecutores";
 import { barrerLeases, esperarVacio, REVISAR_CANCELADOS_MS, tomarCandadoWorker, TOPE_APAGAR_MS, yaNoSonNuestros } from "./sistema";
@@ -29,6 +30,28 @@ function avisar(msg: string) {
 }
 
 const mensaje = (e: unknown) => (e instanceof Error ? e.message.split("\n")[0] : String(e));
+
+/** Cada cuánto se mira si toca el respaldo diario (respaldarSiToca hace uno cada 20 h). */
+const REVISAR_RESPALDO_MS = 60 * 60 * 1000;
+let respaldando = false;
+
+/** Respaldo diario (SEG-03): nunca tumba el worker ni corre dos a la vez. */
+async function respaldoSiToca() {
+  if (respaldando || apagando) return;
+  respaldando = true;
+  try {
+    // Con la conexión de Prisma: abrir otra (otra copia de SQLite) en este proceso soltaría sus candados.
+    const r = await respaldarSiToca({ vaciar: (sql) => db.$executeRawUnsafe(sql) });
+    if (r) {
+      avisar(`Copia de seguridad del ${r.fecha} lista${r.copia ? ` (también en ${r.copia.ruta})` : " (sólo la base)"}`);
+      if (r.error) avisar(r.error);
+    }
+  } catch (e) {
+    avisar(`No se pudo hacer la copia de seguridad: ${mensaje(e)} (se vuelve a probar en una hora)`);
+  } finally {
+    respaldando = false;
+  }
+}
 
 async function correrUno(motor: Motor): Promise<boolean> {
   const t = await reclamar(motor, workerId);
@@ -143,6 +166,8 @@ async function main() {
   const huerfanos = cerrarHuerfanos(avisar);
   if (huerfanos.length) avisar(`Cerrados ${huerfanos.length} proceso(s) de tarjeta sin dueño: ${huerfanos.join(", ")}`);
   await guardarLatidoWorker();
+  void respaldoSiToca();
+  const vigiaRespaldo = setInterval(() => void respaldoSiToca(), REVISAR_RESPALDO_MS);
   const latidoSistema = setInterval(() => {
     guardarLatidoWorker().catch((e: unknown) => avisar(`No se pudo guardar el latido del worker: ${mensaje(e)} (se reintenta en ${LATIDO_MS / 1000} s)`));
     barrerLeases(enCurso.keys(), workerId).then(
@@ -175,6 +200,7 @@ async function main() {
     for (const c of enCurso.values()) c.abort();
     clearInterval(latidoSistema);
     clearInterval(vigiaCancelados);
+    clearInterval(vigiaRespaldo);
     // Se espera a que cada trabajo cortado termine (sus procesos salieron, p. ej. gpu-solo ya volvió a
     // encender la IA de MPT, y quedó anotado «interrumpido»), con un tope de 12 s (WRK-07).
     const vacio = await esperarVacio(enCurso);
