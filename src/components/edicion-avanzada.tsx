@@ -306,6 +306,20 @@ const NOMBRES_MOV: Record<string, string> = {
   acercar: "acercar", alejar: "alejar", "izquierda-derecha": "paneo a la derecha", "derecha-izquierda": "paneo a la izquierda", personalizado: "personalizada",
 };
 
+const VELOCIDADES = [0.5, 0.75, 1, 1.25, 1.5, 2];
+const coma = (x: number) => String(Math.round(x * 100) / 100).replace(".", ",");
+
+/**
+ * Opciones de «Velocidad del video de la escena». Si la escena va a una velocidad que no está en la lista
+ * (animar con IA o traducir la ajustan para llenar la escena: 0,759×, 0,97×…), se agrega y queda elegida
+ * como «Ajustada a la escena»; antes se mostraba «0.5×», que era falso (UX-22).
+ */
+export function opcionesVelocidad(actual: number): { valor: string; texto: string }[] {
+  const lista = VELOCIDADES.map((x) => ({ valor: String(x), texto: x === 1 ? "Normal" : x < 1 ? `${coma(x)}× (cámara lenta)` : `${coma(x)}× (más rápido)` }));
+  if (VELOCIDADES.includes(actual)) return lista;
+  return [{ valor: String(actual), texto: `Ajustada a la escena (${coma(actual)}×)` }, ...lista];
+}
+
 /** Estilo del video tal como lo muestra la UI (vista.ts). */
 export interface EstiloV {
   efectos: object[] | null;
@@ -366,10 +380,10 @@ export function EfectosEscena({ escena, indice, efectos, estilo, formato, imgA, 
               {mov === "personalizado" && <option value="personalizado" disabled>Personalizado</option>}
             </select>
           </label>
-          <label className="etiqueta">Velocidad del clip
+          <label className="etiqueta">Velocidad del video de la escena
             <select className="campo py-1" disabled={ocupado} value={String(efectos.velocidad)}
               onChange={(ev) => void ed({ velocidad: Number(ev.target.value) })}>
-              {[0.5, 0.75, 1, 1.25, 1.5, 2].map((x) => <option key={x} value={String(x)}>{x === 1 ? "Normal" : x < 1 ? `${x}× (cámara lenta)` : `${x}× (más rápido)`}</option>)}
+              {opcionesVelocidad(efectos.velocidad).map((o) => <option key={o.valor} value={o.valor}>{o.texto}</option>)}
             </select>
           </label>
           <label className="etiqueta">Color
