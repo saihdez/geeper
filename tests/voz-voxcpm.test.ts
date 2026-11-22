@@ -67,4 +67,45 @@ describe("VoxCPM2 con la revisión fijada (TER-07)", () => {
     expect(out.ruta).toBe("/herramientas/modelos/VoxCPM2");
     expect(out.llamadas).toHaveLength(0);
   });
+
+  it("«decir» con varias frases carga el modelo una sola vez (GPU-07)", async () => {
+    // torch, soundfile y voxcpm falsos: sin tarjeta ni modelo.
+    const codigo = [
+      "import io, json, os, sys, types",
+      "os.environ['GEEPER_VOXCPM'] = '/modelo'",
+      "cuenta = {'cargas': 0, 'frases': []}",
+      "torch = types.ModuleType('torch')",
+      "torch.cuda = types.SimpleNamespace(is_available=lambda: False)",
+      "sf = types.ModuleType('soundfile')",
+      "sf.write = lambda ruta, wav, sr: cuenta['frases'].append(ruta)",
+      "vox = types.ModuleType('voxcpm')",
+      "class Modelo:",
+      "    tts_model = types.SimpleNamespace(sample_rate=16000)",
+      "    def generate(self, **k): return [0.0] * 1600",
+      "def cargar(ruta, **k):",
+      "    cuenta['cargas'] += 1",
+      "    return Modelo()",
+      "vox.VoxCPM = types.SimpleNamespace(from_pretrained=cargar)",
+      "sys.modules.update({'torch': torch, 'soundfile': sf, 'voxcpm': vox})",
+      `sys.path.insert(0, ${JSON.stringify(SCRIPT_DIR)})`,
+      "import voz_voxcpm",
+      "sys.stdin = io.StringIO(json.dumps({'modo': 'decir', 'referencia': 'r.wav', 'texto_referencia': 'hola', 'frases': [{'texto': 'uno', 'salida': 'e01.wav'}, {'texto': '  ', 'salida': 'vacia.wav'}, {'texto': 'dos', 'salida': 'e02.wav'}]}))",
+      "salida = io.StringIO()",
+      "real = sys.stdout",
+      "sys.stdout = salida",
+      "voz_voxcpm.main()",
+      "sys.stdout = real",
+      "print(json.dumps(cuenta))",
+      "sys.stdin = io.StringIO(json.dumps({'modo': 'decir', 'referencia': 'r.wav', 'texto_referencia': 'hola', 'texto': 'sola', 'salida': 'una.wav'}))",
+      "sys.stdout = salida",
+      "voz_voxcpm.main()",
+      "sys.stdout = real",
+      "print(json.dumps(cuenta))",
+    ].join("\n");
+    const r = await correr(PY, ["-I", "-B", "-c", codigo]);
+    const [lote, despues] = r.stdout.trim().split("\n").map((l) => JSON.parse(l) as { cargas: number; frases: string[] });
+    expect(lote).toEqual({ cargas: 1, frases: ["e01.wav", "e02.wav"] });
+    // El pedido de una sola frase sigue igual.
+    expect(despues).toEqual({ cargas: 2, frases: ["e01.wav", "e02.wav", "una.wav"] });
+  });
 });
