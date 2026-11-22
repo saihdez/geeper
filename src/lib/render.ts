@@ -237,6 +237,7 @@ export async function renderEntregar(
       check,
       extras: [reglaClip(p, comp.inicioTarjeta)].filter((r) => r !== null),
       ritmoSubtitulosAviso: origenClip(p) !== null,
+      duplicadosAviso: origenClip(p) !== null,
       duplicadosEsperados: await repetidosDelMaterial(p, dir),
     },
     path.join(dir, "renders", `${base}-hoja`),

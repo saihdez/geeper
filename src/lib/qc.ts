@@ -84,6 +84,11 @@ export interface Esperado {
    * imágenes fijas sin movimiento): se suma al tope de duplicados. Ver `duplicadosEsperados`.
    */
   duplicadosEsperados?: number;
+  /**
+   * Clips de material ajeno: la proporción de cuadros repetidos sólo avisa; sigue bloqueando un
+   * congelado de 1 s o más (`reglasDuplicados`).
+   */
+  duplicadosAviso?: boolean;
 }
 
 /**
@@ -330,6 +335,39 @@ export function reglaAmpliacion(lista: Ampliacion[] | undefined): Regla | null {
   };
 }
 
+/**
+ * Fotogramas repetidos y congelados antes de la tarjeta. En un proyecto propio, pasarse de la
+ * proporción bloquea. En un clip de material ajeno (`enClip`), el video original puede moverse poco
+ * (fotos con voz, diapositivas, pantalla en pausa) y al entrar achicado con fondo borroso se repiten
+ * más cuadros: la proporción sólo avisa y lo que bloquea es un congelado de 1 s o más (REN-02).
+ */
+export function reglasDuplicados(ratio: number, cong: { inicio: number; dur: number }[], esperadoDup: number, enClip: boolean): Regla[] {
+  const topeDup = Math.min(1, OBJETIVO.maxDuplicados + esperadoDup);
+  const proporcion = Number(ratio.toFixed(3));
+  const delMaterial = esperadoDup ? { delMaterial: Number(esperadoDup.toFixed(3)) } : {};
+  const tope = `≤ ${Math.round(topeDup * 100)} %${esperadoDup ? ` (${OBJETIVO.maxDuplicados * 100} % + lo que ya repite el material)` : ""}`;
+  const sinCongelados = `sin congelados de ≥ ${OBJETIVO.maxCongelado} s`;
+  if (!enClip) {
+    return [{
+      id: "duplicados", nombre: "Fotogramas duplicados (antes de la tarjeta final)", ok: ratio <= topeDup && cong.length === 0,
+      medido: { proporcion, congelados: cong, ...delMaterial },
+      objetivo: `${tope} y ${sinCongelados}`,
+    }];
+  }
+  return [
+    {
+      id: "duplicados", nombre: "Imagen congelada (antes de la tarjeta final)", ok: cong.length === 0,
+      medido: { congelados: cong }, objetivo: sinCongelados,
+      detalle: cong.map((c) => `Congelada ${c.dur.toFixed(1)} s desde el segundo ${c.inicio.toFixed(1)}`).join("\n") || undefined,
+    },
+    {
+      id: "duplicados-material", nombre: "Partes con poco movimiento", ok: ratio <= topeDup, aviso: true,
+      medido: { proporcion, ...delMaterial }, objetivo: `${tope} (aviso: el video original puede moverse poco)`,
+      detalle: ratio <= topeDup ? undefined : "Hay partes donde la imagen casi no se mueve. Si tu video original es así, está bien.",
+    },
+  ];
+}
+
 /** Ritmo: qué parte de los cortes cae en un pulso de la música. Informativo (aviso). */
 export function reglaRitmo(r: Ritmo | null | undefined): Regla | null {
   if (!r || r.cortes === 0) return null;
@@ -390,14 +428,8 @@ export async function correrQc(archivo: string, esp: Esperado, dirHoja: string, 
   });
   const dups = await duplicados(archivo, esp.inicioTarjeta, fps);
   const ratio = dups.entrada ? 1 - dups.salida / dups.entrada : 0;
-  const esperadoDup = esp.duplicadosEsperados ?? 0;
-  const topeDup = Math.min(1, OBJETIVO.maxDuplicados + esperadoDup);
   const cong = (await congelados(archivo, esp.inicioTarjeta)).filter((c) => c.dur >= OBJETIVO.maxCongelado);
-  reglas.push({
-    id: "duplicados", nombre: "Fotogramas duplicados (antes de la tarjeta final)", ok: ratio <= topeDup && cong.length === 0,
-    medido: { proporcion: Number(ratio.toFixed(3)), congelados: cong, ...(esperadoDup ? { delMaterial: Number(esperadoDup.toFixed(3)) } : {}) },
-    objetivo: `≤ ${Math.round(topeDup * 100)} %${esperadoDup ? ` (${OBJETIVO.maxDuplicados * 100} % + lo que ya repite el material)` : ""} y sin congelados de ≥ ${OBJETIVO.maxCongelado} s`,
-  });
+  reglas.push(...reglasDuplicados(ratio, cong, esp.duplicadosEsperados ?? 0, esp.duplicadosAviso === true));
 
   // Subtítulos.
   const sub = revisarSubtitulos(esp.formato, esp.grupos, esp.inicioTarjeta, esp.plataformas);
