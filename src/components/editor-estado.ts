@@ -173,7 +173,7 @@ export function opcionesRitmo(actual: number): { valor: number; nombre: string }
 
 /** Desde 0,9 los subtítulos pueden pasar de 17 letras por segundo y el QC rechaza el video. */
 export function avisoRitmo(velocidad: number): string | null {
-  return velocidad >= 0.9 ? "Con este ritmo los subtítulos pueden pasar muy rápido y el video no se podrá descargar." : null;
+  return velocidad >= 0.9 ? "Con este ritmo los subtítulos pueden pasar muy rápido y, si pasa, el video no se podrá descargar." : null;
 }
 
 /**
