@@ -55,6 +55,11 @@ export interface OpcionesPresentador {
   /** Cómo se mueve o qué actitud tiene (por defecto, hablar natural a cámara). */
   prompt?: string;
   semilla?: number;
+  /**
+   * Imagen de la que parte en vez del retrato (actuar.ts: el avatar de medio cuerpo, de cuerpo completo,
+   * sobre fondo verde o ya puesto en el lugar de la escena). Ruta absoluta.
+   */
+  imagen?: string;
 }
 
 export interface TramoAudio {
@@ -152,13 +157,27 @@ export function planearPresentador(p: Proyecto, op: OpcionesPresentador): PlanPr
     silencioInicial,
     segundos,
     cuadros: cuadrosHablar(segundos),
-    resolucion: op.modo === "burbuja" ? RESOLUCION_BURBUJA : calidad.resoluciones[p.formato],
+    // Recorte (streamer): figura vertical de medio cuerpo o cuerpo completo.
+    resolucion: op.modo === "burbuja" ? (marco?.forma === "recorte" ? calidad.resoluciones["9:16"] : RESOLUCION_BURBUJA) : calidad.resoluciones[p.formato],
     marco,
     huella: huellaVoz(elegidas),
     prompt: op.prompt?.trim() ? `${op.prompt.trim()}. ${PROMPT_HABLAR}` : PROMPT_HABLAR,
     notas,
     avisos,
   };
+}
+
+/**
+ * Video sobre fondo verde → WebM VP9 con transparencia (Hyperframes la conserva al componer). Quita el
+ * verde y su reflejo en los bordes (despill). Función pura.
+ */
+export function argsRecorte(entrada: string, salida: string): string[] {
+  return [
+    "-v", "error", "-y", "-i", entrada, "-an",
+    "-vf", "chromakey=0x00FF00:0.16:0.06,despill=type=green:mix=0.6:expand=0.1,format=yuva420p",
+    "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-b:v", "0", "-crf", "28", "-row-mt", "1", "-deadline", "good", "-cpu-used", "4",
+    "-metadata:s:v:0", "alpha_mode=1", "-auto-alt-ref", "0", salida,
+  ];
 }
 
 /**
@@ -294,11 +313,17 @@ export async function generarPresentador(ctx: ContextoPresentador, proyectoId: s
   const audio = await prepararAudio(ctx.dir, p, plan, corrida);
   // Copia del retrato dentro del proyecto: el video no depende de que el avatar siga en la biblioteca.
   const retrato = path.join(corrida, "retrato.png");
-  await fs.copyFile(rutaRetrato(avatar.id), retrato);
+  await fs.copyFile(op.imagen ?? rutaRetrato(avatar.id), retrato);
   const ajustes = ajustesHablar(plan, retrato, audio, op.calidad, op.semilla);
   ctx.log(`Presentador «${avatar.nombre}» (${plan.modo}): ${plan.segundos.toFixed(1)} s, ${plan.cuadros} cuadros a ${plan.resolucion}`);
   const t0 = Date.now();
-  const video = await generarPlano({ instalacion: instalacionWan2gp(), ajustes, dirCorrida: corrida, signal: ctx.signal, log: ctx.log, alAvanzar: ctx.alAvanzar });
+  let video = await generarPlano({ instalacion: instalacionWan2gp(), ajustes, dirCorrida: corrida, signal: ctx.signal, log: ctx.log, alAvanzar: ctx.alAvanzar });
+  // Streamer: el avatar se generó sobre verde; se quita el verde y queda un video con transparencia.
+  if (plan.marco?.forma === "recorte") {
+    const recortado = path.join(corrida, "recorte.webm");
+    await correr(FFMPEG, argsRecorte(video, recortado), { log: ctx.log, signal: ctx.signal, timeout: 30 * 60_000 });
+    video = recortado;
+  }
   const hash = await sha256Archivo(video);
   const id = `avatar-${hash.slice(0, 12)}`;
   const ruta = `assets/${id}${path.extname(video).toLowerCase() || ".mp4"}`;

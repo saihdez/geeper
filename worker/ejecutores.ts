@@ -19,6 +19,8 @@ import { correr } from "@/lib/proceso";
 import { generarPlanoEscena, type OpcionesPlano } from "@/lib/plano";
 import { generarPresentador, type OpcionesPresentador } from "@/lib/presentador";
 import { PedidoRehacer, rehacerEscena } from "@/lib/rehacer";
+import { animarEscenasDelVideo } from "@/lib/animar-escenas";
+import { actuarEscena, leerAvatarDelVideo, PedidoActuar, PedidoStreamer, proponerEscenas, streamerAvatar } from "@/lib/actuar";
 import { correrWorkflow, PedidoWorkflow } from "@/lib/workflows";
 import { disenarVoz } from "@/lib/voces";
 import { regenerarVoz } from "@/lib/regenerar";
@@ -291,6 +293,58 @@ async function presentadorGenerar(t: Trabajo, h: Herramientas): Promise<Salida> 
   return { resultado: r, siguiente: siguienteDe(t.payload, { version: r.version }) };
 }
 
+async function avatarActuar(t: Trabajo, h: Herramientas): Promise<Salida> {
+  const pedido = PedidoActuar.parse(t.payload.pedido);
+  await h.etapa("Poniendo a tu avatar en la escena", 0.01);
+  const { p } = await versionDeProyecto(t.proyectoId!);
+  const r = await actuarEscena(conAvance(h, pedido.tipo === "habla" ? "Haciendo hablar al avatar" : "Animando al avatar"), t.proyectoId!, p, String(t.payload.escena ?? ""), pedido);
+  h.log(`Avatar en la escena → versión ${r.version}`);
+  return { resultado: r, siguiente: siguienteDe(t.payload, { version: r.version }) };
+}
+
+async function avatarStreamer(t: Trabajo, h: Herramientas): Promise<Salida> {
+  const pedido = PedidoStreamer.parse(t.payload.pedido);
+  await h.etapa("Preparando a tu avatar sobre fondo verde", 0.01);
+  const { p } = await versionDeProyecto(t.proyectoId!);
+  const r = await streamerAvatar(conAvance(h, "Haciendo hablar al avatar"), t.proyectoId!, p, pedido);
+  h.log(`Avatar streamer → versión ${r.version}`);
+  return { resultado: r, siguiente: siguienteDe(t.payload, { version: r.version }) };
+}
+
+/** Video nuevo con avatar: lo pone en las escenas que propone Geeper, una por una (la persona ajusta después). */
+async function avatarEscenas(t: Trabajo, h: Herramientas): Promise<Salida> {
+  const fila = await db.proyecto.findUniqueOrThrow({ where: { id: t.proyectoId! } });
+  const elegido = await leerAvatarDelVideo(fila.slug);
+  if (!elegido) return { resultado: { escenas: 0 }, siguiente: siguienteDe(t.payload) };
+  let { p } = await versionDeProyecto(t.proyectoId!);
+  const propuestas = proponerEscenas(p, elegido.avatar, { producto: elegido.producto });
+  const hechas: number[] = [];
+  for (const [i, pr] of propuestas.entries()) {
+    await h.etapa(`Tu avatar en la escena ${pr.numero} (${i + 1} de ${propuestas.length}): ${pr.porque}`, i / propuestas.length);
+    try {
+      const r = await actuarEscena(conAvance(h, `Escena ${pr.numero}`), t.proyectoId!, p, pr.escena, pr.pedido);
+      hechas.push(pr.numero);
+      h.log(`Escena ${pr.numero} con avatar → versión ${r.version}`);
+      ({ p } = await versionDeProyecto(t.proyectoId!));
+    } catch (e) {
+      // Una escena que falla no tumba el video: queda como estaba y se puede reintentar desde el editor.
+      if (h.signal?.aborted) throw e;
+      h.log(`Escena ${pr.numero}: no se pudo (${e instanceof Error ? e.message.split("\n")[0] : e}); queda como estaba.`);
+    }
+  }
+  return { resultado: { escenas: hechas }, siguiente: siguienteDe(t.payload) };
+}
+
+/** Video nuevo «Equilibrado» o «Lo más real posible»: cada escena de MPT pasa a video (animar-escenas.ts). */
+async function escenasAnimar(t: Trabajo, h: Herramientas): Promise<Salida> {
+  const fila = await db.proyecto.findUniqueOrThrow({ where: { id: t.proyectoId! } });
+  const r = await animarEscenasDelVideo(conAvance(h, "Animando"), t.proyectoId!, fila.slug, async (a) => {
+    await h.etapa(`Animando la escena ${a.numero} (${a.indice + 1} de ${a.total})`, a.indice / Math.max(1, a.total));
+  });
+  h.log(r.hechas.length ? `Escenas animadas: ${r.hechas.join(", ")}` : "No había escenas para animar");
+  return { resultado: r, siguiente: siguienteDe(t.payload) };
+}
+
 async function escenaRehacer(t: Trabajo, h: Herramientas): Promise<Salida> {
   const pedido = PedidoRehacer.parse(t.payload.pedido);
   await h.etapa(pedido.tipo === "persona" ? "Buscando a la persona en cada cuadro" : "Preparando la toma", 0.01);
@@ -342,6 +396,10 @@ export const EJECUTORES: Record<TipoTrabajo, (t: Trabajo, h: Herramientas) => Pr
   "avatar.proponer": avatarProponer,
   "avatar.retocar": avatarRetocar,
   "presentador.generar": presentadorGenerar,
+  "avatar.actuar": avatarActuar,
+  "avatar.streamer": avatarStreamer,
+  "avatar.escenas": avatarEscenas,
+  "escenas.animar": escenasAnimar,
   "escena.rehacer": escenaRehacer,
   "workflow.correr": workflowCorrer,
   "voz.regenerar": vozRegenerar,

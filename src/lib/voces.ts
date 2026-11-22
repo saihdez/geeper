@@ -15,12 +15,16 @@ import path from "node:path";
 import { z } from "zod";
 import { tomarGpu } from "./gpu";
 import type { Contexto } from "./pasos";
-import { pythonDeVenv } from "./plataforma";
+import { ESCRITORIO, pythonDeVenv } from "./plataforma";
 import { correr } from "./proceso";
 import { dirDatos, ESTUDIO, FFMPEG, RAIZ_REPO } from "./rutas";
 import { sintetizar } from "./voz";
 
 export const PYTHON_VOXCPM = process.env.GEEPER_VOXCPM_PYTHON ?? pythonDeVenv(path.join(ESTUDIO, "venvs", "voxcpm"));
+/** Pesos de VoxCPM2 bajados por el instalador de la app (instalar-voxcpm.ts), con su revisión fijada. */
+export const DIR_MODELO_VOXCPM = path.join(ESTUDIO, "modelos", "VoxCPM2");
+/** Marca que deja el instalador cuando la prueba en la GPU salió bien. */
+export const marcaVoxcpm = () => path.join(path.dirname(path.dirname(PYTHON_VOXCPM)), "geeper-listo.json");
 export const LICENCIA_VOXCPM = "Apache-2.0 (openbmb/VoxCPM2)";
 export const MAX_DESCRIPCION = 300;
 export const TOMAS = 3;
@@ -77,7 +81,8 @@ const dirPropuesta = (id: string) => path.join(dirVoces(), "_propuestas", id);
 /** Ruta relativa a ~/geeper-data (para /api/archivos). */
 export const relativaADatos = (abs: string) => path.relative(dirDatos(), abs).split(path.sep).join("/");
 
-export const vozInstalada = () => existsSync(PYTHON_VOXCPM);
+/** En la app hace falta que el instalador haya terminado (modelo bajado y probado); en el estudio, el venv. */
+export const vozInstalada = () => existsSync(PYTHON_VOXCPM) && (!ESCRITORIO || existsSync(marcaVoxcpm()));
 
 /** «Narradora cálida» → «narradora-calida-3fa2» (función pura salvo el sufijo). */
 export function idDeVoz(nombre: string, sufijo = randomBytes(2).toString("hex")): string {
@@ -133,8 +138,8 @@ export async function muestraKokoro(voz: string): Promise<string> {
   return ruta;
 }
 
-async function correrVoxcpm(pedido: Record<string, unknown>, ctx: Contexto & { signal?: AbortSignal }, que: string): Promise<void> {
-  if (!vozInstalada()) throw new Error("Las voces diseñadas no están instaladas en esta computadora (falta VoxCPM2).");
+async function correrVoxcpm(pedido: Record<string, unknown>, ctx: Pick<Contexto, "log"> & { signal?: AbortSignal }, que: string, probando = false): Promise<void> {
+  if (!(probando ? existsSync(PYTHON_VOXCPM) : vozInstalada())) throw new Error("Las voces diseñadas no están instaladas en esta computadora (falta VoxCPM2).");
   ctx.log(`${que}: esperando la tarjeta gráfica…`);
   const candado = await tomarGpu(`voz ${que}`, {
     esperar: true,
@@ -148,7 +153,12 @@ async function correrVoxcpm(pedido: Record<string, unknown>, ctx: Contexto & { s
       timeout: 1_200_000,
       signal: ctx.signal,
       permitirFallo: true,
-      env: { TORCHDYNAMO_DISABLE: "1", PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True" },
+      env: {
+        TORCHDYNAMO_DISABLE: "1",
+        PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True",
+        // El modelo que bajó el instalador (revisión fijada); en el estudio de desarrollo, la caché de HF.
+        ...(existsSync(path.join(DIR_MODELO_VOXCPM, "model.safetensors")) ? { GEEPER_VOXCPM: DIR_MODELO_VOXCPM } : {}),
+      },
     });
     for (const l of r.stdout.split("\n")) if (l.startsWith("{")) ctx.log(l);
     if (r.codigo !== 0) {
@@ -170,6 +180,12 @@ export async function disenarVoz(ctx: Contexto & { signal?: AbortSignal }, propu
   const tomas = (await fs.readdir(dir)).filter((f) => /^toma-\d+\.wav$/.test(f)).sort();
   if (!tomas.length) throw new Error("VoxCPM2 no dejó ninguna toma.");
   return { tomas: tomas.map((t) => relativaADatos(path.join(dir, t))) };
+}
+
+/** Prueba de la instalación: una toma corta en la GPU (carga el modelo y genera de verdad). */
+export async function probarVoxcpm(log: Contexto["log"], dir: string): Promise<void> {
+  await correrVoxcpm({ modo: "disenar", descripcion: "voz cálida y clara", texto: "Hola, ésta es una prueba.", tomas: 1, salida: dir }, { log }, "Prueba de voz", true);
+  if (!existsSync(path.join(dir, "toma-1.wav"))) throw new Error("VoxCPM2 terminó sin dejar el audio de prueba.");
 }
 
 export async function leerPropuesta(propuesta: string): Promise<{ descripcion: string; tomas: string[] } | null> {

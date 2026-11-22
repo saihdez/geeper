@@ -1,7 +1,8 @@
 "use client";
 import Link from "next/link";
+import { useState } from "react";
 import { AvisoEstudio } from "./aviso-estudio";
-import { Aviso, Barra, Cargando, Estado, useSondeo } from "./comun";
+import { Aviso, Barra, Cargando, Estado, pedir, useSondeo } from "./comun";
 
 interface Fila {
   id: string;
@@ -27,6 +28,26 @@ const VIDEO: Record<string, string> = { renderizado: "hecho, falta mirarlo", apr
 
 export function ListaProyectos() {
   const { datos, error } = useSondeo<{ proyectos: Fila[] }>("/api/proyectos", 3000);
+  // Los eliminados se quitan al instante (el sondeo los saca en la próxima vuelta).
+  const [eliminados, setEliminados] = useState<string[]>([]);
+  const [borrando, setBorrando] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
+
+  async function eliminar(p: Fila) {
+    if (!confirm(`¿Eliminar «${p.nombre}»?\n\nSale de la lista con sus versiones y renders. Su carpeta no se borra: pasa a la papelera de Geeper (carpeta «papelera» de los datos), de donde se puede recuperar a mano.`)) return;
+    setBorrando(p.id);
+    setAviso(null);
+    try {
+      await pedir(`/api/proyectos/${p.id}`, { method: "DELETE" });
+      setEliminados((x) => [...x, p.id]);
+      setAviso(`«${p.nombre}» se eliminó. Su carpeta quedó en la papelera de Geeper.`);
+    } catch (e) {
+      setAviso((e as Error).message);
+    } finally {
+      setBorrando(null);
+    }
+  }
+  const proyectos = datos?.proyectos.filter((p) => !eliminados.includes(p.id));
   return (
     <section>
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -40,21 +61,22 @@ export function ListaProyectos() {
           <details className="mt-1 text-xs text-tenue"><summary className="cursor-pointer">Detalle técnico</summary>{error}</details>
         </Aviso>
       )}
+      {aviso && <p className="mb-3 text-sm text-amber-200" role="status">{aviso}</p>}
       {!datos && !error && <Cargando>Cargando tus videos…</Cargando>}
-      {datos && datos.proyectos.length === 0 && (
+      {proyectos && proyectos.length === 0 && (
         <div className="tarjeta p-6 text-center text-tenue">
           <p>Todavía no tienes videos.</p>
           <p className="mt-1">Eliges un tema y Geeper arma el video por ti. <Link className="text-acento underline" href="/nuevo">Haz el primero</Link>.</p>
         </div>
       )}
-      {datos && datos.proyectos.length > 0 && <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {datos.proyectos.map((p) => {
+      {proyectos && proyectos.length > 0 && <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {proyectos.map((p) => {
           const t = p.trabajos[0];
           const activo = t && (t.estado === "corriendo" || t.estado === "pendiente");
           const r = p.renders[0];
           return (
-            <li key={p.id}>
-              <Link href={`/proyectos/${p.id}`} className="tarjeta block h-full p-4 hover:border-sky-700">
+            <li key={p.id} className="relative">
+              <Link href={`/proyectos/${p.id}`} className="tarjeta block h-full p-4 pb-10 hover:border-sky-700">
                 <div className="mb-2 flex items-start justify-between gap-2">
                   <h2 className="font-medium leading-snug">{p.nombre}</h2>
                   <Estado valor={p.estado} />
@@ -74,6 +96,11 @@ export function ListaProyectos() {
                 )}
                 {r && <p className="mt-3 text-xs text-tenue">Último video: {VIDEO[r.estado] ?? r.estado}</p>}
               </Link>
+              <button type="button" className="absolute bottom-3 right-3 rounded px-2 py-1 text-xs text-tenue hover:bg-red-950 hover:text-red-200 disabled:opacity-50"
+                disabled={borrando === p.id || activo} title={activo ? "Tiene un trabajo en curso: espera o cancélalo en Trabajos" : undefined}
+                aria-label={`Eliminar «${p.nombre}»`} onClick={() => void eliminar(p)}>
+                {borrando === p.id ? "Eliminando…" : "Eliminar"}
+              </button>
             </li>
           );
         })}

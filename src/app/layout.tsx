@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Barra } from "@/components/barra";
+import { TrabajosFlotantes } from "@/components/trabajos-flotantes";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -14,6 +15,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <body className="min-h-screen">
         <Barra />
         <main id="contenido" tabIndex={-1} className="outline-none mx-auto max-w-7xl px-4 py-6">{children}</main>
+        <TrabajosFlotantes />
       </body>
     </html>
   );

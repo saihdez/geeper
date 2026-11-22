@@ -31,8 +31,30 @@ describe("avatares: prompts", () => {
 
   it("el retoque conserva cara, estilo y encuadre", () => {
     expect(promptRetoque("  ponle lentes ")).toBe(
-      "ponle lentes. Keep the same character, face, identity, art style, framing and camera angle. Keep the mouth closed and relaxed, facing the camera.",
+      "ponle lentes. Keep the same character, face, identity, art style, colors and proportions. Keep the exact same framing, zoom level, position and camera angle. Output one single clean image of the character. Keep the mouth closed and relaxed, facing the camera.",
     );
+  });
+
+  it("si la instrucción toca la boca, no pide boca cerrada (chocaba con «que se le vean los dientes»)", () => {
+    for (const t of ["que se le vean mejor los dientes", "que sonría", "abre la boca", "make him smile"]) {
+      const p = promptRetoque(t);
+      expect(p).not.toContain("mouth closed");
+      expect(p.endsWith("Facing the camera.")).toBe(true);
+    }
+  });
+
+  it("«4k / máxima calidad» se cambia por nitidez (un editor no sube la resolución y redibujaba encima)", () => {
+    const p = promptRetoque("Quiero que los dientes se vean mejor y sea 4k maxima calidad");
+    expect(p).not.toMatch(/4k|calidad/i);
+    expect(p).toContain("Quiero que los dientes se vean mejor.");
+    expect(p).toContain("Make the lines, edges and details sharper and cleaner.");
+    expect(promptRetoque("4k")).toMatch(/^Make the lines, edges and details sharper and cleaner\./);
+    expect(promptRetoque("ponle una corona de rey")).toContain("ponle una corona de rey.");
+    for (const t of ["hazlo en alta calidad", "que quede en HD"]) expect(promptRetoque(t)).toMatch(/^Make the lines/);
+  });
+
+  it("todo en positivo: no nombra defectos (con guía 1 no hay prompt negativo)", () => {
+    expect(promptRetoque("ponle lentes")).not.toMatch(/\bno\b|without|double|ghost|blur/i);
   });
 });
 

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { EstiloGeneracion } from "@/lib/estilos-generacion";
 import { db } from "@/lib/db";
 import { Formato } from "@/lib/esquema";
 import { json, manejar } from "@/lib/http";
@@ -28,6 +29,10 @@ const Pedido = z.object({
   nombreLote: z.string().optional(),
   mptTaskId: z.string().optional(),
   rehacerVoz: z.boolean().optional(),
+  /** Avatar de la biblioteca para que Geeper lo ponga en las escenas que más ganan con él. */
+  avatar: z.string().regex(/^[a-z0-9-]+$/).optional(),
+  /** Cuánto se trabaja cada escena (estilos-generacion.ts); sin él, «Rápido». */
+  estilo: EstiloGeneracion.optional(),
 });
 
 export async function POST(req: Request) {
@@ -38,8 +43,8 @@ export async function POST(req: Request) {
       const p = await importarTareaMpt(d.mptTaskId.trim(), { tema: temas[0]!, formato: d.formato, plantilla: d.plantilla }, d.rehacerVoz);
       return json({ proyectos: [p] }, 201);
     }
-    if (temas.length === 1) return json({ proyectos: [await crearProyecto({ tema: temas[0]!, formato: d.formato, plantilla: d.plantilla })] }, 201);
-    const r = await crearLote(temas, d.formato, d.plantilla, d.nombreLote);
+    if (temas.length === 1) return json({ proyectos: [await crearProyecto({ tema: temas[0]!, formato: d.formato, plantilla: d.plantilla, avatar: d.avatar, estilo: d.estilo })] }, 201);
+    const r = await crearLote(temas, d.formato, d.plantilla, d.nombreLote, d.avatar, d.estilo);
     return json({ lote: r.lote, proyectos: r.proyectos }, 201);
   });
 }

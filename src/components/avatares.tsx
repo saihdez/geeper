@@ -12,6 +12,8 @@ export interface AvatarV {
   origen: "descripcion" | "foto";
   retrato: string;
   puedeDeshacer: boolean;
+  /** Retoque hecho que espera la elección de la persona. */
+  retoque: { nota: string; opciones: string[] } | null;
   voz?: VozElegida;
   versiones: { nota: string; fecha: string }[];
 }
@@ -36,7 +38,7 @@ const EJEMPLOS = [
   "Robot simpático de metal azul con ojos grandes y luminosos",
   "Chica joven de pelo corto rosa, chaqueta de mezclilla, muy expresiva",
 ];
-const RETOQUES = ["Ponle lentes", "Que sonría un poco", "Cámbiale la ropa por un traje azul marino", "Ponle un fondo de oficina desenfocado", "Hazle el pelo más corto"];
+const RETOQUES = ["Ponle lentes", "Que sonría un poco", "Cámbiale la ropa por un traje azul marino", "Ponle un fondo de oficina desenfocado", "Hazle el pelo más corto", "Que se vea más nítido"];
 
 const enCurso = (e?: string) => e === "pendiente" || e === "corriendo";
 
@@ -317,7 +319,7 @@ function Crear({ datos, cerrar }: { datos: Datos; cerrar: () => void }) {
           </label>
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium">¿Con qué voz habla? <span className="font-normal text-tenue">(escúchalas; se puede cambiar después)</span></legend>
-            <ElegirVozAvatar valor={voz} cambiar={setVoz} />
+            <ElegirVozAvatar valor={voz} cambiar={setVoz} nombreAvatar={nombre} />
           </fieldset>
           <div className="flex flex-wrap gap-2">
             <button className="boton" onClick={() => setPaso(2)}>← Elegir otro</button>
@@ -374,7 +376,7 @@ function Tarjeta({ avatar: a, listo, trabajo, cambio }: { avatar: AvatarV; listo
         )}
         {editando === "voz" && (
           <div className="space-y-2">
-            <ElegirVozAvatar valor={a.voz ?? null} cambiar={(v) => void hacer(async () => { await patch({ voz: v }); setEditando(null); })} />
+            <ElegirVozAvatar valor={a.voz ?? null} nombreAvatar={a.nombre} cambiar={(v) => void hacer(async () => { await patch({ voz: v }); setEditando(null); })} />
             <button className="boton" onClick={() => setEditando(null)}>Cerrar</button>
           </div>
         )}
@@ -385,9 +387,12 @@ function Tarjeta({ avatar: a, listo, trabajo, cambio }: { avatar: AvatarV; listo
           </div>
         )}
         {error && <Aviso tipo="error">{error}</Aviso>}
-        {editando ? null : retocar && !retocando ? (
+        {a.retoque && !retocando && !editando && (
+          <ElegirRetoque avatar={a} ocupado={ocupado} elegir={(toma) => void hacer(() => patch({ elegirRetoque: toma }))} />
+        )}
+        {editando ? null : retocar && !retocando && !a.retoque ? (
           <div className="space-y-2">
-            <label className="block text-xs text-tenue" htmlFor={`ret-${a.id}`}>¿Qué le cambias? Se conserva su cara.</label>
+            <label className="block text-xs text-tenue" htmlFor={`ret-${a.id}`}>¿Qué le cambias? Se conserva su cara. Pide una cosa a la vez; salen 2 opciones y eliges.</label>
             <input id={`ret-${a.id}`} className="campo" maxLength={400} value={instruccion} onChange={(ev) => setInstruccion(ev.target.value)} placeholder="Ponle lentes" />
             <div className="flex flex-wrap gap-1">
               {RETOQUES.map((x) => <button key={x} type="button" className="boton text-xs" onClick={() => setInstruccion(x)}>{x}</button>)}
@@ -399,7 +404,7 @@ function Tarjeta({ avatar: a, listo, trabajo, cambio }: { avatar: AvatarV; listo
           </div>
         ) : (
           <div className="flex flex-wrap gap-2">
-            <button className="boton" disabled={!listo || !!retocando} onClick={() => setRetocar(true)}>Retocar</button>
+            <button className="boton" disabled={!listo || !!retocando || !!a.retoque} title={a.retoque ? "Primero elige una opción del retoque anterior" : undefined} onClick={() => setRetocar(true)}>Retocar</button>
             {a.puedeDeshacer && <button className="boton" disabled={ocupado || !!retocando} onClick={() => void hacer(() => patch({ deshacer: true }))}>Deshacer retoque</button>}
             <button className="boton" disabled={ocupado} onClick={() => setEditando("voz")}>{a.voz ? "Cambiar voz" : "Elegir voz"}</button>
             <button className="boton" disabled={ocupado} onClick={() => { setNuevoNombre(a.nombre); setEditando("nombre"); }}>Renombrar</button>
@@ -410,5 +415,35 @@ function Tarjeta({ avatar: a, listo, trabajo, cambio }: { avatar: AvatarV; listo
         )}
       </div>
     </article>
+  );
+}
+
+/**
+ * Después de retocar: el retrato actual y las opciones, lado a lado. Nada cambia hasta que la persona
+ * elige; «Quedarme con el actual» descarta el retoque (por si salió raro: imagen doble, otro encuadre…).
+ */
+function ElegirRetoque({ avatar: a, ocupado, elegir }: { avatar: AvatarV; ocupado: boolean; elegir: (toma: number | null) => void }) {
+  const [elegida, setElegida] = useState<number | null>(null);
+  const r = a.retoque!;
+  return (
+    <fieldset className="space-y-2 rounded-lg border border-cyan-700 p-2">
+      <legend className="px-1 text-sm font-medium">Elige el retoque</legend>
+      <p className="text-xs text-tenue">Pediste: «{r.nota}». Si ninguna te convence, quédate con el actual: no cambia nada.</p>
+      <div className="grid grid-cols-3 gap-1" role="radiogroup" aria-label="Opciones del retoque">
+        {[{ toma: null as number | null, url: a.retrato, titulo: "Actual" }, ...r.opciones.map((url, i) => ({ toma: i + 1 as number | null, url, titulo: `Opción ${i + 1}` }))].map((o) => (
+          <button key={o.titulo} type="button" role="radio" aria-checked={elegida === o.toma}
+            className={`overflow-hidden rounded border-2 text-xs ${elegida === o.toma ? "border-cyan-400" : "border-transparent"}`}
+            onClick={() => setElegida(o.toma)}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={o.url} alt={o.titulo} className="aspect-[832/1216] w-full object-cover" />
+            <span className="block py-0.5">{o.titulo}</span>
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button className="boton boton-primario" disabled={ocupado} onClick={() => elegir(elegida)}>{elegida === null ? "Quedarme con el actual" : `Usar la opción ${elegida}`}</button>
+        {elegida !== null && <button className="boton" disabled={ocupado} onClick={() => elegir(null)}>Ninguna: quedarme con el actual</button>}
+      </div>
+    </fieldset>
   );
 }

@@ -14,7 +14,7 @@ import type { Contexto } from "./pasos";
 import { correr } from "./proceso";
 import { promptConCamara, type Camara } from "./prompt-camara";
 import { FFMPEG } from "./rutas";
-import { ajustesWan2gp, generarPlano, instalacionWan2gp, MODELO_POR_DEFECTO, modeloPlano, probarWan2gp, type Avance, type ModeloPlano } from "./wan2gp";
+import { ajustesWan2gp, generarPlano, instalacionWan2gp, MODELO_POR_DEFECTO, modeloPlano, probarWan2gp, type AjustesWan2gp, type Avance, type ModeloPlano } from "./wan2gp";
 
 export interface OpcionesPlano {
   modelo?: string;
@@ -27,6 +27,12 @@ export interface OpcionesPlano {
   /** Texto → video, sin partir de la imagen de la escena. */
   sinImagen?: boolean;
   camara?: Camara;
+  /** Imagen de inicio en vez de la de la escena (actuar.ts: el avatar ya puesto en el lugar). Ruta absoluta. */
+  imagen?: string;
+  /** Ajustes de Wan2GP que se suman (p. ej. los aceleradores Lightning de Wan 2.2 I2V). */
+  extra?: AjustesWan2gp;
+  /** Nota de la versión en «Historial» (por defecto, «Escena N animada»). */
+  nota?: string;
 }
 
 export interface PlanPlano {
@@ -120,8 +126,9 @@ export function planearPlano(p: Proyecto, escena: string, op: OpcionesPlano = {}
 }
 
 /** Imagen de inicio: la de la escena o, si es un video (los de MPT son un zoom sobre la imagen generada), su cuadro donde empieza el clip. */
-async function imagenDeInicio(dir: string, p: Proyecto, plan: PlanPlano, corrida: string): Promise<string | undefined> {
+async function imagenDeInicio(dir: string, p: Proyecto, plan: PlanPlano, corrida: string, propia?: string): Promise<string | undefined> {
   if (!plan.conImagen) return undefined;
+  if (propia) return propia;
   const es = buscarEscena(p, plan.escena);
   const a = p.assets[es.visual.asset]!;
   if (a.tipo === "imagen") return path.join(dir, a.ruta);
@@ -132,7 +139,7 @@ async function imagenDeInicio(dir: string, p: Proyecto, plan: PlanPlano, corrida
 }
 
 function ajustesDe(p: Proyecto, plan: PlanPlano, op: OpcionesPlano, imagen: string | undefined) {
-  return ajustesWan2gp(plan.modelo, { prompt: plan.prompt, formato: p.formato, segundos: plan.segundos, imagen, negativo: op.negativo, pasos: op.pasos, semilla: op.semilla });
+  return { ...ajustesWan2gp(plan.modelo, { prompt: plan.prompt, formato: p.formato, segundos: plan.segundos, imagen, negativo: op.negativo, pasos: op.pasos, semilla: op.semilla }), ...(op.extra ?? {}) };
 }
 
 const dirCorrida = (dir: string, escena: string) => path.join(dir, "build", "planos", `${escena}-${new Date().toISOString().replace(/[:.]/g, "-")}`);
@@ -141,7 +148,7 @@ const dirCorrida = (dir: string, escena: string) => path.join(dir, "build", "pla
 export async function probarPlanoEscena(dir: string, p: Proyecto, escena: string, op: OpcionesPlano = {}) {
   const plan = planearPlano(p, escena, op);
   const corrida = dirCorrida(dir, plan.escena);
-  const ajustes = ajustesDe(p, plan, op, await imagenDeInicio(dir, p, plan, corrida));
+  const ajustes = ajustesDe(p, plan, op, await imagenDeInicio(dir, p, plan, corrida, op.imagen));
   return { plan, ajustes, ...(await probarWan2gp(instalacionWan2gp(), ajustes, corrida)) };
 }
 
@@ -154,7 +161,7 @@ export interface ContextoPlano extends Contexto {
 export async function generarPlanoEscena(ctx: ContextoPlano, proyectoId: string, p: Proyecto, escena: string, op: OpcionesPlano = {}) {
   const plan = planearPlano(p, escena, op);
   const corrida = dirCorrida(ctx.dir, plan.escena);
-  const ajustes = ajustesDe(p, plan, op, await imagenDeInicio(ctx.dir, p, plan, corrida));
+  const ajustes = ajustesDe(p, plan, op, await imagenDeInicio(ctx.dir, p, plan, corrida, op.imagen));
   ctx.log(`Escena ${plan.numero}: ${plan.modelo.nombre}, ${ajustes.resolution}, ${ajustes.video_length} cuadros. Prompt: ${plan.prompt}`);
   const t0 = Date.now();
   const video = await generarPlano({ instalacion: instalacionWan2gp(), ajustes, dirCorrida: corrida, signal: ctx.signal, log: ctx.log, alAvanzar: ctx.alAvanzar });
@@ -178,7 +185,7 @@ export async function generarPlanoEscena(ctx: ContextoPlano, proyectoId: string,
   const v = asset.duracion ? velocidadParaLlenar(asset.duracion - salto, plan.largo) : null;
   if (v) clip.velocidad = v;
   validarProyecto(nuevo);
-  const version = await guardarProyecto(proyectoId, nuevo, `Escena ${plan.numero} animada (${plan.modelo.nombre})`);
+  const version = await guardarProyecto(proyectoId, nuevo, op.nota ?? `Escena ${plan.numero} animada (${plan.modelo.nombre})`);
   await registrarAssetsEnDb(proyectoId, nuevo);
   return { version, asset: id, ruta, segundos, escena: plan.escena, velocidad: v };
 }

@@ -11,6 +11,7 @@ import { PanelPortada } from "./panel-portada";
 import { ElegirVoz, type MotorVoz } from "./elegir-voz";
 import { PanelPresentador } from "./panel-presentador";
 import { PanelRehacer } from "./panel-rehacer";
+import { PanelAvatarEscena, PanelAvatarVideo } from "./panel-avatar";
 import { SelectorEncuadre, type EncuadreV } from "./selector-encuadre";
 import { PanelOtroEditor } from "./panel-otro-editor";
 import { useAccionesProyecto } from "./acciones-proyecto";
@@ -232,6 +233,7 @@ function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, 
         <EfectosEscena escena={e.id} indice={e.indice} efectos={e.efectos} estilo={estilo} formato={formato}
           imgA={anterior ? miniatura(slug, anterior) : undefined} imgB={miniatura(slug, e)} editar={editar} ocupado={ocupado} />
         <PanelAnimar proyectoId={proyectoId} escena={e.id} numero={e.indice + 1} ocupado={ocupado} animar={animar} />
+        <PanelAvatarEscena proyectoId={proyectoId} escena={e.id} numero={e.indice + 1} ocupado={ocupado} />
         {e.visual.tipo === "video" && <PanelRehacer proyectoId={proyectoId} escena={e.id} numero={e.indice + 1} ocupado={ocupado} miniatura={miniatura(slug, e)} />}
       </div>
     </li>
@@ -456,6 +458,8 @@ export function EditorProyecto({ id }: { id: string }) {
           <PanelAvanzado extras={v.extras} formato={p.formato} total={v.total} editar={editar} alinearMusica={alinearMusica} subirLibre={subirLibre} ocupado={ocupado} slug={fila.slug} />
         </>
       )}
+
+      {p && <PanelAvatarVideo proyectoId={id} ocupado={ocupado} />}
 
       {p && !v.extras?.clip && <PanelPresentador proyectoId={id} escenas={escenas.map((e) => ({ id: e.id, numero: e.indice + 1, texto: e.texto }))} ocupado={ocupado} alCambiar={() => void recargar()} usarVoz={usarVoz} />}
 

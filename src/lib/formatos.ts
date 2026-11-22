@@ -63,6 +63,25 @@ export const ZONAS_9X16: Record<Plataforma, { arriba: number; derecha: number; a
 
 export interface OpcionesFormato {
   plataformas?: readonly Plataforma[];
+  /**
+   * La burbuja del presentador en una esquina de abajo (su caja, de `cajaMarco`): los subtítulos se corren
+   * a su lado, en un bloque más angosto, para que no se tapen (`opcionesDe` en linea.ts).
+   */
+  burbuja?: Caja;
+}
+
+/** Espacio entre la burbuja y los subtítulos que se corren a su lado. */
+export const SEPARACION_BURBUJA = 24;
+
+/** Los subtítulos al lado de la burbuja si se encima con ellos; si no, igual. */
+function subsAlLado(m: Metricas, b: Caja): Metricas {
+  const s = m.subs;
+  if (b.y >= s.y + s.h || b.y + b.h <= s.y || b.w <= 0) return m;
+  const izquierda = b.x + b.w / 2 < m.W / 2;
+  const x = izquierda ? Math.max(s.x, b.x + b.w + SEPARACION_BURBUJA) : s.x;
+  const fin = izquierda ? s.x + s.w : Math.min(s.x + s.w, b.x - SEPARACION_BURBUJA);
+  const subs = { ...s, x, w: Math.max(0, fin - x) };
+  return { ...m, subs, pastillaMax: Math.min(m.pastillaMax, subs.w) };
 }
 
 function interseccion(a: Caja, b: Caja): Caja {
@@ -82,8 +101,12 @@ export function zonaPlataforma(pl: Plataforma, W = 1080, H = 1920): Caja {
  * con lo que deja libre cada interfaz, y marca, subtítulos y tarjeta final se acomodan dentro.
  */
 export function metricas(f: Formato, o: OpcionesFormato = {}): Metricas {
+  const m = metricasBanda(f, o.plataformas ?? []);
+  return o.burbuja ? subsAlLado(m, o.burbuja) : m;
+}
+
+function metricasBanda(f: Formato, pls: readonly Plataforma[]): Metricas {
   const base = M[f];
-  const pls = o.plataformas ?? [];
   if (f !== "9:16" || pls.length === 0) return base;
   let segura = base.segura;
   for (const pl of pls) segura = interseccion(segura, zonaPlataforma(pl, base.W, base.H));

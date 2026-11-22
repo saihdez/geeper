@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { compilar, segmentosVisuales } from "@/lib/compilador";
 import { aplicarEdicion } from "@/lib/ediciones";
 import { Marco, pista, validarProyecto, type Asset } from "@/lib/esquema";
-import { metricas } from "@/lib/formatos";
+import { caracteresPorLinea, metricas } from "@/lib/formatos";
 import { ENTRADA, escenasEnLinea } from "@/lib/linea";
-import { cajaMarco, estiloMarco } from "@/lib/marco";
+import { cajaMarco, estiloMarco, MARGEN_MARCO, MAX_ANCHO_ABAJO } from "@/lib/marco";
 import { PLANTILLAS_INICIALES } from "@/lib/plantillas";
 import { ajustesHablar, aplicarPresentador, vocesDe, argsAudio, cuadrosHablar, estadoPresentador, LORA_HABLAR, MAX_SEGUNDOS, MODELO_HABLAR, PISTA_PRESENTADOR, planearPresentador } from "@/lib/presentador";
 import { proyectoDePrueba } from "./fixtures";
@@ -136,19 +136,40 @@ describe("presentador: en el proyecto", () => {
     const caja = cajaMarco(plan.marco!, metricas("9:16"));
     expect(html).toMatch(/class="clip superpuesta marco"/);
     expect(html).toContain(`left: ${caja.x}px; top: ${caja.y}px; width: ${caja.w}px; height: ${caja.h}px; border-radius: 50%`);
+    // Va abajo a la derecha: los subtítulos se corren a su izquierda, sin taparla.
+    const s = metricas("9:16", { burbuja: caja }).subs;
+    expect(s.x + s.w).toBeLessThanOrEqual(caja.x);
+    expect(html).toContain(`#subtitulos { position: absolute; left: ${s.x}px; top: ${s.y}px; width: ${s.w}px;`);
   });
 });
 
 describe("marco", () => {
   const m = metricas("9:16");
-  it("abajo queda encima de los subtítulos; arriba, debajo de la marca; siempre dentro de la banda", () => {
+  it("en las esquinas de la banda segura: arriba, debajo de la marca; abajo, en el borde de abajo", () => {
     for (const esquina of ["abajo-derecha", "abajo-izquierda", "arriba-derecha", "arriba-izquierda"] as const) {
       const c = cajaMarco(Marco.parse({ esquina }), m);
       expect(c.x).toBeGreaterThanOrEqual(m.segura.x);
       expect(c.x + c.w).toBeLessThanOrEqual(m.segura.x + m.segura.w);
       expect(c.y).toBeGreaterThan(m.marcaTop);
-      expect(c.y + c.h).toBeLessThanOrEqual(m.subs.y);
+      if (esquina.startsWith("arriba")) expect(c.y + c.h).toBeLessThanOrEqual(m.subs.y);
+      else expect(c.y + c.h).toBe(m.segura.y + m.segura.h - MARGEN_MARCO);
     }
+  });
+
+  it("abajo, los subtítulos se corren al lado de la burbuja (más angostos) y no se tapan", () => {
+    for (const esquina of ["abajo-derecha", "abajo-izquierda"] as const) {
+      for (const tamano of [0.26, 0.34, 0.45]) {
+        const c = cajaMarco(Marco.parse({ esquina, tamano }), m);
+        expect(c.w).toBeLessThanOrEqual(Math.round(m.segura.w * MAX_ANCHO_ABAJO));
+        const s = metricas("9:16", { burbuja: c }).subs;
+        expect(s.x + s.w <= c.x || s.x >= c.x + c.w).toBe(true);
+        expect(s.w).toBeGreaterThan(m.subs.w * 0.5);
+        expect(caracteresPorLinea("9:16", { burbuja: c })).toBeLessThan(caracteresPorLinea("9:16"));
+      }
+    }
+    // Arriba no cambia nada.
+    const arriba = cajaMarco(Marco.parse({ esquina: "arriba-derecha" }), m);
+    expect(metricas("9:16", { burbuja: arriba }).subs).toEqual(m.subs);
   });
 
   it("círculo cuadrado; rectángulo 3:4 con esquinas redondeadas", () => {
@@ -159,10 +180,13 @@ describe("marco", () => {
     expect(estiloMarco(Marco.parse({ forma: "redondeado" }), m)).not.toContain("50%");
   });
 
-  it("si no entra entre la marca y los subtítulos, se achica", () => {
+  it("si no entra, se achica (arriba, entre la marca y los subtítulos; abajo, dentro de la banda)", () => {
     const m16 = metricas("16:9");
-    const c = cajaMarco(Marco.parse({ tamano: 0.6, forma: "redondeado" }), m16);
+    const c = cajaMarco(Marco.parse({ tamano: 0.6, forma: "redondeado", esquina: "arriba-derecha" }), m16);
     expect(c.y + c.h).toBeLessThanOrEqual(m16.subs.y);
     expect(c.y).toBeGreaterThanOrEqual(m16.segura.y);
+    const d = cajaMarco(Marco.parse({ tamano: 0.6, forma: "redondeado", esquina: "abajo-derecha" }), m16);
+    expect(d.y).toBeGreaterThanOrEqual(m16.segura.y);
+    expect(d.y + d.h).toBeLessThanOrEqual(m16.segura.y + m16.segura.h);
   });
 });

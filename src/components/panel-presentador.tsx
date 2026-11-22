@@ -1,31 +1,37 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AvatarV } from "./avatares";
-import { Aviso, Barra, postJson, useSondeo } from "./comun";
+import { Aviso, Barra, pedir, postJson, useSondeo } from "./comun";
 import type { MotorVoz } from "./elegir-voz";
 import { useMotorVivo } from "./motor";
 import type { Formato, Marco } from "@/lib/esquema";
 import { metricas } from "@/lib/formatos";
 import { cajaMarco } from "@/lib/marco";
+import { resolverMarco, type Zona } from "@/lib/marco-auto";
 
 interface PlanV { modo: string; escenas: { id: string; numero: number }[]; segundos: number; resolucion: string; notas: string[]; avisos: string[] }
 interface Datos {
   wan2gp: { listo: boolean; falta: string | null; instalando: boolean };
   avatares: AvatarV[];
   formato: Formato;
+  plataformas: NonNullable<Parameters<typeof metricas>[1]>["plataformas"];
+  zonas: Zona[];
   vozVideo: { motor: string; voz: string; idioma: string };
   maxSegundos: number;
   calidades: { id: string; nombre: string }[];
   estado: { burbuja: boolean; escenas: string[]; viejo: boolean; avatar: string | null };
+  /** Dónde está ahora la burbuja ya generada (null si no hay). */
+  marcoActual: Marco | null;
   plan: PlanV | null;
   error: string | null;
   trabajos: { id: string; estado: string; etapa: string; progreso: number }[];
 }
 
 type Modo = "burbuja" | "pantalla";
-type Esquina = "abajo-derecha" | "abajo-izquierda" | "arriba-derecha" | "arriba-izquierda";
+type Esquina = "auto" | "abajo-derecha" | "abajo-izquierda" | "arriba-derecha" | "arriba-izquierda";
 
 const ESQUINAS: { id: Esquina; nombre: string }[] = [
+  { id: "auto", nombre: "✦ Automático (donde no tape caras)" },
   { id: "arriba-izquierda", nombre: "↖ Arriba a la izquierda" },
   { id: "arriba-derecha", nombre: "↗ Arriba a la derecha" },
   { id: "abajo-izquierda", nombre: "↙ Abajo a la izquierda" },
@@ -45,11 +51,14 @@ const mismaVoz = (video: { motor: string; voz: string }, v: { motor: string; voz
   v.motor === "voxcpm" ? video.motor === "voxcpm" && video.voz === v.voz : video.motor !== "voxcpm" && video.voz.split(":").pop() === v.voz;
 
 /** Vista previa a escala de dónde queda el avatar (la misma cuenta que el compilador). */
-function Vista({ formato, modo, marco, retrato }: { formato: Formato; modo: Modo; marco: Marco; retrato?: string }) {
-  const m = metricas(formato);
+function Vista({ formato, plataformas, zonas, modo, marco, retrato }: { formato: Formato; plataformas: Datos["plataformas"]; zonas: Zona[]; modo: Modo; marco: Marco; retrato?: string }) {
+  const base = metricas(formato, { plataformas });
   const ancho = formato === "9:16" ? 108 : formato === "1:1" ? 150 : 192;
-  const k = ancho / m.W;
-  const c = cajaMarco(marco, m);
+  const k = ancho / base.W;
+  const r = resolverMarco(marco, base, zonas);
+  const c = cajaMarco(r, base);
+  // Con la burbuja abajo, los subtítulos se corren a su lado (como en el video).
+  const m = modo === "burbuja" && r.esquina.startsWith("abajo") ? metricas(formato, { plataformas, burbuja: c }) : base;
   const px = (n: number) => `${Math.round(n * k)}px`;
   return (
     <div className="relative shrink-0 overflow-hidden rounded border border-borde bg-gradient-to-b from-slate-600 to-slate-800" style={{ width: px(m.W), height: px(m.H) }} aria-label="Vista previa de dónde aparece el avatar" role="img">
@@ -91,7 +100,7 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
   const [avatar, setAvatar] = useState<string | null>(null);
   const [modo, setModo] = useState<Modo>("burbuja");
   const [elegidas, setElegidas] = useState<string[]>(() => escenas.slice(0, 1).map((e) => e.id));
-  const [esquina, setEsquina] = useState<Esquina>("abajo-derecha");
+  const [esquina, setEsquina] = useState<Esquina>("auto");
   const [forma, setForma] = useState<"circulo" | "redondeado">("circulo");
   const [tamano, setTamano] = useState(0.34);
   const [calidad, setCalidad] = useState("normal");
@@ -123,7 +132,16 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
   const { datos: d, recargar } = useSondeo<Datos>(url, abierto ? 4000 : 15_000);
   const motorVivo = useMotorVivo();
   const trabajo = d?.trabajos[0] ?? null;
-  if (d && base !== d && !base) setBase(d);
+  if (d && base !== d && !base) {
+    setBase(d);
+    // Los controles arrancan donde está la burbuja que ya tiene el video.
+    const ma = d.marcoActual;
+    if (ma) {
+      setEsquina(ma.esquina as Esquina);
+      if (ma.forma === "circulo" || ma.forma === "redondeado") setForma(ma.forma);
+      setTamano(ma.tamano);
+    }
+  }
 
   // Al terminar un trabajo, el editor recarga el proyecto (versión nueva).
   const habia = useRef<string | null>(null);
@@ -142,6 +160,28 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
       await recargar();
     } catch (e) {
       setError((e as Error).message);
+    }
+  }
+
+  // Con la burbuja ya generada (mismo avatar y misma forma de hablar), cambiar esquina, tamaño o forma no
+  // necesita la tarjeta gráfica: se mueve al instante (PATCH, presentador-ubicar.ts).
+  const ma = d?.marcoActual ?? null;
+  const puedeMover = Boolean(d && modo === "burbuja" && d.estado.burbuja && ma && (ma.forma === "circulo" || ma.forma === "redondeado") && elegido === d.estado.avatar && !actitud && !otraActitud.trim());
+  const cambioUbicacion = Boolean(puedeMover && ma && (ma.esquina !== esquina || ma.forma !== forma || Math.abs(ma.tamano - tamano) > 1e-6));
+  const [movido, setMovido] = useState<string | null>(null);
+
+  async function mover() {
+    setError(null);
+    setMovido(null);
+    setEnviando(true);
+    try {
+      const r = await pedir<{ version: number }>(`/api/proyectos/${proyectoId}/presentador`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ marco: { esquina, forma, tamano } }) });
+      setMovido(`Listo: el presentador quedó en su lugar nuevo (versión ${r.version}). Míralo en la vista «En vivo».`);
+      await recargar();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setEnviando(false);
     }
   }
 
@@ -223,7 +263,7 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
                     </button>
                   </div>
                   <div className="flex flex-wrap items-start gap-4">
-                  <Vista formato={d.formato} modo={modo} marco={{ esquina, forma, tamano } satisfies Marco} retrato={d.avatares.find((a) => a.id === elegido)?.retrato} />
+                  <Vista formato={d.formato} plataformas={d.plataformas} zonas={d.zonas} modo={modo} marco={{ esquina, forma, tamano } satisfies Marco} retrato={d.avatares.find((a) => a.id === elegido)?.retrato} />
                   <div className="min-w-0 flex-1">
                   {modo === "burbuja" ? (
                     <div className="flex flex-wrap gap-3">
@@ -231,6 +271,11 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
                         <select className="campo w-auto" value={esquina} onChange={(ev) => setEsquina(ev.target.value as Esquina)}>
                           {ESQUINAS.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
                         </select>
+                        {esquina === "auto" && (
+                          <span className="block text-xs text-tenue">
+                            Queda {ESQUINAS.find((x) => x.id === resolverMarco({ esquina, forma, tamano } satisfies Marco, metricas(d.formato, { plataformas: d.plataformas }), d.zonas).esquina)?.nombre.slice(2).toLowerCase()}
+                          </span>
+                        )}
                       </label>
                       <label className="space-y-1"><span className="block text-xs text-tenue">Forma</span>
                         <select className="campo w-auto" value={forma} onChange={(ev) => setForma(ev.target.value as "circulo" | "redondeado")}>
@@ -300,6 +345,17 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
                     <Barra valor={trabajo.progreso} etiqueta="Avance del presentador" />
                     <p className="text-xs text-tenue">Puedes seguir editando; cuando termine aparece en el video como una versión nueva (se deshace desde «Historial»).</p>
                     <button type="button" className="boton" onClick={() => void cancelar()}>Cancelar</button>
+                  </div>
+                ) : puedeMover ? (
+                  <div className="space-y-2">
+                    {movido && <Aviso tipo="ok">{movido}</Aviso>}
+                    <div className="flex flex-wrap gap-2">
+                      <button className="boton boton-primario" disabled={ocupado || enviando || !cambioUbicacion} onClick={() => void mover()}>
+                        {cambioUbicacion ? "Aplicar la ubicación (al instante)" : "Ya está en ese lugar"}
+                      </button>
+                      <button className="boton" disabled={ocupado || enviando || !d.plan} onClick={() => void generar()}>Generar el presentador otra vez</button>
+                    </div>
+                    <p className="text-xs text-tenue">Mover, agrandar o cambiar la forma no vuelve a generar el avatar: se aplica en segundos. Generarlo otra vez sólo hace falta si cambias el avatar, cómo habla o lo que dice.</p>
                   </div>
                 ) : (
                   <button className="boton boton-primario" disabled={ocupado || enviando || !d.plan || (modo === "pantalla" && !elegidas.length)} onClick={() => void generar()}>

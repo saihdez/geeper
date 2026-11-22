@@ -129,8 +129,42 @@ export function promptDesdeFoto(p: Pedido): string {
 }
 
 /** Instrucción de retoque: lo que pide la persona, conservando la cara y el encuadre (función pura). */
+/** La instrucción toca la boca: entonces no se pide «boca cerrada» (chocaría con «que se le vean los dientes»). */
+const TOCA_BOCA = /\b(boca|dientes?|muelas?|sonr\p{L}*|r[ií]e|re[ií]r|risa|labios?|lengua|beso|smil\p{L}*|teeth|tooth|mouth|lips?|laugh\p{L}*)\b/iu;
+/**
+ * Pedidos de «más calidad» («4k», «máxima calidad», «HD»): un modelo de edición no sube la resolución, y
+ * pedírselo lo hace redibujar todo encima de lo anterior (salía la imagen doble). Se cambian por nitidez.
+ */
+const CALIDAD = /\b(4k|8k|ultra ?hd|full ?hd|hd|alta (?:resoluci[oó]n|calidad|definici[oó]n)|(?:m[aá]xima|mejor|m[aá]s|buena) (?:calidad|resoluci[oó]n|definici[oó]n)|calid[a]?d)\b/giu;
+
+/**
+ * Prompt del retoque (función pura). La instrucción de la persona va tal cual (Qwen entiende español);
+ * alrededor, lo que tiene que conservarse. Todo en positivo: con 4 pasos y guía 1 no hay prompt negativo,
+ * y nombrar un defecto («sin doble imagen») tiende a provocarlo.
+ */
 export function promptRetoque(instruccion: string): string {
-  return `${instruccion.trim()}. Keep the same character, face, identity, art style, framing and camera angle. Keep the mouth closed and relaxed, facing the camera.`;
+  const original = instruccion.trim();
+  const pideCalidad = CALIDAD.test(original);
+  CALIDAD.lastIndex = 0;
+  let limpia = original.replace(CALIDAD, " ").replace(/\s+([,.;:])/g, "$1").replace(/\s{2,}/g, " ").trim();
+  // Lo que queda colgando al quitar «… y sea 4k» o «en alta calidad»: conectores sueltos al final o al inicio.
+  for (let antes = ""; antes !== limpia; ) {
+    antes = limpia;
+    limpia = limpia.replace(/^[\s,.;:]+|[\s,.;:]+$/g, "").replace(/\s+(?:y|e|que|sea|est[eé]|quede|se vea|en|con|a|de|un|una|la|el)$/iu, "").replace(/^(?:y|e)\s+/iu, "");
+  }
+  const partes: string[] = [];
+  // «hazlo en HD» → «hazlo»: si sólo pedía calidad, lo que sobra no es una instrucción.
+  const palabras = limpia.split(/\s+/).filter(Boolean).length;
+  if (limpia.length >= 3 && (!pideCalidad || palabras >= 3)) partes.push(`${limpia}.`);
+  if (pideCalidad) partes.push("Make the lines, edges and details sharper and cleaner.");
+  if (!partes.length) partes.push("Make the lines, edges and details sharper and cleaner.");
+  partes.push(
+    "Keep the same character, face, identity, art style, colors and proportions.",
+    "Keep the exact same framing, zoom level, position and camera angle.",
+    "Output one single clean image of the character.",
+  );
+  partes.push(TOCA_BOCA.test(original) ? "Facing the camera." : "Keep the mouth closed and relaxed, facing the camera.");
+  return partes.join(" ");
 }
 
 const semillaDe = (s?: number) => (s !== undefined && s >= 0 ? Math.round(s) : Math.floor(Math.random() * 2147483647));
@@ -186,6 +220,8 @@ export const Avatar = z.object({
   voz: VozAvatar.optional(),
   /** Retratos anteriores (el actual es retrato.png), del más viejo al más nuevo. */
   versiones: z.array(Version).default([]),
+  /** Retoque hecho que espera que la persona elija una opción (o se quede con el actual). */
+  retoque: z.object({ corrida: z.string().regex(/^[0-9A-Za-z-]+$/), nota: z.string(), tomas: z.array(z.string().regex(/^toma-\d+\.png$/)), fecha: z.string() }).optional(),
   creado: z.string(),
   actualizado: z.string(),
   licencia: z.string(),
@@ -367,28 +403,66 @@ export async function guardarAvatar(propuesta: string, toma: number, nombre: str
   return a;
 }
 
-/** Retoca el retrato con una instrucción y lo deja como el actual; el anterior queda en las versiones. */
+/** Opciones que deja cada retoque: se elige mirando, como los retratos (un mal resultado no pisa el actual). */
+export const OPCIONES_RETOQUE = 2;
+
+const dirRetoque = (id: string, corrida: string) => {
+  if (!/^[0-9A-Za-z-]+$/.test(corrida)) throw new Error("Retoque inválido");
+  return path.join(dirAvatar(id), "_retoques", corrida);
+};
+
+/**
+ * Retoca el retrato con una instrucción: deja OPCIONES_RETOQUE opciones en `avatar.retoque` y NO cambia
+ * el retrato; la persona elige una (elegirRetoque) o se queda con el actual. Un retoque nuevo reemplaza
+ * al que esperaba.
+ */
 export async function retocarAvatar(ctx: ContextoAvatar, id: string, instruccion: string, semilla?: number): Promise<Avatar> {
   const a = await leerAvatar(id);
   const texto = instruccion.trim();
   if (texto.length < 3) throw new Error("Escribe qué quieres cambiar («ponle lentes», «que sonría»…).");
-  const dir = dirAvatar(id);
-  const corrida = path.join(dir, "_retoques", new Date().toISOString().replace(/[:.]/g, "-"));
-  const ajustes = ajustesEdicion(promptRetoque(texto), [rutaRetrato(id)], semilla);
+  const corrida = new Date().toISOString().replace(/[:.]/g, "-");
+  const dir = dirRetoque(id, corrida);
+  const ajustes = ajustesEdicion(promptRetoque(texto), [rutaRetrato(id)], semilla, OPCIONES_RETOQUE);
   ctx.log(`Retoque de «${a.nombre}»: ${texto}`);
-  const [img] = await generarImagenes({ instalacion: instalacionWan2gp(), ajustes, dirCorrida: corrida, signal: ctx.signal, log: ctx.log, alAvanzar: ctx.alAvanzar });
-  const anterior = `version-${a.versiones.length + 1}.png`;
-  await fs.copyFile(rutaRetrato(id), path.join(dir, anterior));
-  await guardarTomas([img!], corrida, 1);
-  await fs.copyFile(path.join(corrida, "toma-1.png"), rutaRetrato(id));
-  const ahora = new Date().toISOString();
+  ctx.log(`Prompt: ${ajustes.prompt}`);
+  const imgs = await generarImagenes({ instalacion: instalacionWan2gp(), ajustes, dirCorrida: dir, signal: ctx.signal, log: ctx.log, alAvanzar: ctx.alAvanzar });
+  if (!imgs.length) throw new Error("Wan2GP terminó sin dejar ninguna imagen del retoque.");
+  await guardarTomas(imgs, dir, 1);
+  if (a.retoque) await fs.rm(dirRetoque(id, a.retoque.corrida), { recursive: true, force: true });
   const nuevo: Avatar = {
-    ...a,
-    versiones: [...a.versiones, { archivo: anterior, nota: texto, fecha: ahora }],
-    actualizado: ahora,
-    licencia: a.licencia.includes("Qwen-Image-Edit") ? a.licencia : `${a.licencia}; retocado: ${LICENCIA_RETOQUE}`,
+    ...(await leerAvatar(id)),
+    retoque: { corrida, nota: texto, tomas: imgs.map((_, k) => `toma-${k + 1}.png`), fecha: new Date().toISOString() },
   };
   await escribirAvatar(nuevo);
+  return nuevo;
+}
+
+/**
+ * Decide el retoque que espera: `toma` (1, 2…) pasa a ser el retrato y el anterior queda en las versiones
+ * (se puede deshacer); `null` lo descarta y el retrato no cambia.
+ */
+export async function elegirRetoque(id: string, toma: number | null): Promise<Avatar> {
+  const a = await leerAvatar(id);
+  const r = a.retoque;
+  if (!r) throw new Error("Este avatar no tiene un retoque esperando.");
+  const dir = dirRetoque(id, r.corrida);
+  const { retoque: _, ...sin } = a;
+  void _;
+  let nuevo: Avatar = { ...sin, actualizado: new Date().toISOString() };
+  if (toma !== null) {
+    const archivo = r.tomas[toma - 1];
+    if (!archivo || !existsSync(path.join(dir, archivo))) throw new Error("Esa opción ya no existe: retócalo otra vez.");
+    const anterior = `version-${a.versiones.length + 1}.png`;
+    await fs.copyFile(rutaRetrato(id), path.join(dirAvatar(id), anterior));
+    await fs.copyFile(path.join(dir, archivo), rutaRetrato(id));
+    nuevo = {
+      ...nuevo,
+      versiones: [...a.versiones, { archivo: anterior, nota: r.nota, fecha: nuevo.actualizado }],
+      licencia: a.licencia.includes("Qwen-Image-Edit") ? a.licencia : `${a.licencia}; retocado: ${LICENCIA_RETOQUE}`,
+    };
+  }
+  await escribirAvatar(nuevo);
+  await fs.rm(dir, { recursive: true, force: true });
   return nuevo;
 }
 
@@ -436,5 +510,8 @@ export function vistaAvatar(a: Avatar) {
     retrato: `/api/archivos/${relativaADatos(rutaRetrato(a.id))}?v=${v}`,
     estiloNombre: ESTILOS[a.estilo].nombre,
     puedeDeshacer: a.versiones.length > 0,
+    retoque: a.retoque
+      ? { nota: a.retoque.nota, opciones: a.retoque.tomas.map((t) => `/api/archivos/${relativaADatos(path.join(dirRetoque(a.id, a.retoque!.corrida), t))}?v=${v}`) }
+      : null,
   };
 }

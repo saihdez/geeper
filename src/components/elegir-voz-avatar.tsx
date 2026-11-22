@@ -1,9 +1,10 @@
 "use client";
 import { useState } from "react";
 import { archivo, pedir, useSondeo } from "./comun";
+import { DisenarVoz } from "./disenar-voz";
 
 export interface VozElegida { motor: "kokoro" | "voxcpm"; voz: string; nombre: string }
-interface Voces { kokoro: { voz: string; nombre: string; detalle: string }[]; guardadas: { id: string; nombre: string; descripcion: string; muestra: string }[] }
+interface Voces { instalada: boolean; kokoro: { voz: string; nombre: string; detalle: string }[]; guardadas: { id: string; nombre: string; descripcion: string; muestra: string }[] }
 
 /** Botón ▶ que prepara la muestra la primera vez (las de Kokoro se generan en unos segundos). */
 function Escuchar({ ruta, kokoro, nombre }: { ruta?: string; kokoro?: string; nombre: string }) {
@@ -20,10 +21,11 @@ function Escuchar({ ruta, kokoro, nombre }: { ruta?: string; kokoro?: string; no
 
 /**
  * La voz del avatar, elegida escuchándola: las de siempre (Kokoro) y las diseñadas de la biblioteca.
- * Para crear una voz nueva describiéndola, el enlace lleva a «Voz» de cualquier proyecto.
+ * También se puede crear una voz nueva describiéndola: queda en la biblioteca y elegida para el avatar.
  */
-export function ElegirVozAvatar({ valor, cambiar, idioma = "es" }: { valor: VozElegida | null; cambiar: (v: VozElegida) => void; idioma?: string }) {
-  const { datos } = useSondeo<Voces>(`/api/voces?idioma=${encodeURIComponent(idioma)}`, 120_000);
+export function ElegirVozAvatar({ valor, cambiar, idioma = "es", nombreAvatar = "" }: { valor: VozElegida | null; cambiar: (v: VozElegida) => void; idioma?: string; nombreAvatar?: string }) {
+  const { datos, recargar } = useSondeo<Voces>(`/api/voces?idioma=${encodeURIComponent(idioma)}`, 120_000);
+  const [creando, setCreando] = useState(false);
   if (!datos) return <p className="text-xs text-tenue">Cargando voces…</p>;
   const opciones: (VozElegida & { detalle: string; ruta?: string })[] = [
     ...datos.kokoro.map((k) => ({ motor: "kokoro" as const, voz: k.voz, nombre: k.nombre, detalle: k.detalle })),
@@ -43,7 +45,19 @@ export function ElegirVozAvatar({ valor, cambiar, idioma = "es" }: { valor: VozE
           </div>
         );
       })}
-      <p className="text-xs text-tenue">¿Ninguna te convence? En cualquier proyecto, «Crear una voz nueva describiéndola» (en la sección de voz) la diseña; después aparece aquí.</p>
+      {creando ? (
+        <DisenarVoz instalada={datos.instalada} nombreSugerido={nombreAvatar.trim() ? `Voz de ${nombreAvatar.trim()}` : ""} alInstalar={recargar} alCancelar={() => setCreando(false)}
+          alGuardar={(v) => {
+            cambiar({ motor: "voxcpm", voz: v.id, nombre: v.nombre });
+            setCreando(false);
+            recargar();
+          }} />
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" className="boton" onClick={() => setCreando(true)}>+ Crear una voz nueva describiéndola</button>
+          <span className="text-xs text-tenue">¿Ninguna te convence? Descríbela y elige entre 3 opciones.</span>
+        </div>
+      )}
     </div>
   );
 }

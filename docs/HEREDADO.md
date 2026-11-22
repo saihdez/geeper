@@ -715,6 +715,28 @@ IA» en cada escena con video (`src/components/panel-rehacer.tsx`, trabajo `esce
   «Mover la cámara» (rodear por la derecha) sobre un plano de FastWan → 781 s con ~3 GB de descarga; la
   toma se vuelve a filmar girando. Sin medir aún los tiempos con los pesos ya bajados.
 
+### Tu avatar en el video (2026-11-21, a pedido del dueño)
+
+El avatar actúa en los videos como una persona (`src/lib/actuar.ts`). Decisiones del dueño: **Geeper
+propone y la persona ajusta**; en gameplay, **streamer primero y después dentro del juego**; en promociones,
+**con la foto del producto**. Todo en Wan2GP con licencias Apache-2.0:
+
+- **Encuadres** (`poseAvatar`): cara, medio cuerpo o cuerpo completo, sobre fondo neutro o verde, con Qwen
+  Image Edit desde el retrato; se guardan en `avatares/<id>/poses/` atados a la versión del retrato.
+- **Primer cuadro** (`componerCuadro`): Qwen Image Edit con varias referencias — 1 el avatar, 2 un cuadro de
+  la escena, 3 el producto — pone al avatar en el lugar (o en un estudio, o en un lugar descrito).
+- **Habla a cámara**: InfiniteTalk sobre ese cuadro con la voz de la escena (presentador en pantalla, con
+  `imagen` propia). **Hace algo**: Wan 2.2 I2V A14B con Lightning (4 pasos, dos fases) desde ese cuadro
+  (`plano.ts` con `imagen` y `extra`). **Streamer**: el avatar sobre verde habla todo el video; ffmpeg quita
+  el verde (`chromakey` + `despill`) a un WebM VP9 con `alpha_mode=1` que Hyperframes compone con
+  transparencia; marco `recorte` (figura vertical apoyada abajo, sin borde, con sombra). **Dentro del
+  juego**: «Rehacer la toma» → «Cambiar la persona».
+- **Geeper propone** (`proponerEscenas`): habla en el gancho (medio cuerpo) y en el cierre (cara, con el
+  producto si hay), y actúa en una escena del medio que habla de personas. En «Nuevo» se elige el avatar y la
+  cadena pasa a `proyecto.importar → avatar.escenas → render.entregar`; una escena que falla queda como estaba.
+- UI: panel del proyecto «Tu avatar en el video» (Geeper elige dónde / como streamer) y, en cada escena,
+  «Tu avatar en esta escena» (quién → qué hace, con ejemplos → cuánto se le ve → dónde → producto).
+
 ### Parches a Wan2GP (2026-11-21)
 
 `src/lib/parches-wan2gp.ts`: reemplazos exactos e idempotentes, al instalar y antes de cada tarea; si el

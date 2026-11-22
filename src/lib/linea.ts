@@ -1,6 +1,7 @@
 /** Línea de tiempo derivada de geeper.json: la posición de cada escena sale del orden, no se guarda. */
 import { fusionarRecortes, pista, type Clip, type Escena, type Proyecto } from "./esquema";
 import { caracteresPorLinea, type OpcionesFormato } from "./formatos";
+import { burbujaAbajo } from "./burbuja";
 import { agrupar, aplicarCorrecciones, lineas, reemplazar, type Ficha } from "./subtitulos";
 
 /** Tramo de voz que suena (lo que queda tras los recortes), en tiempo del asset de voz. */
@@ -130,9 +131,14 @@ export function todosLosGrupos(p: Proyecto): Grupo[] {
   }));
 }
 
-/** Opciones de formato que dependen del proyecto (las plataformas de destino estrechan la banda segura). */
-export function opcionesDe(p: Pick<Proyecto, "plataformas">): OpcionesFormato {
-  return { plataformas: p.plataformas };
+/**
+ * Opciones de formato que dependen del proyecto: las plataformas de destino estrechan la banda segura, y
+ * con el presentador en una esquina de abajo los subtítulos se corren a su lado (burbuja.ts).
+ */
+export function opcionesDe(p: Pick<Proyecto, "plataformas"> | Proyecto): OpcionesFormato {
+  const o: OpcionesFormato = { plataformas: p.plataformas };
+  const burbuja = "pistas" in p ? burbujaAbajo(p, o) : undefined;
+  return burbuja ? { ...o, burbuja } : o;
 }
 
 /** Grupos que empiezan en una escena (para editarlos en la UI). */

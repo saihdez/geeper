@@ -29,9 +29,13 @@ const TIPOS: Record<string, string> = {
   "avatar.proponer": "Crear avatar",
   "avatar.retocar": "Retocar avatar",
   "presentador.generar": "Presentador (avatar que habla)",
+  "avatar.actuar": "Tu avatar en una escena",
+  "avatar.streamer": "Tu avatar como streamer",
+  "avatar.escenas": "Tu avatar en el video nuevo",
   "escena.rehacer": "Rehacer la toma",
   "workflow.correr": "Workflow de ComfyUI",
   "render.entregar": "Render y QC",
+  "escenas.animar": "Animando las escenas",
 };
 
 function duracion(t: Trabajo, ahora: number) {

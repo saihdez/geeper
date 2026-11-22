@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { borrarAvatar, cambiarVozAvatar, deshacerRetoque, leerAvatar, renombrarAvatar, vistaAvatar, VozAvatar } from "@/lib/avatares";
+import { borrarAvatar, cambiarVozAvatar, deshacerRetoque, elegirRetoque, leerAvatar, renombrarAvatar, vistaAvatar, VozAvatar } from "@/lib/avatares";
 import { encolar } from "@/lib/cola";
 import { db } from "@/lib/db";
 import { json, manejar } from "@/lib/http";
@@ -37,12 +37,22 @@ export async function POST(req: Request, ctx: Ctx) {
   });
 }
 
-/** Renombrar, cambiar la voz o deshacer el último retoque. */
+/** Renombrar, cambiar la voz, elegir una opción del retoque (o quedarse con el actual) o deshacer el último. */
 export async function PATCH(req: Request, ctx: Ctx) {
   return manejar(async () => {
     const { id } = await ctx.params;
-    const d = z.union([z.object({ nombre: z.string() }), z.object({ deshacer: z.literal(true) }), z.object({ voz: VozAvatar.nullable() })]).parse(await req.json());
-    const a = "nombre" in d ? await renombrarAvatar(id, d.nombre) : "voz" in d ? await cambiarVozAvatar(id, d.voz) : await deshacerRetoque(id);
+    const d = z
+      .union([
+        z.object({ nombre: z.string() }),
+        z.object({ deshacer: z.literal(true) }),
+        z.object({ voz: VozAvatar.nullable() }),
+        z.object({ elegirRetoque: z.number().int().min(1).max(9).nullable() }),
+      ])
+      .parse(await req.json());
+    const a = "nombre" in d ? await renombrarAvatar(id, d.nombre)
+      : "voz" in d ? await cambiarVozAvatar(id, d.voz)
+      : "elegirRetoque" in d ? await elegirRetoque(id, d.elegirRetoque)
+      : await deshacerRetoque(id);
     return json({ avatar: vistaAvatar(a) });
   });
 }

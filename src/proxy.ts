@@ -83,15 +83,15 @@ export function proxy(req: NextRequest) {
 export const config = {
   matcher: [
     // Todo /api menos las subidas.
-    "/api/((?!(?:clips/subir|avatares|paleta|anuncios/[^/]+/imagen|plantillas/[^/]+/logo|plantillas/[^/]+/portada-propia|proyectos/[^/]+/clip|workflows/[^/]+)$).*)",
+    "/api/((?!(?:clips/subir|avatares|paleta|anuncios/[^/]+/imagen|plantillas/[^/]+/logo|plantillas/[^/]+/portada-propia|proyectos/[^/]+/clip|proyectos/[^/]+/avatar|proyectos/[^/]+/filmcraft|workflows/[^/]+)$).*)",
     // Subidas: sólo si el navegador dice que vienen de otro sitio…
     {
-      source: "/api/(clips/subir|avatares|paleta|anuncios/[^/]+/imagen|plantillas/[^/]+/logo|plantillas/[^/]+/portada-propia|proyectos/[^/]+/clip|workflows/[^/]+)",
+      source: "/api/(clips/subir|avatares|paleta|anuncios/[^/]+/imagen|plantillas/[^/]+/logo|plantillas/[^/]+/portada-propia|proyectos/[^/]+/clip|proyectos/[^/]+/avatar|proyectos/[^/]+/filmcraft|workflows/[^/]+)",
       has: [{ type: "header", key: "sec-fetch-site", value: "(?!same-origin$|none$).*" }],
     },
     // …si traen un Origin que no es local…
     {
-      source: "/api/(clips/subir|avatares|paleta|anuncios/[^/]+/imagen|plantillas/[^/]+/logo|plantillas/[^/]+/portada-propia|proyectos/[^/]+/clip|workflows/[^/]+)",
+      source: "/api/(clips/subir|avatares|paleta|anuncios/[^/]+/imagen|plantillas/[^/]+/logo|plantillas/[^/]+/portada-propia|proyectos/[^/]+/clip|proyectos/[^/]+/avatar|proyectos/[^/]+/filmcraft|workflows/[^/]+)",
       has: [{ type: "header", key: "origin" }],
       missing: [{ type: "header", key: "origin", value: "https?://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:\\d+)?" }],
     },
@@ -99,7 +99,7 @@ export const config = {
     // new RegExp(`^${value}$`) (por eso el grupo: sin él, «localhost.atacante.com» contaría como local) y
     // antes corta el Host en el primer «:», así que de «[::1]:3300» sólo le llega «[».
     {
-      source: "/api/(clips/subir|avatares|paleta|anuncios/[^/]+/imagen|plantillas/[^/]+/logo|plantillas/[^/]+/portada-propia|proyectos/[^/]+/clip|workflows/[^/]+)",
+      source: "/api/(clips/subir|avatares|paleta|anuncios/[^/]+/imagen|plantillas/[^/]+/logo|plantillas/[^/]+/portada-propia|proyectos/[^/]+/clip|proyectos/[^/]+/avatar|proyectos/[^/]+/filmcraft|workflows/[^/]+)",
       missing: [{ type: "host", value: "(localhost|127\\.0\\.0\\.1|\\[)" }],
     },
   ],

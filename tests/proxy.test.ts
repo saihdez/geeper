@@ -53,6 +53,8 @@ describe("matcher del proxy: las subidas no pasan por la copia de 10 MB", () => 
   const general = new RegExp(`^${(config.matcher[0] as string).replace("/api/(", "/api/(?:")}$`);
   const subidas = [
     "/api/clips/subir",
+    "/api/proyectos/p1/avatar",
+    "/api/proyectos/p1/filmcraft",
     "/api/avatares",
     "/api/paleta",
     "/api/anuncios/a1/imagen",
