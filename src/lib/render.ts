@@ -9,6 +9,7 @@ import { sha256Archivo } from "./archivos";
 import { db } from "./db";
 import { compilar, escribirProyectoHf, VERSION_COMPILADOR } from "./compilador";
 import { conColor, prepararColor } from "./looks";
+import { prepararFondos } from "./fondos";
 import { ampliaciones } from "./nitidez";
 import { resumirConfianza } from "./confianza";
 import { pistasLibres, validarProyecto, type Proyecto } from "./esquema";
@@ -102,7 +103,9 @@ export async function renderEntregar(
   // El look de color del canal y la mejora automática se hornean en copias de los clips (src/lib/looks.ts).
   if (conColor(plantilla.datos.color)) await ctx.etapa("Aplicando el color del canal", 0.12);
   const sustitutos = await prepararColor(p, dir, plantilla.datos.color, ctx.log);
-  const comp = compilar(p, plantilla.datos, rutaMezcla, dir, sustitutos);
+  // REN-09: el fondo borroso de los clips contenidos, horneado con ffmpeg (Chrome no lo desenfoca al capturar).
+  const fondos = await prepararFondos(p, dir, sustitutos, m.W, m.H, ctx.log);
+  const comp = compilar(p, plantilla.datos, rutaMezcla, dir, sustitutos, fondos);
   const dirBuild = path.join(dir, "build", `hf-${p.formato.replace(":", "x")}`);
   await escribirProyectoHf(dirBuild, comp);
   const indexHtml = path.join(dirBuild, "index.html");
