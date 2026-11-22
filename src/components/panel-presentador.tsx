@@ -295,7 +295,7 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
                 {trabajo ? (
                   <div className="space-y-1">
                     <p>{trabajo.estado === "pendiente" ? "En espera: la tarjeta de video está ocupada." : trabajo.etapa || "Generando…"}</p>
-                    <Barra valor={trabajo.progreso} />
+                    <Barra valor={trabajo.progreso} etiqueta="Avance del presentador" />
                     <p className="text-xs text-tenue">Puedes seguir editando; cuando termine aparece en el video como una versión nueva (se deshace desde «Historial»).</p>
                     <button type="button" className="boton" onClick={() => void cancelar()}>Cancelar</button>
                   </div>

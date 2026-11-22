@@ -65,9 +65,9 @@ export function Media() {
       {error && <Aviso tipo="error">No se pudo leer la lista: {error}</Aviso>}
       {msg && <Aviso tipo="error">{msg}</Aviso>}
       {!datos && !error && <p className="text-sm text-tenue">Cargando…</p>}
-      {datos && GRUPOS.map((g) => (
-        <section key={g} aria-labelledby={`grupo-${g}`}>
-          <h2 id={`grupo-${g}`} className="mb-2 font-medium">{g}</h2>
+      {datos && GRUPOS.map((g, i) => (
+        <section key={g} aria-labelledby={`grupo-${i}`}>
+          <h2 id={`grupo-${i}`} className="mb-2 font-medium">{g}</h2>
           <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {datos.filter((a) => a.grupo === g).map((a) => (
               <li key={a.app} className="tarjeta flex flex-col gap-2 p-4">
@@ -85,7 +85,7 @@ export function Media() {
                     </p>
                   ) : a.soloEscritorio && instalando(a.instalacion) ? (
                     <>
-                      <Barra valor={a.instalacion!.progreso} />
+                      <Barra valor={a.instalacion!.progreso} etiqueta={`Avance: instalando ${a.nombre}`} />
                       <p className="text-xs text-tenue" role="status">{a.instalacion!.detalle}</p>
                     </>
                   ) : a.soloEscritorio && a.instalada ? (
@@ -104,7 +104,7 @@ export function Media() {
                     </>
                   ) : instalando(a.instalacion) ? (
                     <>
-                      <Barra valor={a.instalacion!.progreso} />
+                      <Barra valor={a.instalacion!.progreso} etiqueta={`Avance: instalando ${a.nombre}`} />
                       <p className="text-xs text-tenue" role="status">{a.instalacion!.detalle}</p>
                     </>
                   ) : a.instalada ? (

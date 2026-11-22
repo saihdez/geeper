@@ -102,9 +102,10 @@ export function Estado({ valor }: { valor: string }) {
   );
 }
 
-export function Barra({ valor }: { valor: number }) {
+/** Barra de avance. `etiqueta` dice de qué es («Avance: instalando PhotoCraft») para el lector de pantalla. */
+export function Barra({ valor, etiqueta = "Avance" }: { valor: number; etiqueta?: string }) {
   return (
-    <div className="h-1.5 w-full overflow-hidden rounded bg-slate-800" role="progressbar" aria-valuenow={Math.round(valor * 100)} aria-valuemin={0} aria-valuemax={100}>
+    <div className="h-1.5 w-full overflow-hidden rounded bg-slate-800" role="progressbar" aria-label={etiqueta} aria-valuenow={Math.round(valor * 100)} aria-valuemin={0} aria-valuemax={100}>
       <div className="h-full bg-sky-500 transition-all" style={{ width: `${Math.round(valor * 100)}%` }} />
     </div>
   );
