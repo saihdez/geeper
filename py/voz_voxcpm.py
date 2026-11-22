@@ -9,6 +9,9 @@ Lee un pedido JSON por stdin:
 Responde una línea JSON por archivo escrito y una final con el pico de VRAM.
 
 torch.compile (inductor) falla con «CUDA error: unknown error» en esta RTX 5080 bajo WSL: se apaga.
+
+El modelo va fijado a una revisión (TER-07): sin eso, una versión nueva en Hugging Face cambiaría
+sola el timbre de las voces guardadas. Si esa revisión ya está en la caché se usa sin ir a internet.
 """
 import json
 import os
@@ -17,19 +20,43 @@ import time
 
 os.environ.setdefault("TORCHDYNAMO_DISABLE", "1")
 
-import soundfile as sf  # noqa: E402
-import torch  # noqa: E402
-from voxcpm import VoxCPM  # noqa: E402
+REPO = "openbmb/VoxCPM2"
+# Revisión probada de openbmb/VoxCPM2 (la que ya está en la caché del estudio).
+REVISION = os.environ.get("GEEPER_VOXCPM_REVISION", "7936080b41163874f38610f46f438e2c0757f9fd")
 
-MODELO = os.environ.get("GEEPER_VOXCPM", "openbmb/VoxCPM2")
+
+def ruta_modelo(modelo: "str | None" = None, revision: str = REVISION) -> str:
+    """Carpeta local del modelo.
+
+    GEEPER_VOXCPM (la ruta que pasa el instalador de la app, <herramientas>/modelos/VoxCPM2) se usa tal
+    cual: sin revisión ni red. Si no, una carpeta se usa tal cual y un nombre de Hugging Face va a la
+    revisión fijada, primero desde la caché y sólo si falta, por internet.
+    """
+    if modelo is None:
+        propio = os.environ.get("GEEPER_VOXCPM")
+        if propio:
+            return propio
+        modelo = REPO
+    if os.path.isdir(modelo):
+        return modelo
+    from huggingface_hub import snapshot_download
+
+    try:
+        return snapshot_download(repo_id=modelo, revision=revision, local_files_only=True)
+    except Exception:  # noqa: BLE001 — no está en la caché: se baja esa misma revisión
+        return snapshot_download(repo_id=modelo, revision=revision)
 
 
 def main() -> int:
+    import soundfile as sf
+    import torch
+    from voxcpm import VoxCPM
+
     pedido = json.load(sys.stdin)
     t0 = time.time()
     if torch.cuda.is_available():
         torch.cuda.reset_peak_memory_stats()
-    modelo = VoxCPM.from_pretrained(MODELO, load_denoiser=False)
+    modelo = VoxCPM.from_pretrained(ruta_modelo(), load_denoiser=False)
     sr = modelo.tts_model.sample_rate
     print(json.dumps({"cargado_s": round(time.time() - t0, 1), "sample_rate": sr}), flush=True)
     texto = pedido["texto"].strip()
