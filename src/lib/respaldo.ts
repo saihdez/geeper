@@ -16,7 +16,7 @@ import Database from "better-sqlite3";
 import { readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { ESCRITORIO } from "./plataforma";
+import { datosPorDefecto, ESCRITORIO } from "./plataforma";
 import { dirDatos, rutaBaseDatos } from "./rutas";
 
 export const CONSERVAR = 7;
@@ -35,6 +35,13 @@ export type OpcionesRespaldo = {
   destino?: string | null;
   conservar?: number;
   ahora?: Date;
+  /**
+   * Ejecuta el `VACUUM INTO` con una conexión que ya está abierta (en el worker, la de Prisma). Hace falta
+   * dentro de un proceso que ya usa la base: Prisma trae su propia copia de SQLite (better-sqlite3 12) y la
+   * app otra (13); si la segunda abre y cierra la base, el sistema suelta los candados de la primera y dos
+   * procesos podrían escribir a la vez (corrupción). Sin esto se abre una conexión propia (pnpm run respaldo).
+   */
+  vaciar?: (sql: string) => Promise<unknown>;
 };
 
 export type ResultadoRespaldo = {
@@ -58,12 +65,15 @@ export function esWsl(): boolean {
 
 /**
  * Carpeta del otro disco, o null si no hay (sólo se respalda la base). GEEPER_RESPALDO manda (vacío = sin
- * copia externa); si no, /mnt/d/geeper-respaldo sólo en WSL y fuera de la app de escritorio.
+ * copia externa); si no, /mnt/d/geeper-respaldo sólo en WSL, fuera de la app de escritorio y sólo para la
+ * carpeta de datos de siempre: una instancia con GEEPER_DATA propio (pruebas, instancia aislada) pisaría la
+ * copia del día de los datos reales.
  */
 export function destinoRespaldo(o: { env?: Record<string, string | undefined>; escritorio?: boolean; wsl?: boolean } = {}): string | null {
   const env = o.env ?? process.env;
   if (env.GEEPER_RESPALDO !== undefined) return env.GEEPER_RESPALDO.trim() || null;
   if (o.escritorio ?? ESCRITORIO) return null;
+  if (env.GEEPER_DATA !== undefined && path.resolve(env.GEEPER_DATA) !== path.resolve(datosPorDefecto())) return null;
   return (o.wsl ?? esWsl()) ? DESTINO_POR_DEFECTO : null;
 }
 
@@ -76,17 +86,21 @@ export function fechaDe(d: Date): string {
 const rutaEstado = (datos: string) => path.join(datos, "respaldos", "ultimo.json");
 
 /** Copia coherente de la base con VACUUM INTO (a un temporal y luego renombra: nunca queda una a medias). */
-export async function respaldarBase(baseDatos: string, carpeta: string, fecha: string): Promise<string> {
+export async function respaldarBase(baseDatos: string, carpeta: string, fecha: string, vaciar?: OpcionesRespaldo["vaciar"]): Promise<string> {
   await fs.mkdir(carpeta, { recursive: true });
   const destino = path.join(carpeta, `geeper-${fecha}.db`);
   const tmp = path.join(carpeta, `.geeper-${fecha}-${process.pid}.db.tmp`);
   await fs.rm(tmp, { force: true });
-  const con = new Database(baseDatos, { fileMustExist: true });
-  try {
-    con.pragma("busy_timeout = 10000");
-    con.exec(`VACUUM INTO '${tmp.replaceAll("'", "''")}'`);
-  } finally {
-    con.close();
+  const sql = `VACUUM INTO '${tmp.replaceAll("'", "''")}'`;
+  if (vaciar) await vaciar(sql);
+  else {
+    const con = new Database(baseDatos, { fileMustExist: true });
+    try {
+      con.pragma("busy_timeout = 10000");
+      con.exec(sql);
+    } finally {
+      con.close();
+    }
   }
   await fs.rename(tmp, destino);
   return destino;
@@ -187,7 +201,7 @@ export async function respaldar(o: OpcionesRespaldo = {}): Promise<ResultadoResp
   const fecha = fechaDe(ahora);
   const carpetaBases = path.join(datos, "respaldos");
 
-  const base = await respaldarBase(baseDatos, carpetaBases, fecha);
+  const base = await respaldarBase(baseDatos, carpetaBases, fecha, o.vaciar);
   await podar(carpetaBases, /^geeper-\d{4}-\d{2}-\d{2}\.db$/, conservar, ahora);
 
   let copia: ResultadoRespaldo["copia"] = null;

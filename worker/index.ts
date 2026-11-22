@@ -40,7 +40,8 @@ async function respaldoSiToca() {
   if (respaldando || apagando) return;
   respaldando = true;
   try {
-    const r = await respaldarSiToca();
+    // Con la conexión de Prisma: abrir otra (otra copia de SQLite) en este proceso soltaría sus candados.
+    const r = await respaldarSiToca({ vaciar: (sql) => db.$executeRawUnsafe(sql) });
     if (r) {
       avisar(`Copia de seguridad del ${r.fecha} lista${r.copia ? ` (también en ${r.copia.ruta})` : " (sólo la base)"}`);
       if (r.error) avisar(r.error);

@@ -40,6 +40,12 @@ describe("destino del respaldo", () => {
     expect(destinoRespaldo({ env: {}, escritorio: true, wsl: true })).toBeNull();
     expect(destinoRespaldo({ env: {}, escritorio: false, wsl: false })).toBeNull();
   });
+
+  it("con una carpeta de datos propia (pruebas, instancia aislada) no copia al otro disco salvo GEEPER_RESPALDO", () => {
+    expect(destinoRespaldo({ env: { GEEPER_DATA: "/tmp/geeper-prueba" }, escritorio: false, wsl: true })).toBeNull();
+    expect(destinoRespaldo({ env: { GEEPER_DATA: path.join(os.homedir(), "geeper-data") }, escritorio: false, wsl: true })).toBe(DESTINO_POR_DEFECTO);
+    expect(destinoRespaldo({ env: { GEEPER_DATA: "/tmp/geeper-prueba", GEEPER_RESPALDO: "/tmp/copia" }, escritorio: false, wsl: true })).toBe("/tmp/copia");
+  });
 });
 
 describe("poda de temporales de un respaldo cortado", () => {
@@ -95,5 +101,28 @@ describe("estado del respaldo en Sistema", () => {
   it("al día: dice la fecha y si quedó en el otro disco", () => {
     expect(textoRespaldo(r({}), fecha)).toEqual({ tipo: "ok", titulo: "Copia de seguridad al día: la última es del 20 de noviembre.", detalle: "También quedó guardada en el otro disco." });
     expect(textoRespaldo(r({ copia: null, otroDisco: false }), fecha).detalle).toMatch(/sólo en esta computadora/);
+  });
+});
+
+describe("respaldo con la conexión que ya está abierta (worker)", () => {
+  it("usa `vaciar` para el VACUUM INTO y no abre otra conexión", async () => {
+    const { datos, base } = preparar();
+    const pedidos: string[] = [];
+    const con = new Database(base);
+    const r = await respaldar({
+      datos,
+      baseDatos: path.join(datos, "no-existe.db"), // si abriera su propia conexión, fallaría
+      destino: null,
+      ahora: dia(20),
+      vaciar: async (sql) => {
+        pedidos.push(sql);
+        con.exec(sql);
+      },
+    });
+    con.close();
+    expect(pedidos).toEqual([expect.stringMatching(/^VACUUM INTO '.*\.db\.tmp'$/)]);
+    const copia = new Database(r.base, { readonly: true });
+    expect(copia.prepare("SELECT v FROM t").all()).toEqual([{ v: "uno" }]);
+    copia.close();
   });
 });
