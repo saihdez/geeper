@@ -24,6 +24,7 @@ import { cortesDe, medirRitmo, type Ritmo } from "./pulsos";
 import { asegurarPicoReal, correrQc, duplicadosEsperados, ENTREGA, normalizarAudio, TOPES_PICO, type InformeQc } from "./qc";
 import { HYPERFRAMES_VERSION, dirProyecto } from "./rutas";
 import { correrHf } from "./hyperframes";
+import { leerCheck, type ResumenCheck } from "./render-check";
 import { banderasRender, hayNvidia, renderConRespaldo } from "./render-gpu";
 import { SISTEMA } from "./plataforma";
 import { origenClip, reglaClip } from "./clips";
@@ -43,23 +44,6 @@ export interface ResultadoRender {
   aprobado: boolean;
   gpu: boolean;
   segundos: number;
-}
-
-interface ResumenCheck {
-  ok: boolean;
-  errores: number;
-  avisos: number;
-  resumen: string;
-}
-
-function contarHallazgos(v: unknown, acc: { errores: string[]; avisos: number }) {
-  if (Array.isArray(v)) v.forEach((x) => contarHallazgos(x, acc));
-  else if (v && typeof v === "object") {
-    const o = v as Record<string, unknown>;
-    if (o.severity === "error") acc.errores.push(`${String(o.code ?? "")}: ${String(o.message ?? "")}`.slice(0, 300));
-    else if (o.severity === "warning") acc.avisos++;
-    Object.values(o).forEach((x) => contarHallazgos(x, acc));
-  }
 }
 
 export async function versionDeProyecto(proyectoId: string, numero?: number): Promise<{ numero: number; p: Proyecto }> {
@@ -260,16 +244,10 @@ async function revisarHf(ctx: CtxRender, dir: string, dirBuild: string, formato:
       const r = await correrHf(["check", "--json", "--no-cache", "--no-craft"], {
         cwd: dirBuild, env: ENV_HF, permitirFallo: true, signal: ctx.signal, timeout: 15 * 60_000,
       });
-      await fs.writeFile(tmp!, r.stdout || "{}");
-      let j: { ok?: boolean } = {};
-      try {
-        j = JSON.parse(r.stdout) as { ok?: boolean };
-      } catch {
-        /* salida no JSON */
-      }
-      const acc = { errores: [] as string[], avisos: 0 };
-      contarHallazgos(j, acc);
-      const res = { ok: j.ok === true, errores: acc.errores.length, avisos: acc.avisos, resumen: acc.errores.slice(0, 5).join("\n") };
+      // WRK-12: sin JSON con `ok` booleano se lanza aquí dentro, para que no se guarde el manifiesto.
+      if (r.codigo !== 0) ctx.log(`hyperframes check salió con código ${r.codigo}`);
+      const res = leerCheck(r.stdout);
+      await fs.writeFile(tmp!, r.stdout);
       ctx.log(`check: ${res.ok ? "ok" : "con problemas"}, ${res.errores} errores, ${res.avisos} avisos`);
       return res;
     },
