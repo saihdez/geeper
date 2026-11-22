@@ -25,3 +25,19 @@ export function textoFaltaArchivo(medios: string[]): string {
   const nombres = [...new Set(medios.map(tuArchivo))];
   return `Falta subir ${nombres.length > 1 ? `${nombres.slice(0, -1).join(", ")} y ${nombres.at(-1)}` : nombres[0]}.`;
 }
+
+/** Los estados de un trabajo que se pueden volver a intentar (los que acepta `relanzar` de cola.ts). */
+export const REINTENTABLES = ["fallido", "interrumpido", "cancelado"] as const;
+
+/**
+ * Corrida → el trabajo más nuevo que la corrió, para «Volver a intentar» (UX-30; función pura). Los
+ * trabajos vienen del más nuevo al más viejo; una corrida relanzada conserva su id y sus archivos.
+ */
+export function trabajoPorCorrida(trabajos: { id: string; payload: unknown }[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const t of trabajos) {
+    const corrida = (t.payload as { corrida?: unknown } | null)?.corrida;
+    if (typeof corrida === "string" && !(corrida in out)) out[corrida] = t.id;
+  }
+  return out;
+}

@@ -21,7 +21,7 @@ import { argsNodos, fijadoDe, infoNodos, instalarNodo } from "./nodos-comfy";
 import type { Contexto } from "./pasos";
 import { GPU_SOLO_BIN } from "./rutas";
 
-export { entradasSinArchivo, hayEjemplo, textoFaltaArchivo, tuArchivo } from "./workflows-texto";
+export { entradasSinArchivo, hayEjemplo, REINTENTABLES, textoFaltaArchivo, trabajoPorCorrida, tuArchivo } from "./workflows-texto";
 
 export const PedidoWorkflow = z.object({
   workflow: z.string().regex(/^[\w.-]+$/),

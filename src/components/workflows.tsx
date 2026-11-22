@@ -5,7 +5,7 @@ import { textoEspera, useMotorVivo } from "./motor";
 import { entradasSinArchivo, textoFaltaArchivo, tuArchivo } from "@/lib/workflows-texto";
 
 interface WfV { id: string; titulo: string; descripcion: string; categoria: string; tipo: string; etiquetas: string[]; modelos: string[]; tamano: number; local: boolean; bloqueo: string | null; aviso: string | null; comunidad: boolean; entradas: number; uso: number; fecha: string | null; miniatura: string | null }
-interface CorridaV { id: string; workflow: string; titulo: string; creada: string; estado: "preparada" | "hecha" | "fallida"; salidas: { archivo: string; tipo: string }[]; segundos?: number; error?: string }
+interface CorridaV { id: string; workflow: string; titulo: string; creada: string; estado: "preparada" | "hecha" | "fallida"; salidas: { archivo: string; tipo: string }[]; segundos?: number; error?: string; trabajo: string | null }
 interface TrabajoV { id: string; estado: string; etapa: string; progreso: number; corrida: string | null; workflow: string | null }
 interface Datos { comfy: { listo: boolean; falta: string | null; instalando: boolean; disponible: boolean }; workflows: WfV[]; corridas: CorridaV[]; trabajos: TrabajoV[] }
 interface Detalle {
@@ -315,14 +315,13 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
             </fieldset>
           )}
           {error && <Aviso tipo="error">{error}</Aviso>}
-          {listo ? (
-            <Aviso tipo="ok">Listo: está en camino. Lo ves avanzar arriba, en «Lo que estás creando».</Aviso>
-          ) : (
-            <div className="space-y-1">
-              <button className="boton boton-primario" disabled={enviando || sinArchivo.length > 0 || (d.nodos.some((n) => !n.permitido) && !permiso)} onClick={() => void crear()}>{enviando ? "Enviando…" : "Crear"}</button>
-              {sinArchivo.length > 0 && <p className="text-xs text-amber-300">{textoFaltaArchivo(sinArchivo.map((e) => e.medio))}</p>}
-            </div>
+          {listo && (
+            <Aviso tipo="ok">Listo: está en camino (lo ves avanzar arriba, en «Lo que estás creando»). ¿Otra versión? Cambia el texto y pulsa «Crear otra».</Aviso>
           )}
+          <div className="space-y-1">
+            <button className="boton boton-primario" disabled={enviando || sinArchivo.length > 0 || (d.nodos.some((n) => !n.permitido) && !permiso)} onClick={() => void crear()}>{enviando ? "Enviando…" : listo ? "Crear otra" : "Crear"}</button>
+            {sinArchivo.length > 0 && <p className="text-xs text-amber-300">{textoFaltaArchivo(sinArchivo.map((e) => e.medio))}</p>}
+          </div>
         </>
       )}
     </section>
@@ -331,7 +330,8 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
 
 function Resultados({ corridas, trabajos, cambio }: { corridas: CorridaV[]; trabajos: TrabajoV[]; cambio: () => void }) {
   const motorVivo = useMotorVivo();
-  const visibles = corridas.filter((c) => c.estado !== "preparada" || trabajos.some((t) => t.corrida === c.id)).slice(0, 12);
+  // Una corrida «preparada» sin trabajo en marcha pero con uno cortado (se apagó la PC…) también se ve: se puede reintentar.
+  const visibles = corridas.filter((c) => c.estado !== "preparada" || trabajos.some((t) => t.corrida === c.id) || c.trabajo).slice(0, 12);
   if (!visibles.length && !trabajos.length) return null;
   return (
     <section className="space-y-3">
@@ -348,8 +348,11 @@ function Resultados({ corridas, trabajos, cambio }: { corridas: CorridaV[]; trab
                   <Barra valor={t.progreso} etiqueta={`Avance de «${c.titulo}»`} />
                   <button className="boton text-xs" onClick={async () => { if (confirm("¿Cancelar?")) { await postJson(`/api/trabajos/${t.id}`, { accion: "cancelar" }).catch(() => {}); cambio(); } }}>Cancelar</button>
                 </div>
-              ) : c.estado === "fallida" ? (
-                <Aviso tipo="error">{c.error?.split("\n")[0] ?? "No se pudo crear."}</Aviso>
+              ) : c.estado !== "hecha" ? (
+                <div className="space-y-2">
+                  <Aviso tipo="error">{c.estado === "preparada" ? "Se cortó antes de terminar." : c.error?.split("\n")[0] ?? "No se pudo crear."}</Aviso>
+                  {c.trabajo && <Reintentar trabajo={c.trabajo} cambio={cambio} />}
+                </div>
               ) : (
                 <div className="space-y-2">
                   {c.salidas.slice(0, 4).map((s) => {
@@ -379,6 +382,29 @@ function Resultados({ corridas, trabajos, cambio }: { corridas: CorridaV[]; trab
         })}
       </div>
     </section>
+  );
+}
+
+/** Relanza el mismo pedido (mismos textos y archivos) con el trabajo que falló o se cortó. */
+function Reintentar({ trabajo, cambio }: { trabajo: string; cambio: () => void }) {
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className="space-y-1">
+      <button className="boton text-xs" disabled={enviando} onClick={async () => {
+        setError(null);
+        setEnviando(true);
+        try {
+          await postJson(`/api/trabajos/${trabajo}`, { accion: "relanzar" });
+          cambio();
+        } catch (e) {
+          setError((e as Error).message);
+        } finally {
+          setEnviando(false);
+        }
+      }}>{enviando ? "Enviando…" : "Volver a intentar"}</button>
+      {error && <Aviso tipo="error">{error}</Aviso>}
+    </div>
   );
 }
 
