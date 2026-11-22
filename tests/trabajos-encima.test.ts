@@ -32,14 +32,14 @@ vi.mock("@/lib/almacen", () => ({
   registrarAssetsEnDb: async () => {},
 }));
 vi.mock("@/lib/modelos", () => ({ huellaPesos: async () => null, etiquetaPesos: async (m: string) => `${m}@sin-pesos-locales` }));
-vi.mock("@/lib/voz", async (orig) => ({
-  ...(await orig<typeof import("@/lib/voz")>()),
-  sintetizar: async (_t: string, _v: string, _vel: number, salida: string) => fs.writeFileSync(salida, "wav"),
-}));
 /** Tiempos de la voz nueva: una palabra cada 0,5 s. */
 const alinear = async (_ctx: unknown, _ruta: string, texto: string): Promise<Palabra[]> =>
   texto.split(" ").map((t, k) => ({ texto: t, inicio: k * 0.5, fin: k * 0.5 + 0.4 }));
-vi.mock("@/lib/importador", () => ({ tiemposDeVoz: alinear }));
+vi.mock("@/lib/voz", async (orig) => ({
+  ...(await orig<typeof import("@/lib/voz")>()),
+  sintetizar: async (_t: string, _v: string, _vel: number, salida: string) => fs.writeFileSync(salida, "wav"),
+  alinearVozNueva: alinear,
+}));
 
 const ctx = { dir, log: () => {} };
 

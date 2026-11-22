@@ -6,7 +6,6 @@ import path from "node:path";
 import { describirAsset, guardarEncima, leerGuardado, registrarAssetsEnDb } from "./almacen";
 import { sha256Texto } from "./archivos";
 import { pista, validarProyecto, type Asset, type Escena, type Palabra, type Proyecto } from "./esquema";
-import { tiemposDeVoz } from "./importador";
 import { limpiarAssets } from "./ediciones";
 import { LICENCIAS } from "./licencias";
 import { escenasEnLinea } from "./linea";
@@ -16,12 +15,17 @@ import { correr } from "./proceso";
 import { HYPERFRAMES_VERSION, MPT_CONTENEDOR, MPT_TAREAS } from "./rutas";
 import { huellaPesos } from "./modelos";
 import { LICENCIA_VOXCPM, sintetizarVoxcpm } from "./voces";
-import { MODELO_WHISPER, sintetizar } from "./voz";
+import { alinearVozNueva, MODELO_WHISPER, NO_SE_ACOMODA, sintetizar } from "./voz";
 
 const tokens = (s: string) => s.split(/\s+/).filter(Boolean);
 
 /** Voz de Kokoro para `texto` con la voz del proyecto (`p.voz`), como asset con sus palabras alineadas. */
-export async function sintetizarAsset(ctx: Contexto & { signal?: AbortSignal }, p: Pick<Proyecto, "voz">, texto: string) {
+export async function sintetizarAsset(
+  ctx: Contexto & { signal?: AbortSignal },
+  p: Pick<Proyecto, "voz">,
+  texto: string,
+  revisar?: (palabras: Palabra[], dur: number) => string | null,
+) {
   const { motor, voz, velocidad, idioma } = p.voz;
   const clave = sha256Texto(JSON.stringify({ texto, motor, voz, velocidad })).slice(0, 12);
   const id = `voz-tts-${clave}`;
@@ -61,7 +65,7 @@ export async function sintetizarAsset(ctx: Contexto & { signal?: AbortSignal }, 
       alineacion: { modelo: `whisper-${MODELO_WHISPER}`, pesos: await huellaPesos(`whisper-${MODELO_WHISPER}`) },
     },
   });
-  const palabras = await tiemposDeVoz(ctx, path.join(ctx.dir, ruta), texto, p.voz.idioma);
+  const palabras = await alinearVozNueva(ctx, path.join(ctx.dir, ruta), texto, p.voz.idioma, revisar);
   return { asset, palabras };
 }
 
@@ -141,6 +145,15 @@ export function repartirGuion(palabras: Palabra[], cuentas: number[], dur: numbe
   return { limites, tramos };
 }
 
+/** Lo menos que puede durar una escena con la voz nueva (REN-05: quedó una de 0,05 s sin subtítulos). */
+export const MIN_ESCENA = 0.2;
+
+/** Escena (1, 2…) que con estos límites duraría menos de MIN_ESCENA, o null. */
+export function escenaMuyCorta(limites: number[]): number | null {
+  for (let j = 0; j + 1 < limites.length; j++) if (limites[j + 1]! - limites[j]! < MIN_ESCENA) return j + 1;
+  return null;
+}
+
 /** Pone la voz nueva del guion completo sobre `base` (la versión de ahora). Lanza si el guion cambió. */
 export function ponerVozGuion(base: Proyecto, dichos: Dicho[], asset: Asset, palabras: Palabra[]): Proyecto {
   const p = structuredClone(base);
@@ -154,6 +167,7 @@ export function ponerVozGuion(base: Proyecto, dichos: Dicho[], asset: Asset, pal
   const voz = pista(p, "voz").clips;
   const visual = pista(p, "visual").clips;
   const { limites, tramos } = repartirGuion(palabras, cuentas, asset.duracion!);
+  if (escenaMuyCorta(limites) !== null) throw new Error(NO_SE_ACOMODA);
   orden.forEach((x, j) => {
     const ini = limites[j]!;
     const fin = Math.max(ini + 0.05, limites[j + 1]!);
@@ -200,7 +214,12 @@ export async function regenerarVoz(
     // Guion completo: el texto de las escenas actuales (sin lo recortado), en orden. Cada escena
     // conserva su tramo de palabras.
     const dichos = escenasEnLinea(p).map((x) => ({ escena: x.escena.id, palabras: tokens(textoADecir(x.escena)) }));
-    const { asset, palabras } = await sintetizarAsset(ctx, p, dichos.map((d) => d.palabras.join(" ")).join(" "));
+    const cuentas = dichos.map((d) => d.palabras.length);
+    const revisar = (palabras: Palabra[], dur: number) => {
+      const n = palabras.length === cuentas.reduce((a, b) => a + b, 0) ? escenaMuyCorta(repartirGuion(palabras, cuentas, dur).limites) : null;
+      return n === null ? null : `la escena ${n} quedaría de menos de ${MIN_ESCENA} s`;
+    };
+    const { asset, palabras } = await sintetizarAsset(ctx, p, dichos.map((d) => d.palabras.join(" ")).join(" "), revisar);
     aplicar = (base) => ponerVozGuion(base, dichos, asset, palabras);
   }
   // Antes de guardar, sobre la copia del trabajo: un error propio (p. ej. la alineación) sale tal cual.
