@@ -99,6 +99,13 @@ export function estadoCreacion(trabajos: TrabajoV[]): { fase: "en-curso" | "fall
   return { fase: "esperando", trabajo: ultimo };
 }
 
+/** UX-29: qué decir cuando no se pudo hacer el video. Si lo canceló la persona, no se dice que «no se pudo». */
+export function textoFalloCreacion(t: Pick<TrabajoV, "estado"> | null): string {
+  return t?.estado === "cancelado"
+    ? "Cancelaste la creación del video. Puedes volver a pedirlo cuando quieras."
+    : "No se pudo hacer el video. Puedes volver a intentarlo; si vuelve a fallar, abajo en «Trabajos de este proyecto» ves qué pasó.";
+}
+
 /**
  * WEB-10: la lista de trabajos pide /api/trabajos cada 2 s mientras está montada. Se monta sólo si la
  * persona la abrió o si hay algo en marcha (o el proyecto aún se está creando); en reposo, cero.
