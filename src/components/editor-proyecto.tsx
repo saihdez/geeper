@@ -118,12 +118,30 @@ interface Vectorizar {
   ocupado: boolean;
 }
 
-/** Escena donde está hoy una frase que marcó el QC (el informe puede ser de una versión anterior). */
-export function escenaDeFrase(f: Pick<FraseQc, "texto">, escenas: { id: string; indice: number; grupos: { texto: string }[] }[]) {
-  return escenas.find((e) => e.grupos.some((g) => g.texto === f.texto)) ?? null;
+type EscenaFrases = { id: string; indice: number; grupos: { texto: string; inicio?: number; fin?: number }[] };
+
+/**
+ * Escena donde está hoy una frase que marcó el QC (el informe puede ser de una versión anterior). Se busca
+ * por texto; si la frase se repite en varias escenas, gana la que la tiene más cerca del segundo `t` del informe.
+ */
+export function escenaDeFrase(f: Pick<FraseQc, "texto"> & { t?: number }, escenas: EscenaFrases[]) {
+  const lejos = (g: EscenaFrases["grupos"][number]) => {
+    if (f.t === undefined || g.inicio === undefined) return 0;
+    const fin = g.fin ?? g.inicio;
+    return f.t < g.inicio ? g.inicio - f.t : f.t > fin ? f.t - fin : 0;
+  };
+  let mejor: { e: EscenaFrases; d: number } | null = null;
+  for (const e of escenas) {
+    for (const g of e.grupos) {
+      if (g.texto !== f.texto) continue;
+      const d = lejos(g);
+      if (!mejor || d < mejor.d) mejor = { e, d };
+    }
+  }
+  return mejor?.e ?? null;
 }
 
-export function InformeQc({ r, slug, vectorizar, escenas = [] }: { r: Render; slug: string; vectorizar?: Vectorizar; escenas?: { id: string; indice: number; grupos: { texto: string }[] }[] }) {
+export function InformeQc({ r, slug, vectorizar, escenas = [] }: { r: Render; slug: string; vectorizar?: Vectorizar; escenas?: EscenaFrases[] }) {
   const inf = r.informeQc;
   if (!inf) return null;
   const res = resumirQc(inf.reglas);
@@ -145,7 +163,7 @@ export function InformeQc({ r, slug, vectorizar, escenas = [] }: { r: Render; sl
                     <li key={`${f.t}-${f.texto}`}>
                       «{f.texto}» {porQueFalla(f)}.{" "}
                       {esc
-                        ? <a className="text-acento hover:underline" href={`#escena-${esc.id}`}>Ir a la escena {esc.indice + 1}</a>
+                        ? <a className="text-acento underline" href={`#escena-${esc.id}`}>Ir a la escena {esc.indice + 1}</a>
                         : <span className="text-tenue">(ya cambió desde que se hizo este video)</span>}
                     </li>
                   );
