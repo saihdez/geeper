@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { escribirEstadoAsistente, leerEstadoAsistente, type EstadoAsistente } from "@/lib/asistente-avatar";
 import { Aviso, Barra, pedir, postJson, useSondeo } from "./comun";
 import { ElegirVozAvatar, type VozElegida } from "./elegir-voz-avatar";
 
@@ -18,7 +19,7 @@ export interface AvatarV {
   versiones: { nota: string; fecha: string }[];
 }
 interface Opcion { id: string; nombre: string; detalle?: string }
-interface TrabajoV { id: string; tipo: string; estado: string; etapa: string; progreso: number; avatar: string | null; propuesta: string | null }
+interface TrabajoV { id: string; tipo: string; estado: string; etapa: string; progreso: number; error: string | null; avatar: string | null; propuesta: string | null }
 interface Datos {
   wan2gp: { listo: boolean; falta: string | null; instalando: boolean };
   avatares: AvatarV[];
@@ -42,10 +43,33 @@ const RETOQUES = ["Ponle lentes", "Que sonría un poco", "Cámbiale la ropa por 
 
 const enCurso = (e?: string) => e === "pendiente" || e === "corriendo";
 
+/** Guarda en la URL por dónde va el asistente, para retomarlo al recargar o volver (UX-13). */
+function guardarEnUrl(e: EstadoAsistente | null) {
+  try {
+    const q = escribirEstadoAsistente(window.location.search, e);
+    if (q !== window.location.search) window.history.replaceState(window.history.state, "", `${window.location.pathname}${q}${window.location.hash}`);
+  } catch {
+    /* sin URL que tocar */
+  }
+}
+
 /** Avatares: crear (describirlo o desde una foto), elegir entre varias tomas, nombrarlo y retocarlo. */
 export function PaginaAvatares() {
   const { datos, error, recargar } = useSondeo<Datos>("/api/avatares", 5000);
   const [creando, setCreando] = useState(false);
+  const [inicial, setInicial] = useState<EstadoAsistente | null>(null);
+  // Al llegar los datos: retomar lo que dice la URL o, si no, las opciones que se están dibujando (UX-13).
+  // Se hace una vez, durante el render (los datos sólo llegan en el navegador).
+  const [retomado, setRetomado] = useState(false);
+  if (datos && !retomado) {
+    setRetomado(true);
+    const t = datos.trabajos.find((x) => x.tipo === "avatar.proponer" && enCurso(x.estado) && x.propuesta);
+    const e = leerEstadoAsistente(window.location.search) ?? (t ? { propuesta: t.propuesta!, trabajo: t.id } : null);
+    if (e && datos.wan2gp.listo) {
+      setInicial(e);
+      setCreando(true);
+    }
+  }
   if (error && !datos) return <Aviso tipo="error">{error}</Aviso>;
   if (!datos) return <p className="text-tenue">Cargando…</p>;
   return (
@@ -67,7 +91,7 @@ export function PaginaAvatares() {
           <a className="boton boton-primario inline-block" href="/sistema#wan2gp">Ir a Sistema para instalarlo</a>
         </div>
       ) : creando ? (
-        <Crear datos={datos} cerrar={() => { setCreando(false); void recargar(); }} />
+        <Crear datos={datos} inicial={inicial} cerrar={() => { guardarEnUrl(null); setInicial(null); setCreando(false); void recargar(); }} />
       ) : (
         <button className="boton boton-primario" onClick={() => setCreando(true)}>＋ Crear un avatar</button>
       )}
@@ -96,8 +120,8 @@ function Paso({ actual, n, titulo }: { actual: number; n: number; titulo: string
   );
 }
 
-function Crear({ datos, cerrar }: { datos: Datos; cerrar: () => void }) {
-  const [paso, setPaso] = useState<1 | 2 | 3>(1);
+function Crear({ datos, inicial, cerrar }: { datos: Datos; inicial: EstadoAsistente | null; cerrar: () => void }) {
+  const [paso, setPaso] = useState<1 | 2 | 3>(inicial ? 2 : 1);
   const [conFoto, setConFoto] = useState(false);
   const [estilo, setEstilo] = useState("realista");
   const [descripcion, setDescripcion] = useState("");
@@ -106,9 +130,13 @@ function Crear({ datos, cerrar }: { datos: Datos; cerrar: () => void }) {
   const [look, setLook] = useState("");
   const [foto, setFoto] = useState<File | null>(null);
   const [consiento, setConsiento] = useState(false);
-  const [pedido, setPedido] = useState<{ propuesta: string; trabajo: string } | null>(null);
+  const [pedido, setPedido] = useState<{ propuesta: string; trabajo: string } | null>(inicial ? { propuesta: inicial.propuesta, trabajo: inicial.trabajo } : null);
   const [avance, setAvance] = useState<Avance | null>(null);
-  const [elegida, setElegida] = useState<number | null>(null);
+  const [elegida, setElegida] = useState<number | null>(inicial?.toma ?? null);
+
+  useEffect(() => {
+    if (pedido) guardarEnUrl({ ...pedido, ...(elegida ? { toma: elegida } : {}) });
+  }, [pedido, elegida]);
   const [nombre, setNombre] = useState("");
   const [voz, setVoz] = useState<VozElegida | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -125,7 +153,15 @@ function Crear({ datos, cerrar }: { datos: Datos; cerrar: () => void }) {
         setAvance(d);
         if (enCurso(d.estado)) t = setTimeout(() => void tick(), 3000);
       } catch (e) {
-        if (vivo) setError((e as Error).message);
+        if (!vivo) return;
+        const m = (e as Error).message;
+        if (/No existe esa propuesta/.test(m)) {
+          // Lo que guardaba la URL ya no existe (se borró, es de otra PC…): se empieza de nuevo.
+          guardarEnUrl(null);
+          setPedido(null);
+          setPaso(1);
+          setError("Esas opciones ya no están: crea el avatar de nuevo.");
+        } else setError(m);
       }
     };
     void tick();
@@ -170,6 +206,19 @@ function Crear({ datos, cerrar }: { datos: Datos; cerrar: () => void }) {
     }
   }
 
+  /** Con las opciones dibujándose, «Cancelar» lo pregunta y para el trabajo (no deja la tarjeta ocupada a escondidas). */
+  async function cancelar() {
+    if (pedido && avance && enCurso(avance.estado)) {
+      if (!confirm("¿Dejar de dibujar? Se pierde lo que lleva.")) return;
+      try {
+        await postJson(`/api/trabajos/${pedido.trabajo}`, { accion: "cancelar" });
+      } catch {
+        /* ya había terminado */
+      }
+    }
+    cerrar();
+  }
+
   async function guardar() {
     if (!pedido || !elegida) return;
     setError(null);
@@ -192,7 +241,7 @@ function Crear({ datos, cerrar }: { datos: Datos; cerrar: () => void }) {
           <Paso actual={paso} n={2} titulo="Elige el que más te guste" />
           <Paso actual={paso} n={3} titulo="Nombre y voz" />
         </ol>
-        <button className="boton" onClick={cerrar}>Cancelar</button>
+        <button className="boton" onClick={() => void cancelar()}>Cancelar</button>
       </div>
       {error && <Aviso tipo="error">{error}</Aviso>}
 
@@ -385,6 +434,9 @@ function Tarjeta({ avatar: a, listo, trabajo, cambio }: { avatar: AvatarV; listo
             <p className="text-xs">{trabajo.estado === "pendiente" ? "Retoque en espera de la tarjeta de video" : trabajo.etapa || "Retocando…"}</p>
             <Barra valor={trabajo.progreso} />
           </div>
+        )}
+        {trabajo?.estado === "fallido" && !a.retoque && (
+          <Aviso tipo="error">No se pudo retocar{trabajo.error ? `: ${trabajo.error}` : "."} Puedes volver a intentarlo.</Aviso>
         )}
         {error && <Aviso tipo="error">{error}</Aviso>}
         {a.retoque && !retocando && !editando && (
