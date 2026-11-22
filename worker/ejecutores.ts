@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { crearCarpetas, guardarProyecto, registrarAssetsEnDb } from "@/lib/almacen";
 import { generarPropuesta, retocarAvatar } from "@/lib/avatares";
-import { guardarPayload, type Payload, type TipoTrabajo } from "@/lib/cola";
+import { CambiarDeFila, guardarPayload, type Payload, type TipoTrabajo } from "@/lib/cola";
 import { db } from "@/lib/db";
 import { Formato } from "@/lib/esquema";
 import { tomarGpu } from "@/lib/gpu";
@@ -36,6 +36,8 @@ import { dirProyecto } from "@/lib/rutas";
 export interface Trabajo {
   id: string;
   tipo: string;
+  /** Fila en la que corre (cola.ts MOTORES); sin él, la de su tipo. */
+  motor?: string;
   proyectoId: string | null;
   payload: Payload;
 }
@@ -252,8 +254,10 @@ async function visualReencuadrar(t: Trabajo, h: Herramientas): Promise<Salida> {
 
 async function vozRegenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
   const escena = typeof t.payload.escena === "string" ? t.payload.escena : null;
-  await h.etapa(escena ? `Voz nueva para ${escena} y subtítulos realineados` : "Voz nueva del guion completo y subtítulos realineados", 0.1);
   const { p } = await versionDeProyecto(t.proyectoId!);
+  // Una voz diseñada (VoxCPM2) espera la tarjeta: en la fila «voz» frenaría importar, clips y demos (GPU-06).
+  if (p.voz.motor === "voxcpm" && (t.motor ?? "voz") === "voz") throw new CambiarDeFila("tarjeta", "En cola: espera la tarjeta gráfica (voz diseñada)");
+  await h.etapa(escena ? `Voz nueva para ${escena} y subtítulos realineados` : "Voz nueva del guion completo y subtítulos realineados", 0.1);
   const r = await regenerarVoz(h, t.proyectoId!, p, escena);
   return { resultado: r, siguiente: siguienteDe(t.payload, { version: r.version }) };
 }

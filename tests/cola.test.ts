@@ -106,4 +106,19 @@ describe("cola en SQLite", () => {
     expect(r.interrumpidos).toBe(1);
     expect((await db.trabajo.findUniqueOrThrow({ where: { id: t.id } })).error).toBe(cola.CORTADO_DOS_VECES);
   }, 60_000);
+
+  it("lo que espera la tarjeta no va en la fila «voz» y un trabajo puede cambiar de fila sin gastar intento (GPU-06)", async () => {
+    expect(cola.TIPOS["voz.disenar"].motor).toBe("tarjeta");
+    expect(cola.TIPOS["proyecto.traducir"].motor).toBe("tarjeta");
+    expect(cola.MOTORES).toContain("tarjeta");
+    await db.trabajo.updateMany({ data: { estado: "cancelado" } });
+    const t = await cola.encolar("p1", "voz.regenerar", {});
+    await cola.reclamar("voz", "w1");
+    expect(await cola.cambiarDeFila(t.id, "w1", "tarjeta", "En cola: espera la tarjeta gráfica")).toBe(true);
+    const fila = await db.trabajo.findUniqueOrThrow({ where: { id: t.id } });
+    expect(fila).toMatchObject({ estado: "pendiente", motor: "tarjeta", usaGpu: true, intentos: 0, workerId: null });
+    // La fila «voz» queda libre para lo de CPU; la «tarjeta» lo toma.
+    expect(await cola.reclamar("voz", "w1")).toBeNull();
+    expect((await cola.reclamar("tarjeta", "w1"))?.id).toBe(t.id);
+  });
 });

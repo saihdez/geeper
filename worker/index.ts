@@ -1,11 +1,11 @@
 /**
- * Worker de Geeper: un ejecutor por motor (mpt, voz, render, red), cada uno con concurrencia 1.
+ * Worker de Geeper: un ejecutor por motor (mpt, voz, render, red, tarjeta), cada uno con concurrencia 1.
  * Uso: pnpm run worker
  */
 import { appendFileSync } from "node:fs";
 import path from "node:path";
 import {
-  Espera, esperar, fallar, guardarLatidoWorker, latido, LATIDO_MS, marcarEtapa, MOTORES, nuevoWorkerId, reclamar,
+  CambiarDeFila, cambiarDeFila, Espera, esperar, fallar, guardarLatidoWorker, latido, LATIDO_MS, marcarEtapa, MOTORES, nuevoWorkerId, reclamar,
   recuperarAlArrancar, terminar, type Motor, type Payload, type TipoTrabajo,
 } from "@/lib/cola";
 import { db, prepararDb } from "@/lib/db";
@@ -93,7 +93,7 @@ async function correrUno(motor: Motor): Promise<boolean> {
     proyecto = t.proyectoId ? await db.proyecto.findUnique({ where: { id: t.proyectoId } }) : null;
     // Dentro de enTrabajo, cancelar llega a todo correr() del ejecutor, aunque no reciba la señal (WRK-05).
     const salida = await enTrabajo(ctrl.signal, () => EJECUTORES[t.tipo as TipoTrabajo](
-      { id: t.id, tipo: t.tipo, proyectoId: t.proyectoId, payload: t.payload as Payload },
+      { id: t.id, tipo: t.tipo, motor: t.motor, proyectoId: t.proyectoId, payload: t.payload as Payload },
       {
         dir: proyecto ? dirProyecto(proyecto.slug) : dirProyecto("sistema"),
         log: escribir,
@@ -114,6 +114,13 @@ async function correrUno(motor: Motor): Promise<boolean> {
       escribir(`.. ${e.etapa}; vuelve a la cola hasta ${e.hasta.toISOString()}`);
       await esperar(t.id, workerId, e.hasta, e.etapa);
       avisar(`${motor}: ${t.tipo} ${t.id} en espera: ${tapar(e.etapa)}`);
+      return true;
+    }
+    if (e instanceof CambiarDeFila && !apagando && !ctrl.signal.aborted) {
+      // Espera la tarjeta: sigue en otra fila para no frenar los trabajos de CPU de ésta (GPU-06).
+      escribir(`.. ${e.etapa}; pasa a la fila «${e.motor}»`);
+      await cambiarDeFila(t.id, workerId, e.motor, e.etapa);
+      avisar(`${motor}: ${t.tipo} ${t.id} pasa a la fila ${e.motor}`);
       return true;
     }
     const msg = e instanceof Error ? (e.stack ?? e.message) : String(e);
