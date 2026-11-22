@@ -75,3 +75,14 @@ export function pedidoAvatar(o: { conFoto: boolean; textos: TextosAvatar; estilo
 /** Lo mínimo para «Describirlo con palabras»; con foto el texto es opcional. */
 export const puedeCrearAvatar = (conFoto: boolean, textos: TextosAvatar, hayFoto: boolean, consiento: boolean) =>
   conFoto ? hayFoto && consiento : textos.palabras.trim().length >= 8;
+
+/**
+ * A dónde volver después de crear el avatar (`?volver=/proyectos/<id>`), sólo si es un proyecto de
+ * Geeper: nunca otra página ni otro sitio (UX-32; función pura).
+ */
+export function volverSeguro(v: string | null | undefined): string | null {
+  return v && /^\/proyectos\/[\w-]{1,80}$/.test(v) ? v : null;
+}
+
+/** El enlace a Avatares que trae de vuelta al video desde el que se fue. */
+export const enlaceAvatares = (proyectoId: string) => `/avatares?volver=${encodeURIComponent(`/proyectos/${proyectoId}`)}`;

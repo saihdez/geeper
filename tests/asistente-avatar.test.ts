@@ -1,6 +1,6 @@
 /** UX-13: el asistente de avatares se retoma desde la URL y los retoques fallidos se ven en la biblioteca. */
 import { describe, expect, it, vi } from "vitest";
-import { escribirEstadoAsistente, leerEstadoAsistente, pedidoAvatar, puedeCrearAvatar, retoquesVisibles } from "@/lib/asistente-avatar";
+import { enlaceAvatares, escribirEstadoAsistente, leerEstadoAsistente, pedidoAvatar, puedeCrearAvatar, retoquesVisibles, volverSeguro } from "@/lib/asistente-avatar";
 
 describe("estado del asistente en la URL (UX-13)", () => {
   it("lee propuesta, trabajo y toma; rechaza lo que no tiene la forma esperada", () => {
@@ -32,6 +32,18 @@ describe("un texto por modo (UX-23)", () => {
     expect(puedeCrearAvatar(true, textos, true, true)).toBe(true);
     expect(puedeCrearAvatar(true, textos, true, false)).toBe(false);
     expect(puedeCrearAvatar(false, { palabras: "corto", foto: "con lentes y traje azul" }, false, false)).toBe(false);
+  });
+});
+
+describe("volver al video (UX-32)", () => {
+  it("el enlace desde Presentador vuelve al mismo proyecto", () => {
+    const q = new URL(enlaceAvatares("cm9abc_1"), "http://x").searchParams.get("volver");
+    expect(volverSeguro(q)).toBe("/proyectos/cm9abc_1");
+  });
+  it("sólo vuelve a un proyecto de Geeper", () => {
+    for (const malo of ["https://otro.sitio/proyectos/x", "//otro.sitio", "/sistema", "/proyectos/../sistema", "/proyectos/", "javascript:alert(1)", null, undefined, ""]) {
+      expect(volverSeguro(malo)).toBeNull();
+    }
   });
 });
 

@@ -4,6 +4,7 @@ import type { AvatarV } from "./avatares";
 import { Aviso, Barra, pedir, postJson, useSondeo } from "./comun";
 import type { MotorVoz } from "./elegir-voz";
 import { useMotorVivo } from "./motor";
+import { enlaceAvatares } from "@/lib/asistente-avatar";
 import type { Formato, Marco } from "@/lib/esquema";
 import { metricas } from "@/lib/formatos";
 import { cajaMarco } from "@/lib/marco";
@@ -216,15 +217,15 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
               </div>
             ) : d.avatares.length === 0 ? (
               <div className="space-y-2">
-                <p>Todavía no tienes avatares. Crea uno (realista o animado) y vuelve aquí.</p>
-                <a className="boton boton-primario inline-block" href="/avatares">Crear un avatar</a>
+                <p>Primero crea un avatar (3 pasos, unos minutos). Después vuelves aquí y lo eliges.</p>
+                <a className="boton boton-primario inline-block" href={enlaceAvatares(proyectoId)}>Crear un avatar</a>
               </div>
             ) : (
               <>
                 {(() => {
                   const sel = d.avatares.find((a) => a.id === elegido);
                   if (!sel) return null;
-                  if (!sel.voz) return <Aviso tipo="info">{sel.nombre} todavía no tiene voz elegida: va a hablar con la voz del video. <a className="underline" href="/avatares">Elegirle una voz</a></Aviso>;
+                  if (!sel.voz) return <Aviso tipo="info">{sel.nombre} todavía no tiene voz elegida: va a hablar con la voz del video. <a className="underline" href={enlaceAvatares(proyectoId)}>Elegirle una voz</a></Aviso>;
                   if (mismaVoz(d.vozVideo, sel.voz)) return null;
                   const v = sel.voz;
                   return (
@@ -246,7 +247,7 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
                         <span className="block truncate px-1 py-0.5 text-xs">{a.nombre}</span>
                       </button>
                     ))}
-                    <a href="/avatares" className="flex w-24 items-center justify-center rounded-lg border border-dashed border-borde text-center text-xs text-tenue hover:text-white">＋ Otro avatar</a>
+                    <a href={enlaceAvatares(proyectoId)} className="flex w-24 items-center justify-center rounded-lg border border-dashed border-borde text-center text-xs text-tenue hover:text-white">＋ Otro avatar</a>
                   </div>
                 </fieldset>
 

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { escribirEstadoAsistente, leerEstadoAsistente, pedidoAvatar, puedeCrearAvatar, type EstadoAsistente, type TextosAvatar } from "@/lib/asistente-avatar";
+import { escribirEstadoAsistente, leerEstadoAsistente, pedidoAvatar, puedeCrearAvatar, volverSeguro, type EstadoAsistente, type TextosAvatar } from "@/lib/asistente-avatar";
 import { Aviso, Barra, pedir, postJson, useSondeo } from "./comun";
 import { ElegirVozAvatar, type VozElegida } from "./elegir-voz-avatar";
 
@@ -61,8 +61,12 @@ export function PaginaAvatares() {
   // Al llegar los datos: retomar lo que dice la URL o, si no, las opciones que se están dibujando (UX-13).
   // Se hace una vez, durante el render (los datos sólo llegan en el navegador).
   const [retomado, setRetomado] = useState(false);
+  // Si se llegó desde un video («Presentador»), el enlace para volver a él (UX-32).
+  const [volver, setVolver] = useState<string | null>(null);
+  const [guardado, setGuardado] = useState(false);
   if (datos && !retomado) {
     setRetomado(true);
+    setVolver(volverSeguro(new URLSearchParams(window.location.search).get("volver")));
     const t = datos.trabajos.find((x) => x.tipo === "avatar.proponer" && enCurso(x.estado) && x.propuesta);
     const e = leerEstadoAsistente(window.location.search) ?? (t ? { propuesta: t.propuesta!, trabajo: t.id } : null);
     if (e && datos.wan2gp.listo) {
@@ -80,7 +84,14 @@ export function PaginaAvatares() {
           Un personaje, realista o animado, que presenta tus videos hablando con la voz del video. Se crea una vez y después lo eliges desde
           cualquier proyecto («Presentador»). Todo se hace en esta computadora, sin pagar nada.
         </p>
+        {volver && !guardado && <a className="inline-block text-sm text-acento underline" href={volver}>← Volver a tu video</a>}
       </header>
+      {guardado && (
+        <Aviso tipo="ok">
+          Listo: ya está en tu biblioteca.{" "}
+          {volver ? <>Ahora vuelve a tu video y elígelo en «Presentador». <a className="boton boton-primario ml-2 inline-block" href={volver}>Volver a tu video</a></> : "Ya lo puedes elegir en «Presentador» desde cualquier video."}
+        </Aviso>
+      )}
       {!datos.wan2gp.listo ? (
         <div className="space-y-2">
           <Aviso tipo="info">
@@ -91,9 +102,9 @@ export function PaginaAvatares() {
           <a className="boton boton-primario inline-block" href="/sistema#wan2gp">Ir a Sistema para instalarlo</a>
         </div>
       ) : creando ? (
-        <Crear datos={datos} inicial={inicial} cerrar={() => { guardarEnUrl(null); setInicial(null); setCreando(false); void recargar(); }} />
+        <Crear datos={datos} inicial={inicial} alGuardar={() => setGuardado(true)} cerrar={() => { guardarEnUrl(null); setInicial(null); setCreando(false); void recargar(); }} />
       ) : (
-        <button className="boton boton-primario" onClick={() => setCreando(true)}>＋ Crear un avatar</button>
+        <button className="boton boton-primario" onClick={() => { setGuardado(false); setCreando(true); }}>＋ Crear un avatar</button>
       )}
       {datos.avatares.length > 0 ? (
         <section className="space-y-3">
@@ -120,7 +131,7 @@ function Paso({ actual, n, titulo }: { actual: number; n: number; titulo: string
   );
 }
 
-function Crear({ datos, inicial, cerrar }: { datos: Datos; inicial: EstadoAsistente | null; cerrar: () => void }) {
+function Crear({ datos, inicial, cerrar, alGuardar }: { datos: Datos; inicial: EstadoAsistente | null; cerrar: () => void; alGuardar: () => void }) {
   const [paso, setPaso] = useState<1 | 2 | 3>(inicial ? 2 : 1);
   const [conFoto, setConFoto] = useState(false);
   const [estilo, setEstilo] = useState("realista");
@@ -232,6 +243,7 @@ function Crear({ datos, inicial, cerrar }: { datos: Datos; inicial: EstadoAsiste
     setEnviando(true);
     try {
       await postJson("/api/avatares/propuestas", { accion: "guardar", propuesta: pedido.propuesta, toma: elegida, nombre, ...(voz ? { voz } : {}) });
+      alGuardar();
       cerrar();
     } catch (e) {
       setError((e as Error).message);
@@ -317,8 +329,9 @@ function Crear({ datos, inicial, cerrar }: { datos: Datos; inicial: EstadoAsiste
             <div className="mt-2 grid gap-3 sm:grid-cols-2">
               <label className="space-y-1"><span className="block text-xs text-tenue">Luz</span>
                 <select className="campo" value={luz} onChange={(ev) => setLuz(ev.target.value)}>
-                  <option value="">Estudio pareja (recomendada)</option>
-                  {datos.luces.map((l) => <option key={l.id} value={l.id}>{l.nombre}</option>)}
+                  <option value="">Luz de estudio uniforme (recomendada)</option>
+                  {/* «estudio» es la misma luz que la recomendada: no se repite (UX-32). */}
+                  {datos.luces.filter((l) => l.id !== "estudio").map((l) => <option key={l.id} value={l.id}>{l.nombre}</option>)}
                 </select>
               </label>
               <label className="space-y-1"><span className="block text-xs text-tenue">Look</span>
