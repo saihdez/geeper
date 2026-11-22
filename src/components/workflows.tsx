@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Aviso, Barra, archivo, pedir, postJson, useSondeo } from "./comun";
 import { textoEspera, useMotorVivo } from "./motor";
+import { entradasSinArchivo, textoFaltaArchivo, tuArchivo } from "@/lib/workflows-texto";
 
 interface WfV { id: string; titulo: string; descripcion: string; categoria: string; tipo: string; etiquetas: string[]; modelos: string[]; tamano: number; local: boolean; bloqueo: string | null; aviso: string | null; comunidad: boolean; entradas: number; uso: number; fecha: string | null; miniatura: string | null }
 interface CorridaV { id: string; workflow: string; titulo: string; creada: string; estado: "preparada" | "hecha" | "fallida"; salidas: { archivo: string; tipo: string }[]; segundos?: number; error?: string }
@@ -217,6 +218,7 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
   if (error && !d) return <Aviso tipo="error">{error}</Aviso>;
   if (!d) return <p className="text-sm text-tenue">Cargando la receta…</p>;
   const w = d.workflow;
+  const sinArchivo = entradasSinArchivo(d.entradas, Object.keys(archivos).filter((n) => archivos[Number(n)]), (e) => !!e.ejemplo);
   return (
     <section className="tarjeta space-y-4 p-4" aria-label={`Receta ${w.titulo}`}>
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -241,7 +243,10 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
         <>
           {d.entradas.length > 0 && (
             <fieldset className="space-y-3">
-              <legend className="font-medium">1. Tus archivos <span className="text-xs font-normal text-tenue">(si no subes nada, usa el de ejemplo)</span></legend>
+              <legend className="font-medium">
+                1. Tus archivos{" "}
+                {d.entradas.every((e) => e.ejemplo) && <span className="text-xs font-normal text-tenue">(si no subes nada, usa el de ejemplo)</span>}
+              </legend>
               {d.entradas.map((e, i) => (
                 <div key={e.nodo} className="flex flex-wrap items-center gap-3">
                   {e.ejemplo && e.medio === "image" && (
@@ -252,7 +257,9 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
                     {archivos[e.nodo] ? "Cambiar" : `Subir ${MEDIO[e.medio] ?? "un archivo"}${d.entradas.length > 1 ? ` (${i + 1})` : ""}`}
                     <input type="file" className="sr-only" accept={ACEPTA[e.medio] ?? ""} onChange={(ev) => setArchivos((x) => ({ ...x, [e.nodo]: ev.target.files?.[0] ?? null }))} />
                   </label>
-                  <span className="text-xs text-tenue">{archivos[e.nodo]?.name ?? "Ejemplo de la receta"}</span>
+                  <span className={`text-xs ${!archivos[e.nodo] && !e.ejemplo ? "text-amber-300" : "text-tenue"}`}>
+                    {archivos[e.nodo]?.name ?? (e.ejemplo ? "Ejemplo de la receta" : `Sube ${tuArchivo(e.medio)} (hace falta para empezar)`)}
+                  </span>
                 </div>
               ))}
             </fieldset>
@@ -311,7 +318,10 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
           {listo ? (
             <Aviso tipo="ok">Listo: está en camino. Lo ves avanzar arriba, en «Lo que estás creando».</Aviso>
           ) : (
-            <button className="boton boton-primario" disabled={enviando || (d.nodos.some((n) => !n.permitido) && !permiso)} onClick={() => void crear()}>{enviando ? "Enviando…" : "Crear"}</button>
+            <div className="space-y-1">
+              <button className="boton boton-primario" disabled={enviando || sinArchivo.length > 0 || (d.nodos.some((n) => !n.permitido) && !permiso)} onClick={() => void crear()}>{enviando ? "Enviando…" : "Crear"}</button>
+              {sinArchivo.length > 0 && <p className="text-xs text-amber-300">{textoFaltaArchivo(sinArchivo.map((e) => e.medio))}</p>}
+            </div>
           )}
         </>
       )}
