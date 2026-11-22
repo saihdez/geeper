@@ -78,6 +78,8 @@ export function correr(cmd: string, argsPedidos: string[], op: OpcionesCorrer = 
     };
     hijo.stdout?.on("data", lineas("out"));
     hijo.stderr?.on("data", lineas("err"));
+    // Si el comando sale sin leer toda la entrada, escribir da EPIPE: sin esto, el error tumba el proceso.
+    hijo.stdin?.on("error", () => {});
     if (op.entrada !== undefined) hijo.stdin?.end(op.entrada);
     hijo.on("error", mal);
     hijo.on("close", (codigo) => {

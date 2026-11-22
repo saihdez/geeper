@@ -58,4 +58,22 @@ describe.skipIf(process.platform === "win32")("worker como proceso", () => {
     expect(await w.fin).toBe(0);
     expect(w.salida()).toContain("SIGHUP: apagando");
   });
+
+  it("si la base queda bloqueada más de 10 s, el latido avisa y el worker sigue vivo (WRK-08)", async () => {
+    const w = lanzarWorker();
+    await w.hasta("Ejecutores:");
+    const { DatabaseSync } = await import("node:sqlite");
+    const otra = new DatabaseSync(env.GEEPER_DB!);
+    otra.exec("BEGIN EXCLUSIVE");
+    try {
+      // El latido del sistema va cada 15 s y la espera de bloqueo es de 10 s.
+      await w.hasta("No se pudo guardar el latido del worker", 40_000);
+    } finally {
+      otra.exec("COMMIT");
+      otra.close();
+    }
+    expect(w.hijo.exitCode).toBeNull();
+    w.hijo.kill("SIGTERM");
+    expect(await w.fin).toBe(0);
+  }, 60_000);
 });

@@ -25,33 +25,44 @@ function avisar(msg: string) {
   console.log(`[worker ${hora()}] ${msg}`);
 }
 
+const mensaje = (e: unknown) => (e instanceof Error ? e.message.split("\n")[0] : String(e));
+
 async function correrUno(motor: Motor): Promise<boolean> {
   const t = await reclamar(motor, workerId);
   if (!t) return false;
-  const log = await rutaLog({ ...t, payload: t.payload as Payload });
-  await db.trabajo.update({ where: { id: t.id }, data: { log: log.rel } });
+  let logAbs: string | undefined;
   const escribir = (linea: string) => {
+    if (!logAbs) return;
     try {
       // Ningún token llega al log (PUBLICAR.md §6).
-      appendFileSync(log.abs, `${hora()} ${tapar(linea)}\n`);
+      appendFileSync(logAbs, `${hora()} ${tapar(linea)}\n`);
     } catch {
       /* el log no debe tumbar el trabajo */
     }
   };
-  avisar(`${motor}: empieza ${t.tipo} ${t.id}`);
-  escribir(`== ${t.tipo} (${t.id}), intento ${t.intentos}, worker ${workerId}`);
   const ctrl = new AbortController();
   enCurso.set(t.id, ctrl);
-  const pulso = setInterval(() => {
-    void latido(t.id, workerId).then((sigue) => {
-      if (!sigue && !ctrl.signal.aborted) {
-        escribir("El trabajo ya no está corriendo (cancelado): se detiene");
-        ctrl.abort();
-      }
-    });
-  }, LATIDO_MS);
-  const proyecto = t.proyectoId ? await db.proyecto.findUnique({ where: { id: t.proyectoId } }) : null;
+  let pulso: ReturnType<typeof setInterval> | undefined;
+  let proyecto: Awaited<ReturnType<typeof db.proyecto.findUnique>> = null;
   try {
+    const log = await rutaLog({ ...t, payload: t.payload as Payload });
+    logAbs = log.abs;
+    await db.trabajo.update({ where: { id: t.id }, data: { log: log.rel } });
+    avisar(`${motor}: empieza ${t.tipo} ${t.id}`);
+    escribir(`== ${t.tipo} (${t.id}), intento ${t.intentos}, worker ${workerId}`);
+    pulso = setInterval(() => {
+      latido(t.id, workerId).then(
+        (sigue) => {
+          if (!sigue && !ctrl.signal.aborted) {
+            escribir("El trabajo ya no está corriendo (cancelado): se detiene");
+            ctrl.abort();
+          }
+        },
+        // Un fallo de la base (bloqueo largo, disco lleno) no tumba el worker: el latido reintenta.
+        (e: unknown) => escribir(`(el latido no pudo escribir en la base: ${mensaje(e)}; se reintenta)`),
+      );
+    }, LATIDO_MS);
+    proyecto = t.proyectoId ? await db.proyecto.findUnique({ where: { id: t.proyectoId } }) : null;
     const salida = await EJECUTORES[t.tipo as TipoTrabajo](
       { id: t.id, tipo: t.tipo, proyectoId: t.proyectoId, payload: t.payload as Payload },
       {
@@ -60,7 +71,8 @@ async function correrUno(motor: Motor): Promise<boolean> {
         signal: ctrl.signal,
         etapa: async (e, p) => {
           escribir(`— ${e}`);
-          await marcarEtapa(t.id, e, p);
+          // La etapa es sólo informativa: si la base falla, el trabajo sigue.
+          await marcarEtapa(t.id, e, p).catch((err: unknown) => escribir(`(no se pudo anotar la etapa: ${mensaje(err)})`));
         },
       },
     );
@@ -110,8 +122,11 @@ async function main() {
   if (r.interrumpidos || r.reencolados) avisar(`Recuperación: ${r.interrumpidos} interrumpidos (esperan que los relances), ${r.reencolados} devueltos a la cola`);
   await guardarLatidoWorker();
   const latidoSistema = setInterval(() => {
-    void guardarLatidoWorker();
-    void recuperarVencidos().then((n) => n && avisar(`${n} trabajo(s) con lease vencido recuperados`));
+    guardarLatidoWorker().catch((e: unknown) => avisar(`No se pudo guardar el latido del worker: ${mensaje(e)} (se reintenta en ${LATIDO_MS / 1000} s)`));
+    recuperarVencidos().then(
+      (n) => n && avisar(`${n} trabajo(s) con lease vencido recuperados`),
+      (e: unknown) => avisar(`No se pudo revisar los leases vencidos: ${mensaje(e)} (se reintenta en ${LATIDO_MS / 1000} s)`),
+    );
   }, LATIDO_MS);
   const apagar = async (senal: string) => {
     if (apagando) return;
@@ -129,4 +144,10 @@ async function main() {
   await Promise.all(MOTORES.map((m) => bucle(m)));
 }
 
-void main();
+// Una promesa rechazada sin atender no debe tumbar el worker entero (y con él hasta 4 trabajos).
+process.on("unhandledRejection", (e) => avisar(`AVISO: error sin atender (el worker sigue): ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`));
+
+main().catch((e: unknown) => {
+  avisar(`No pudo arrancar: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`);
+  process.exit(1);
+});
