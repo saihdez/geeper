@@ -69,7 +69,7 @@ async function mptGenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
   const proyecto = await db.proyecto.findUniqueOrThrow({ where: { id: t.proyectoId! } });
   await crearCarpetas(proyecto.slug);
   const plantilla = await obtenerPlantilla(proyecto.plantilla);
-  if (!(await apiViva())) throw new Error("El generador de videos está apagado. Abre Docker Desktop, espera un minuto y pulsa «Relanzar».");
+  if (!(await apiViva())) throw new Error("El generador de videos está apagado. Abre Docker Desktop, espera un minuto y pulsa «Volver a intentar».");
   await db.proyecto.update({ where: { id: proyecto.id }, data: { estado: "generando" } });
 
   let taskId = typeof t.payload.mptTaskId === "string" ? t.payload.mptTaskId : undefined;

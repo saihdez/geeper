@@ -12,6 +12,7 @@ const m = vi.hoisted(() => ({
   opciones: [] as Record<string, unknown>[],
   vigilado: [] as string[],
   estados: [] as string[],
+  viva: true,
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -25,7 +26,7 @@ vi.mock("@/lib/gpu", () => ({
   tomarGpu: async (_d: string, op: Record<string, unknown>) => (m.opciones.push(op), { liberar: () => void m.liberado++ }),
 }));
 vi.mock("@/lib/mpt", () => ({
-  apiViva: async () => true,
+  apiViva: async () => m.viva,
   cuerpoVideo: () => ({}),
   crearVideo: async () => "tarea-1",
   modeloImagen: async () => undefined,
@@ -65,5 +66,14 @@ describe("mpt.generar y la tarjeta al cancelar (GPU-03)", () => {
     await expect(EJECUTORES["mpt.generar"]({ id: "t3", tipo: "mpt.generar", proyectoId: "p1", payload: {} }, herramientas(new AbortController()))).rejects.toThrow(/fallida/);
     expect(m.liberado).toBe(1);
     expect(m.vigilado).toEqual([]);
+  });
+
+  it("con el generador apagado manda a pulsar el botón que existe: «Volver a intentar» (UX-07)", async () => {
+    m.viva = false;
+    try {
+      await expect(EJECUTORES["mpt.generar"]({ id: "t4", tipo: "mpt.generar", proyectoId: "p1", payload: {} }, herramientas(new AbortController()))).rejects.toThrow(/pulsa «Volver a intentar»/);
+    } finally {
+      m.viva = true;
+    }
   });
 });
