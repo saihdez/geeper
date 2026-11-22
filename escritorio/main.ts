@@ -19,7 +19,7 @@ import net from "node:net";
 import path from "node:path";
 import { app, BrowserWindow, dialog, Menu, shell } from "electron";
 import { esVueltaOAuth } from "./oauth";
-import { comoRematar, entornoHijos, esDeGeeper, paginaAbriendo, permitirReinicio, plantillaMenu, registrar, rotarRegistro } from "./reglas";
+import { comoRematar, entornoHijos, esDeGeeper, paginaAbriendo, permitirReinicio, PLAZO_APAGAR_MS, plantillaMenu, registrar, rotarRegistro } from "./reglas";
 
 const RAIZ = app.isPackaged ? path.join(process.resourcesPath, "app") : path.join(__dirname, "..", "escritorio-app");
 const hijos: { nombre: string; p: ChildProcess }[] = [];
@@ -293,9 +293,10 @@ async function preguntarTrasError(titulo: string, detalle: string, reintentar: s
 }
 
 /**
- * Detiene el servidor y el worker y espera a que salgan (hasta 6 s). Se les cierra la entrada estándar
- * (vigia.mjs lo toma como Ctrl+C: el worker marca lo que corría como interrumpido y suelta la GPU); al que
- * no salió a tiempo se lo remata, con sus hijos en Windows.
+ * Detiene el servidor y el worker y espera a que salgan (hasta 14 s: el worker se toma hasta 12 s, ver
+ * PLAZO_APAGAR_MS). Se les cierra la entrada estándar (vigia.mjs lo toma como Ctrl+C: el worker marca lo
+ * que corría como interrumpido y suelta la GPU); al que no salió a tiempo se lo remata, con sus hijos en
+ * Windows.
  */
 async function detenerHijos(): Promise<void> {
   const vivos = hijos.splice(0).filter((h) => h.p.exitCode === null && h.p.signalCode === null);
@@ -308,7 +309,7 @@ async function detenerHijos(): Promise<void> {
             if (r && "comando" in r) spawn(r.comando, r.args, { stdio: "ignore", windowsHide: true }).on("error", () => h.p.kill());
             else if (r) h.p.kill(r.senal);
             ok();
-          }, 6000);
+          }, PLAZO_APAGAR_MS);
           h.p.once("exit", () => {
             clearTimeout(tope);
             ok();

@@ -120,6 +120,14 @@ export function paginaAbriendo(): string {
 }
 
 /**
+ * Plazos del apagado, de dentro hacia fuera (WRK-07, ESC-11): el worker espera hasta 12 s a que sus
+ * trabajos cortados queden «interrumpidos» (TOPE_APAGAR_MS en worker/sistema.ts); vigia.mjs le da 13 s
+ * antes de salir solo, y la carcasa (y `pnpm run dev:up`) recién a los 14 s remata al que siga vivo.
+ */
+export const PLAZO_VIGIA_MS = 13_000;
+export const PLAZO_APAGAR_MS = 14_000;
+
+/**
  * Cómo rematar un proceso que no salió solo a tiempo (ESC-11). En Windows, `taskkill /T /F` corta también
  * a sus hijos (ffmpeg, Python, el Chrome de Hyperframes); en el resto, SIGKILL. `null` si ya no hay pid.
  */
