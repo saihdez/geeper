@@ -1,6 +1,7 @@
 "use client";
 import { AvisoPrivados } from "./aviso-privados";
-import { Aviso, useSondeo } from "./comun";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Aviso, pedir } from "./comun";
 import { InstalarPhotocraft } from "./instalar-photocraft";
 import { InstalarHerramienta } from "./instalar-herramienta";
 import { InstalarWan2gp } from "./instalar-wan2gp";
@@ -9,16 +10,58 @@ import { PrepararEstudio } from "./preparar-estudio";
 
 interface Chequeo { nombre: string; ok: boolean; aviso?: boolean; detalle: string; arreglo?: string }
 
+interface Revision { chequeos: Chequeo[]; revisado: string }
+
+/** Revisa al entrar y con «Volver a revisar» (sin repetir solo: cada revisión lanza varios programas). */
+function useRevision() {
+  const [datos, setDatos] = useState<Revision | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [revisando, setRevisando] = useState(false);
+  const turno = useRef(0);
+  const revisar = useCallback(async (forzar: boolean) => {
+    const mio = ++turno.current;
+    setRevisando(true);
+    try {
+      const d = await pedir<Revision>(`/api/sistema${forzar ? "?forzar" : ""}`);
+      if (turno.current === mio) {
+        setDatos(d);
+        setError(null);
+      }
+    } catch (e) {
+      if (turno.current === mio) setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      if (turno.current === mio) setRevisando(false);
+    }
+  }, []);
+  useEffect(() => {
+    const t = setTimeout(() => void revisar(false), 0);
+    const contador = turno; // al salir, cualquier respuesta pendiente queda descartada
+    return () => {
+      clearTimeout(t);
+      contador.current++;
+    };
+  }, [revisar]);
+  return { datos, error, revisando, recargar: () => revisar(true) };
+}
+
+const hora = (iso: string) => new Date(iso).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
+
 export function Sistema() {
-  const { datos, error, recargar } = useSondeo<{ chequeos: Chequeo[] }>("/api/sistema", 30_000);
+  const { datos, error, revisando, recargar } = useRevision();
   return (
     <section className="space-y-3">
       <h1 className="text-xl font-semibold">Sistema</h1>
-      <p className="text-sm text-tenue">Lo mismo que <code>pnpm run doctor</code>: sólo lee, no cambia nada (salvo que uses un botón de arreglo).</p>
+      <p className="text-sm text-tenue">Revisa qué programas están instalados y si funcionan. Mirar no cambia nada; sólo cambian cosas los botones de instalar o arreglar.</p>
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="button" className="boton" disabled={revisando} onClick={() => void recargar()}>
+          {revisando ? "Revisando…" : "Volver a revisar"}
+        </button>
+        {datos && <span className="text-xs text-tenue" role="status">Revisado a las {hora(datos.revisado)}</span>}
+      </div>
       <PrepararEstudio alTerminar={() => void recargar()} />
       <AvisoPrivados alCambiar={() => void recargar()} />
       {error && <Aviso tipo="error">{error}</Aviso>}
-      {!datos && <p className="text-tenue">Revisando…</p>}
+      {!datos && !error && <p className="text-tenue">Revisando… puede tardar unos segundos.</p>}
       <ul className="space-y-2">
         {datos?.chequeos.map((c) => (
           <li key={c.nombre} id={c.nombre.startsWith("Wan2GP") ? "wan2gp" : undefined} className="tarjeta scroll-mt-4 p-3 text-sm [overflow-wrap:anywhere]">
