@@ -16,10 +16,9 @@ import { z } from "zod";
 import { guardarProyecto, registrarAssetsEnDb } from "./almacen";
 import { db } from "./db";
 import { pista, validarProyecto, type Proyecto } from "./esquema";
-import { tomarGpu } from "./gpu";
+import { ErrorLlm, pedirJson, type OpcionesLlm } from "./llm-local";
 import { duracionEscenas, escenasEnLinea } from "./linea";
 import type { Contexto } from "./pasos";
-import { correr } from "./proceso";
 import { obtenerPlantilla } from "./plantillas";
 import { regenerarVoz, textoADecir } from "./regenerar";
 import { dirProyecto } from "./rutas";
@@ -41,7 +40,6 @@ export const IdiomaTraduccion = z.enum(["es", "en", "pt", "fr", "it"]);
 export const NOMBRE_ORIGEN: Record<string, string> = { es: "Spanish", en: "English", pt: "Brazilian Portuguese", fr: "French", it: "Italian" };
 
 export const MODELO_TRADUCIR = process.env.GEEPER_LLM_TRADUCIR ?? "gemma4:26b";
-const CONTENEDOR_LLM = "mpt-ollama";
 /** Caracteres por segundo de Kokoro a velocidad 1 (aprox.): sólo orienta el largo pedido a Gemma. */
 export const CPS_DESTINO = 15;
 /** Más lento que esto ya se nota en un plano de apoyo; hasta aquí se ajusta sin preguntar. */
@@ -177,41 +175,32 @@ export interface InformeTraduccion {
   sinTraducir: string[];
 }
 
-export async function preguntarLlm(prompt: string, etapa: string, ctx: Contexto & { signal?: AbortSignal }): Promise<string> {
-  ctx.log(`${etapa}: esperando la tarjeta gráfica (Gemma)…`);
-  const candado = await tomarGpu(`traducir ${path.basename(ctx.dir)}`, {
-    esperar: true,
-    signal: ctx.signal,
-    alEsperar: () => ctx.log("La tarjeta gráfica está ocupada con otro video; la traducción espera su turno y sigue sola."),
-  });
+/**
+ * Pregunta a Gemma (Ollama de MPT) por llm-local.ts (GPU-09) y devuelve el JSON crudo. Espera su turno en la
+ * tarjeta; con el candado tomado enciende Ollama si quedó apagado y corta dentro del contenedor al tope.
+ * `modelo`: por defecto MODELO_TRADUCIR.
+ */
+export async function preguntarLlm(prompt: string, etapa: string, ctx: Contexto & { signal?: AbortSignal }, op: { modelo?: string; ejecutar?: OpcionesLlm["ejecutar"]; candado?: OpcionesLlm["candado"]; encender?: OpcionesLlm["encender"] } = {}): Promise<string> {
+  const modelo = op.modelo ?? MODELO_TRADUCIR;
+  ctx.log(`${etapa}: esperando la tarjeta gráfica (${modelo})…`);
   try {
-    // gpu-solo apaga Ollama mientras corre Wan; si quedó apagado, se enciende (ya tenemos la GPU).
-    const estado = await correr("docker", ["inspect", "-f", "{{.State.Running}}", CONTENEDOR_LLM], { permitirFallo: true });
-    if (estado.codigo === 0 && estado.stdout.trim() === "false") {
-      ctx.log("La IA local estaba apagada: encendiéndola…");
-      await correr("docker", ["start", CONTENEDOR_LLM], { permitirFallo: true });
-    }
-    // Recién encendido (por nosotros o por gpu-solo al terminar), Ollama tarda unos segundos en atender.
-    for (let i = 0; i < 30; i++) {
-      if ((await correr("docker", ["exec", CONTENEDOR_LLM, "ollama", "list"], { permitirFallo: true })).codigo === 0) break;
-      await new Promise((ok) => setTimeout(ok, 2000));
-    }
-    const r = await correr("docker", ["exec", "-i", CONTENEDOR_LLM, "ollama", "run", MODELO_TRADUCIR, "--think=false", "--hidethinking", "--format", "json", "--nowordwrap", "--keepalive", "0s"], {
-      entrada: prompt,
-      timeout: 600_000,
-      permitirFallo: true,
+    const r = await pedirJson(modelo, prompt, z.unknown(), {
+      tarea: `traducir ${path.basename(ctx.dir)}`,
+      formato: "json",
+      esperarGpu: true,
+      // Una traducción larga con el modelo grande, en frío, pasa de los 5 min por defecto.
+      timeoutMs: 600_000,
       signal: ctx.signal,
+      avisar: (t) => ctx.log(`${etapa}: ${t}`),
+      ejecutar: op.ejecutar,
+      candado: op.candado,
+      encender: op.encender,
     });
-    if (r.codigo !== 0) {
-      const err = r.stderr.toLowerCase();
-      if (err.includes("docker api") || err.includes("daemon") || err.includes("pipe")) throw new Error("La IA local está apagada: abre Docker Desktop y vuelve a intentar.");
-      if (err.includes("no such container") || err.includes("not running")) throw new Error("La IA local (MoneyPrinterTurbo) no está encendida: enciéndela y vuelve a intentar.");
-      if (err.includes("not found")) throw new Error(`Falta el modelo ${MODELO_TRADUCIR} en la IA local.`);
-      throw new Error(`La IA local no respondió: ${r.stderr.trim().slice(-300)}`);
-    }
-    return r.stdout;
-  } finally {
-    candado?.liberar();
+    return r.crudo;
+  } catch (e) {
+    if (e instanceof ErrorLlm && e.causa === "modelo-falta") throw new Error(`Falta el modelo ${modelo} en la IA local.`);
+    if (e instanceof ErrorLlm) throw new Error(e.detalle && e.causa === "otro" ? `${e.message} (${e.detalle})` : e.message);
+    throw e;
   }
 }
 
