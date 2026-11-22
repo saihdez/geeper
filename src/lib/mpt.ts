@@ -1,4 +1,5 @@
 /** Cliente de la API HTTP de MoneyPrinterTurbo (127.0.0.1:8080). */
+import { encenderIaMpt } from "./ia-mpt";
 import { correr } from "./proceso";
 import { MPT_API, MPT_CONTENEDOR, MPT_TAREAS } from "./rutas";
 import type { DatosPlantilla } from "./plantillas";
@@ -49,7 +50,13 @@ export function cuerpoVideo(tema: string, formato: Formato, mpt: DatosPlantilla[
   };
 }
 
-export async function crearVideo(cuerpo: ReturnType<typeof cuerpoVideo>): Promise<string> {
+/**
+ * Pide el video. Quien llama ya tiene el candado de la tarjeta (mpt.generar): si un corte dejó apagada la
+ * IA de MPT (Ollama escribe el guion, el servidor de imágenes las dibuja), se enciende antes (GPU-02).
+ */
+export async function crearVideo(cuerpo: ReturnType<typeof cuerpoVideo>, log?: (l: string) => void): Promise<string> {
+  const ia = await encenderIaMpt({ log });
+  if (ia.encendidos.length) log?.(`IA de MPT encendida de nuevo: ${ia.encendidos.join(", ")}`);
   const r = await pedir("/videos", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(cuerpo) });
   const id = (r.json as { data?: { task_id?: string } } | null)?.data?.task_id;
   if (r.status !== 200 || !id) throw new Error(`MPT rechazó el pedido (${r.status}): ${JSON.stringify(r.json).slice(0, 500)}`);
