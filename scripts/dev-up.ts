@@ -44,6 +44,9 @@ function apagar() {
 }
 process.on("SIGINT", apagar);
 process.on("SIGTERM", apagar);
+// Cerrar la ventana de la terminal manda SIGHUP: sin atenderlo, dev:up moría al instante y dejaba al worker
+// sin apagar en orden (WRK-02).
+process.on("SIGHUP", apagar);
 
 lanzar("web", "36", ["exec", "next", "dev", "--hostname", "127.0.0.1", "--port", "3300"]);
 lanzar("worker", "35", ["exec", "tsx", "worker/index.ts"]);

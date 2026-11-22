@@ -133,7 +133,7 @@ describe.skipIf(process.platform === "win32")("apagar el worker con un trabajo e
   }, 90_000);
 });
 
-describe.skipIf(process.platform === "win32")("pnpm run dev:up espera al worker al apagar (WRK-07)", () => {
+describe.skipIf(process.platform === "win32")("pnpm run dev:up espera al worker al apagar (WRK-07, WRK-02)", () => {
   /**
    * dev:up con un `pnpm` falso en el PATH: «web» sale al instante y «worker» tarda 7 s en cerrar en orden
    * (más que los 6 s de antes). Nada de next ni del puerto 3300.
@@ -158,12 +158,12 @@ console.log(esWorker ? "worker listo" : "web lista");
     return { ...p, marca, limpiar: () => fs.rmSync(bin, { recursive: true, force: true }) };
   }
 
-  it("con SIGTERM no sale hasta que el worker terminó de cerrar", async () => {
+  it.each(["SIGTERM", "SIGHUP"] as const)("con %s no sale hasta que el worker terminó de cerrar", async (senal) => {
     const d = devUp();
     try {
       await d.hasta("worker listo");
       await d.hasta("web lista");
-      d.hijo.kill("SIGTERM");
+      d.hijo.kill(senal);
       expect(await d.fin).toBe(0);
       expect(fs.existsSync(d.marca)).toBe(true);
       expect(d.salida()).toMatch(/\[worker\].*terminó \(0\)/);
