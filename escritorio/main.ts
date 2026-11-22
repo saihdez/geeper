@@ -17,11 +17,13 @@ import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
-import { app, BrowserWindow, dialog, Menu, shell } from "electron";
+import { app, BrowserWindow, dialog, Menu, session, shell } from "electron";
 import { esVueltaOAuth } from "./oauth";
 import {
+  abrirFuera,
   AvisoArranque,
   comoRematar,
+  concederPermiso,
   entornoHijos,
   esDeGeeper,
   paginaAbriendo,
@@ -197,7 +199,7 @@ function crearVentana(): void {
   // Lo que sale de Geeper (GitHub, redes, «en otra pestaña») se abre en el navegador.
   ventana.webContents.setWindowOpenHandler(({ url: destino }) => {
     if (esDeGeeper(url, destino) && !destino.includes("/craft/")) return { action: "allow" };
-    if (/^https?:\/\//.test(destino)) void shell.openExternal(destino);
+    if (abrirFuera(destino)) void shell.openExternal(destino);
     return { action: "deny" };
   });
   ventana.webContents.on("will-navigate", (e, destino) => {
@@ -209,7 +211,7 @@ function crearVentana(): void {
     }
     if (!esDeGeeper(url, destino)) {
       e.preventDefault();
-      if (/^https?:\/\//.test(destino)) void shell.openExternal(destino);
+      if (abrirFuera(destino)) void shell.openExternal(destino);
     }
   });
   // Mientras arranca el servidor, «Abriendo Geeper…»; al responder se carga la dirección (mostrarGeeper).
@@ -266,7 +268,7 @@ function abrirLogin(inicio: string): void {
   login.webContents.on("will-redirect", guiar);
   login.webContents.setWindowOpenHandler(({ url: destino }) => {
     // Enlaces de ayuda o privacidad de la red: al navegador.
-    if (destino.startsWith("https://")) void shell.openExternal(destino);
+    if (destino.startsWith("https://") && abrirFuera(destino)) void shell.openExternal(destino);
     return { action: "deny" };
   });
   void login.loadURL(inicio);
@@ -345,7 +347,17 @@ if (!app.requestSingleInstanceLock()) {
       ventana.focus();
     }
   });
+  // Ninguna ventana puede meter un <webview> (otra web con más poderes dentro de Geeper) (SEG-07).
+  app.on("web-contents-created", (_e, wc) => {
+    wc.on("will-attach-webview", (ev) => ev.preventDefault());
+  });
   app.whenReady().then(async () => {
+    // Electron concede por defecto todo permiso que una página pida: sólo los que usan Geeper y las apps
+    // Craft, y sólo a sus páginas (SEG-07). Las ventanas de inicio de sesión de las redes no reciben ninguno.
+    session.defaultSession.setPermissionRequestHandler((wc, permiso, responder, detalles) =>
+      responder(concederPermiso(url, permiso, detalles.requestingUrl || wc.getURL())),
+    );
+    session.defaultSession.setPermissionCheckHandler((_wc, permiso, desde) => concederPermiso(url, permiso, desde));
     menu();
     // La ventana sale ya, con «Abriendo Geeper…»: el arranque puede tardar varios segundos.
     crearVentana();

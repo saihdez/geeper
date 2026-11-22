@@ -5,8 +5,10 @@ import os from "node:os";
 import path from "node:path";
 import type { MenuItemConstructorOptions } from "electron";
 import {
+  abrirFuera,
   AvisoArranque,
   comoTermino,
+  concederPermiso,
   esDeGeeper,
   paginaAbriendo,
   permitirReinicio,
@@ -145,5 +147,36 @@ describe("carcasa de escritorio: relanzar el worker y avisos de arranque (ESC-13
     const raro = Object.assign(new Error("spawn C:\\Program Files\\Geeper\\node.exe ENOENT"), { code: "ENOENT" });
     expect(textoErrorArranque(raro)).toBe("Algo falló al abrir Geeper.");
     expect(textoErrorArranque("cadena suelta")).toBe("Algo falló al abrir Geeper.");
+  });
+});
+
+describe("carcasa de escritorio: la ventana no se deja engañar (SEG-07)", () => {
+  const base = "http://127.0.0.1:3300";
+
+  it("compara el origen ya interpretado, no el comienzo del texto", () => {
+    expect(esDeGeeper(base, "http://127.0.0.1:3300@otro.sitio/")).toBe(false);
+    expect(esDeGeeper(base, "http://127.0.0.1:3300.otro.sitio/")).toBe(false);
+    expect(esDeGeeper(base, "https://127.0.0.1:3300/")).toBe(false);
+    expect(esDeGeeper(base, "http://localhost:3300/")).toBe(false);
+    expect(esDeGeeper(base, "no es una dirección")).toBe(false);
+    expect(esDeGeeper(base, "http://127.0.0.1:3300?x=1")).toBe(true);
+    expect(esDeGeeper(base, "http://127.0.0.1:3300/craft/photocraft/")).toBe(true);
+  });
+
+  it("al navegador del sistema sólo van páginas web", () => {
+    expect(abrirFuera("https://github.com/")).toBe(true);
+    expect(abrirFuera("http://ejemplo.com/a?b")).toBe(true);
+    for (const malo of ["file:///C:/Windows/System32/calc.exe", "smb://servidor/compartido", "ms-settings:privacy", "javascript:alert(1)", "mailto:a@b.c", "data:text/html,hola", "nada"])
+      expect(abrirFuera(malo)).toBe(false);
+  });
+
+  it("concede sólo los permisos que usan Geeper y las apps Craft, y sólo a sus páginas", () => {
+    for (const p of ["clipboard-read", "clipboard-sanitized-write", "fileSystem", "local-fonts", "fullscreen"]) {
+      expect(concederPermiso(base, p, `${base}/craft/wordcraft/`)).toBe(true);
+      expect(concederPermiso(base, p, "https://accounts.google.com/")).toBe(false);
+    }
+    for (const p of ["media", "geolocation", "notifications", "midi", "openExternal", "display-capture", "unknown"]) expect(concederPermiso(base, p, `${base}/`)).toBe(false);
+    // Antes de arrancar el servidor no hay páginas de Geeper.
+    expect(concederPermiso("", "clipboard-read", `${base}/`)).toBe(false);
   });
 });

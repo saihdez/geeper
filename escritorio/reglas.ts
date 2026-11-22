@@ -136,9 +136,47 @@ export function textoErrorArranque(e: unknown): string {
   return "Algo falló al abrir Geeper.";
 }
 
-/** ¿`destino` es una página de Geeper (`base` = http://127.0.0.1:<puerto>)? Sin base todavía, nada lo es. */
+/** Origen (esquema, servidor y puerto) de una dirección, o null si no es una dirección válida. */
+function origen(u: string): string | null {
+  try {
+    const o = new URL(u).origin;
+    return o === "null" ? null : o;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * ¿`destino` es una página de Geeper (`base` = http://127.0.0.1:<puerto>)? Sin base todavía, nada lo es.
+ * Se compara el origen ya interpretado (SEG-07): `http://127.0.0.1:3300@otro.sitio/` es de otro.sitio.
+ */
 export function esDeGeeper(base: string, destino: string): boolean {
-  return base !== "" && (destino === base || destino.startsWith(`${base}/`) || destino.startsWith(`${base}?`));
+  if (base === "") return false;
+  const o = origen(base);
+  return o !== null && origen(destino) === o;
+}
+
+/** ¿Se puede pasar `destino` al navegador del sistema? Sólo páginas web: nada de file:, smb:, ms-… (SEG-07). */
+export function abrirFuera(destino: string): boolean {
+  try {
+    const { protocol } = new URL(destino);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Permisos del navegador que Geeper concede, sólo a sus propias páginas (SEG-07). Son los que usan Geeper
+ * y las apps Craft (comprobado en sus archivos): copiar y pegar, abrir y guardar archivos o carpetas
+ * (File System Access), ver las fuentes instaladas (WordCraft, FigCraft) y pantalla completa. Todo lo
+ * demás (cámara, micrófono, ubicación, avisos, MIDI, USB…) se niega.
+ */
+export const PERMISOS_GEEPER: ReadonlySet<string> = new Set(["clipboard-read", "clipboard-sanitized-write", "fileSystem", "local-fonts", "fullscreen"]);
+
+/** ¿Se concede `permiso` a la página `desde`? Sólo los de PERMISOS_GEEPER y sólo a páginas de Geeper. */
+export function concederPermiso(base: string, permiso: string, desde: string): boolean {
+  return PERMISOS_GEEPER.has(permiso) && esDeGeeper(base, desde);
 }
 
 /** Lo que se ve mientras arrancan la base, el servidor y el worker (sale al instante tras el doble clic). */
