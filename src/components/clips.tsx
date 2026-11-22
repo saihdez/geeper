@@ -5,7 +5,7 @@
  */
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { Aviso, Barra, archivo, pedir, postJson, useSondeo } from "./comun";
+import { Aviso, Barra, archivo, numero, pedir, postJson, segundos, useSondeo } from "./comun";
 import { SugerenciasBusqueda } from "./sugerencias-busqueda";
 import { sugerirGlosario, sumarAlGlosario } from "@/lib/glosario";
 
@@ -22,7 +22,6 @@ interface Datos { fuentes: Fuente[]; trabajos: TrabajoM[]; workerVivo: boolean }
 interface Tendencia { url: string; titulo: string; canal: string; vistas: number; horas: number; vistasPorHora: number; minutos: number; loMasVisto: boolean; fueDirecto: boolean }
 
 const mmss = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
-const miles = (n: number) => n.toLocaleString("es");
 
 /** Los motivos del puntaje, dichos como los diría una persona. */
 function motivoSimple(m: string): string {
@@ -300,7 +299,7 @@ function Radar({ alElegir }: { alElegir: (url: string) => void }) {
               <li key={v.url} className="flex flex-wrap items-center gap-3 rounded-lg border border-borde p-2 text-sm">
                 <span className="min-w-0 grow">
                   <a className="hover:underline" href={v.url} target="_blank" rel="noreferrer">{v.titulo}</a>
-                  <span className="block text-xs text-tenue">{v.canal} · {miles(v.vistasPorHora)} vistas por hora · hace {v.horas} h · {v.minutos} min</span>
+                  <span className="block text-xs text-tenue">{v.canal} · {numero(v.vistasPorHora)} vistas por hora · hace {v.horas} h · {segundos(v.minutos * 60)}</span>
                 </span>
                 <button type="button" className="boton" onClick={() => alElegir(v.url)}>Usar este video</button>
               </li>
@@ -347,7 +346,7 @@ function Paso2({ f, elegir, volver }: { f: Fuente; elegir: (n: number) => void; 
             <div className="space-y-2 p-3">
               <div className="flex items-center gap-2">
                 <span aria-label={`${estrellas(c, cands)} de 3 estrellas`} className="text-amber-300">{"★".repeat(estrellas(c, cands))}<span className="text-[#3a4255]">{"★".repeat(3 - estrellas(c, cands))}</span></span>
-                <span className="text-xs text-tenue">en el minuto {mmss(c.inicio)} · dura {Math.round(c.fin - c.inicio)} s</span>
+                <span className="text-xs text-tenue">en el minuto {mmss(c.inicio)} · dura {segundos(c.fin - c.inicio)}</span>
               </div>
               <ul className="text-sm">{[...new Set(c.motivos.map(motivoSimple))].map((m) => <li key={m}>• {m}</li>)}</ul>
               {c.texto && <p className="line-clamp-3 text-sm text-tenue">«{c.texto}»</p>}
@@ -506,7 +505,7 @@ function Paso3({ f, c, volver }: { f: Fuente; c: Candidato; volver: () => void }
         <div className="flex flex-wrap items-center gap-3">
           {v && <button type="button" className="boton" onClick={verRecorte}>▶ Ver mi recorte</button>}
           <span className={`text-sm ${dur < 7 || dur > 60 ? "text-amber-300" : "text-tenue"}`}>
-            Dura {Math.round(dur)} s{dur < 7 ? " · muy corto: la gente no alcanza a entenderlo" : dur > 60 ? " · largo: los clips de 15 a 40 s funcionan mejor" : " · buena duración"}
+            Dura {segundos(dur)}{dur < 7 ? " · muy corto: la gente no alcanza a entenderlo" : dur > 60 ? " · largo: los clips de 15 a 40 s funcionan mejor" : " · buena duración"}
           </span>
         </div>
         <div className="space-y-2 border-t border-borde pt-3">

@@ -112,10 +112,8 @@ export function Barra({ valor, etiqueta = "Avance" }: { valor: number; etiqueta?
   );
 }
 
-export function segundos(s: number | null | undefined) {
-  if (s == null) return "—";
-  return s >= 60 ? `${Math.floor(s / 60)} min ${Math.round(s % 60)} s` : `${s.toFixed(1)} s`;
-}
+/** Duraciones, números y fechas: una sola forma en toda la app (A11-11, ver lib/formato.ts). */
+export { fecha, haceCuanto, hora, numero, segundos } from "@/lib/formato";
 
 /** En Windows el servidor arma rutas con «\» (path.relative): se parten igual, si no el navegador vería
  *  un solo segmento y los archivos relativos de la página (p. ej. la vista previa) apuntarían a otra carpeta. */

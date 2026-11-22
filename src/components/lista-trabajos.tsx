@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Aviso, Barra, Estado, postJson, useSondeo } from "./comun";
+import { Aviso, Barra, Estado, postJson, segundos, useSondeo } from "./comun";
 
 interface Trabajo {
   id: string;
@@ -42,8 +42,7 @@ const TIPOS: Record<string, string> = {
 function duracion(t: Trabajo, ahora: number) {
   if (!t.iniciado) return "";
   const fin = t.terminado ? new Date(t.terminado).getTime() : ahora;
-  const s = Math.max(0, (fin - new Date(t.iniciado).getTime()) / 1000);
-  return s >= 60 ? `${Math.floor(s / 60)} min ${Math.round(s % 60)} s` : `${Math.round(s)} s`;
+  return segundos(Math.max(0, (fin - new Date(t.iniciado).getTime()) / 1000));
 }
 
 function Log({ id, vivo }: { id: string; vivo: boolean }) {
