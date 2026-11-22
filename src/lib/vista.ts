@@ -8,6 +8,7 @@ import { caracteresPorLinea, metricas } from "./formatos";
 import { dirProyecto } from "./rutas";
 import { duracionEscenas, escenasEnLinea, gruposDeEscena, opcionesDe, todosLosGrupos } from "./linea";
 import { obtenerPlantilla } from "./plantillas";
+import { cpsDeGrupos, escenasConSubtitulosRapidos, OBJETIVO } from "./qc";
 import { lineas } from "./subtitulos";
 
 export async function vistaProyecto(id: string) {
@@ -33,6 +34,8 @@ export async function vistaProyecto(id: string) {
   }
   let escenas: unknown[] = [];
   let total = 0;
+  /** REN-04: escenas con subtítulos de más de 17 car./s, sabido antes de renderizar. */
+  let subtitulosRapidos: { limite: number; bloquea: boolean; escenas: { id: string; indice: number; cps: number }[] } | null = null;
   if (p) {
     const proyecto = p;
     const plantilla = await obtenerPlantilla(proyecto.plantilla).catch(() => null);
@@ -40,7 +43,18 @@ export async function vistaProyecto(id: string) {
     const { W, H } = metricas(proyecto.formato, opcionesDe(proyecto));
     const es = escenasEnLinea(proyecto);
     const todos = todosLosGrupos(proyecto);
-    total = duracionEscenas(proyecto) + (plantilla?.datos.tarjetaFinal.duracion ?? 0);
+    const finSubs = duracionEscenas(proyecto);
+    total = finSubs + (plantilla?.datos.tarjetaFinal.duracion ?? 0);
+    // Mismas funciones puras que la regla «subtitulos» del QC (finSubs = inicio de la tarjeta final).
+    const ritmo = cpsDeGrupos(todos, finSubs);
+    const cpsDe = new Map(todos.map((g, i) => [g, ritmo[i]!]));
+    const rapidas = escenasConSubtitulosRapidos(todos, finSubs);
+    subtitulosRapidos = {
+      limite: OBJETIVO.maxCps,
+      // En clips de material ajeno el ritmo sólo avisa (la voz original no se puede frenar).
+      bloquea: origenClip(proyecto) === null,
+      escenas: rapidas.map((r) => ({ id: r.escena, indice: es.find((e) => e.escena.id === r.escena)?.indice ?? -1, cps: r.cps })),
+    };
     escenas = es.map((e) => {
       const a = proyecto.assets[e.visual.asset]!;
       const vozA = proyecto.assets[e.voz.asset]!;
@@ -80,6 +94,7 @@ export async function vistaProyecto(id: string) {
             lineas: lineas(g.texto, cpl).length,
             cruza: propias.length < g.fichas.length,
             mostradoPropio: propias.map((f) => f.texto).join(" "),
+            cps: Number((cpsDe.get(g) ?? 0).toFixed(1)),
           };
         }),
       };
@@ -114,7 +129,7 @@ export async function vistaProyecto(id: string) {
   // La vista viaja cada pocos segundos: el informe de QC sólo del último render (el que se muestra) y
   // del proyecto sólo lo liviano; lo pesado (assets, pistas, escenas) ya va digerido en `escenas`/`extras`.
   const renders = fila.renders.map((r, i) => (i === 0 ? r : { ...r, informeQc: null }));
-  return { fila: { ...fila, renders }, p: p ? proyectoLiviano(p) : null, escenas, total, extras, carasPendientes };
+  return { fila: { ...fila, renders }, p: p ? proyectoLiviano(p) : null, escenas, total, extras, carasPendientes, subtitulosRapidos };
 }
 
 /** El proyecto sin lo pesado (assets, pistas, escenas, marcadores ni el guion entero). */

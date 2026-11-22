@@ -265,6 +265,24 @@ export function intervalosSubtitulos(grupos: Grupo[], finSubs: number) {
   return grupos.map((g, i) => ({ texto: g.texto, ini: iv[i]!.ini, fin: iv[i]!.fin }));
 }
 
+/** Caracteres por segundo de cada grupo, con los mismos intervalos que usa la regla del QC. */
+export function cpsDeGrupos(grupos: Grupo[], finSubs: number): number[] {
+  return intervalosSubtitulos(grupos, finSubs).map((g) => g.texto.length / (g.fin - g.ini));
+}
+
+/**
+ * Escenas cuyos subtítulos pasan de `OBJETIVO.maxCps` (REN-04): lo mismo que mide la regla
+ * «subtitulos» del QC, pero antes de renderizar. En orden de aparición, con el peor ritmo de cada una.
+ */
+export function escenasConSubtitulosRapidos(grupos: Grupo[], finSubs: number): { escena: string; cps: number }[] {
+  const cps = cpsDeGrupos(grupos, finSubs);
+  const peor = new Map<string, number>();
+  grupos.forEach((g, i) => {
+    if (cps[i]! > OBJETIVO.maxCps) peor.set(g.escena, Math.max(peor.get(g.escena) ?? 0, cps[i]!));
+  });
+  return [...peor].map(([escena, c]) => ({ escena, cps: Number(c.toFixed(1)) }));
+}
+
 export function revisarSubtitulos(formato: Formato, grupos: Grupo[], finSubs: number, plataformas: readonly Plataforma[] = []) {
   const cpl = caracteresPorLinea(formato, { plataformas });
   const malos: string[] = [];
@@ -273,10 +291,11 @@ export function revisarSubtitulos(formato: Formato, grupos: Grupo[], finSubs: nu
   let peorLinea = 0;
   let peorLineas = 0;
   let peorCps = 0;
-  for (const g of intervalosSubtitulos(grupos, finSubs)) {
+  const ritmo = cpsDeGrupos(grupos, finSubs);
+  for (const [i, g] of intervalosSubtitulos(grupos, finSubs).entries()) {
     const ls = lineas(g.texto, cpl);
     const largo = Math.max(...ls.map((l) => l.length));
-    const cps = g.texto.length / (g.fin - g.ini);
+    const cps = ritmo[i]!;
     peorLinea = Math.max(peorLinea, largo);
     peorLineas = Math.max(peorLineas, ls.length);
     peorCps = Math.max(peorCps, cps);
