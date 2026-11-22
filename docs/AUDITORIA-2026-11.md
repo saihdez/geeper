@@ -815,3 +815,19 @@ Por la regla del 2026-11-21 (nada de GPU para probar), la sesión corta con la t
 - **Hacen falta en tu instalación al integrar:** `pnpm install` (entró `hyperframes@0.9.27` y se quitó `better-sqlite3@13`) y `pnpm run db:push` (índices nuevos).
 - **Para revisar más adelante:** si una transacción interactiva de Prisma se corta por su plazo mientras espera la base, la conexión puede quedar dentro de una transacción abierta (lo vio el agente de seguridad en un experimento). Los temporales `.subiendo-*` que deja una subida cortada no se borran.
 - En `D:\geeper-respaldo\geeper-2026-11-21` quedó una base de prueba de 152 KB que creó una prueba antes del arreglo de SEG-03. Bórrala tú cuando quieras; la copia real de hoy no la pisa.
+
+### 7.9 Qué versión de MoneyPrinterTurbo corre (TER-05)
+
+Comprobado el 2026-11-22 con `docker image inspect` sobre las imágenes ya bajadas (sin bajar nada ni tocar los contenedores). Los documentos dicen 1.3.10, pero la imagen de MPT es la de la rama `main`:
+
+| Servicio | Versión | Imagen fijada en `~/dev/MoneyPrinterTurbo/docker-compose.local.yml` |
+|---|---|---|
+| MPT (`webui` y `api`) | `main` @ `c235354804104665b58679223847f78c2b5e27d4`, imagen del 2026-11-07. Más nueva que la v1.3.10 (el clon local está en la etiqueta `v1.3.10` y no tiene ese commit) | `ghcr.io/harry0703/moneyprinterturbo@sha256:7b88d608a66ccaefd3380377ac1d60a8d03d8d0fe7687697e2a04bb300cab917` |
+| Ollama | 0.40.15, imagen del 2026-11-06 | `ollama/ollama@sha256:0e59999e0e8f9fd4e704bd788a89b7e4cad399367fb1365f8c102ac662288761` |
+| Kokoro | Kokoro-FastAPI v0.10.0 @ `f2a5270d`, imagen del 2026-11-08 | `ghcr.io/remsky/kokoro-fastapi-cpu@sha256:f54c5960c2b9387f6349080a9944f8bc7e8cdb98a4ef9238cb0b0f9ff9795f44` |
+| Servidor de imágenes | Se construye en la máquina (`build:`), sin digest de registro. La imagen de hoy es `moneyprinterturbo-image-server` `sha256:33fe27cf…` del 2026-11-18 | Sin fijar |
+
+- `webui` y `api` llevan ahora su propio `image:` en el compose local, que manda sobre el `:latest` de `docker-compose.release.yml`. Un `docker compose pull` ya no cambia lo que corre.
+- La copia de antes es `docker-compose.local.yml.antes-auditoria-2026-11` (ya estaba de la ronda de TER-01).
+- La próxima vez que hagas `docker compose up -d`, Docker recrea los contenedores aunque la imagen sea la misma, porque cambió cómo se nombra. Es un corte breve.
+- Quedan por hacer: anotar la versión en `MODELOS.md` y en `docs/fuentes.json` (están vedados mientras la otra sesión no commitee) y guardar el `pip freeze` del servidor de imágenes como restricciones de su build (es un archivo de MPT, fuera de lo aprobado).

@@ -175,7 +175,33 @@ export function segmentosVisuales(es: Pick<EscenaEnLinea, "duracion" | "visual" 
  * `sustitutos`: id de asset → archivo que lo reemplaza al componer (p. ej. el clip con el look de color
  * del canal, src/lib/looks.ts). El geeper.json no cambia.
  */
-export function compilar(original: Proyecto, plantilla: DatosPlantilla, rutaMezcla: string, dirProyecto: string, sustitutos: Record<string, string> = {}): Compilado {
+/**
+ * Assets visuales de las escenas que van «contenidos» (con fondo borroso detrás): los que pide
+ * `prepararFondos` (fondos.ts, REN-09). El mismo cálculo que hace `compilar`.
+ */
+export function assetsConFondo(original: Proyecto, W: number, H: number): Asset[] {
+  const p = aplicarEstilo(original);
+  const vistos = new Map<string, Asset>();
+  for (const es of escenasEnLinea(p)) {
+    const a = p.assets[es.visual.asset];
+    if (a && ajusteDe(es.visual, a, W, H) === "contener") vistos.set(a.id, a);
+  }
+  return [...vistos.values()];
+}
+
+/**
+ * `fondos` (REN-09): id de asset → ruta absoluta de su fondo ya desenfocado y oscurecido con ffmpeg
+ * (fondos.ts). Con él, la pieza `b-…` usa ese archivo sin `filter` de CSS: Chrome ya no desenfoca
+ * cada cuadro mientras captura. Sin él, el desenfoque de CSS de siempre.
+ */
+export function compilar(
+  original: Proyecto,
+  plantilla: DatosPlantilla,
+  rutaMezcla: string,
+  dirProyecto: string,
+  sustitutos: Record<string, string> = {},
+  fondos: Record<string, string> = {},
+): Compilado {
   // El estilo del video se aplica a las escenas que no tienen el suyo.
   const p = aplicarEstilo(original);
   const m = metricas(p.formato, opcionesDe(p));
@@ -234,7 +260,12 @@ export function compilar(original: Proyecto, plantilla: DatosPlantilla, rutaMezc
       const sincro = v.sincro === "voz" && !imagen;
       const comun = { src: nombre, inicio: es.inicio + t, dur, desde, imagen, pista: carril, velocidad: imagen || sincro ? undefined : velocidad };
       if (ajuste === "contener") {
-        piezas.push({ ...comun, id: `b-${base}`, clase: "fondo desenfoque", estilo: "" });
+        const horneado = fondos[a.id];
+        if (horneado) {
+          const src = `assets/${a.id}-fondo${path.extname(horneado)}`;
+          archivos[src] = horneado;
+          piezas.push({ ...comun, src, id: `b-${base}`, clase: "fondo desenfoque horneado", estilo: "" });
+        } else piezas.push({ ...comun, id: `b-${base}`, clase: "fondo desenfoque", estilo: "" });
         const pz = { ...comun, id: `v-${base}`, clase: "fondo contener", estilo: color };
         piezas.push(pz);
         propias.push(pz);
@@ -443,6 +474,7 @@ export function compilar(original: Proyecto, plantilla: DatosPlantilla, rutaMezc
       .fondo.contener, .superpuesta.contener { object-fit: contain; }
       .fondo.contener { z-index: 2; }
       .fondo.desenfoque { filter: blur(40px) brightness(0.55); transform: scale(1.15); z-index: 1; }
+      .fondo.desenfoque.horneado { filter: none; }
       .ancla-arriba { object-position: 50% 0%; }
       .ancla-abajo { object-position: 50% 100%; }
       #marca { position: absolute; top: ${m.marcaTop}px; left: ${S.x}px; width: ${S.w}px; z-index: 30; display: flex; justify-content: center; }
