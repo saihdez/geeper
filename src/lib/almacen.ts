@@ -55,14 +55,24 @@ export async function guardarProyecto(proyectoId: string, datos: Proyecto, nota:
   );
 }
 
+export interface PartidaTrabajo {
+  /** Lo que estaba guardado cuando empezó el trabajo (`leerGuardado`). */
+  guardada: Proyecto | null;
+  /** La copia con la que trabajó (puede llevar cambios suyos sin guardar, como traducir). */
+  copia: Proyecto;
+}
+
 /**
  * Guarda aplicando un cambio sobre la versión que hay AHORA, no sobre una copia leída antes (SEG-05).
  * Para los trabajos largos (animar, presentador, voz nueva): leen al empezar, generan durante minutos y,
  * si guardaran esa copia, borrarían lo que la persona editó mientras tanto. Con esto, al terminar se
  * relee geeper.json con la base ya tomada y `aplicar` pone encima sólo lo generado (como `efectoGenerar`).
  * Si `aplicar` lanza (la escena ya no existe, cambió su texto), no se guarda nada.
+ *
+ * `partida`: si nadie guardó nada desde que empezó el trabajo, `aplicar` recibe la copia del trabajo (así
+ * no se pierden sus cambios sin guardar); si alguien guardó, recibe la versión de ahora.
  */
-export async function guardarEncima(proyectoId: string, nota: string, aplicar: (actual: Proyecto) => Proyecto): Promise<number> {
+export async function guardarEncima(proyectoId: string, nota: string, aplicar: (actual: Proyecto) => Proyecto, partida?: PartidaTrabajo): Promise<number> {
   return conReintentos(() =>
     db.$transaction(
       async (tx) => {
@@ -74,7 +84,8 @@ export async function guardarEncima(proyectoId: string, nota: string, aplicar: (
         });
         const actual = await leerProyecto(fila.slug);
         if (!actual) throw new Error("El proyecto ya no tiene geeper.json: no hay sobre qué guardar.");
-        const p = validarProyecto(aplicar(structuredClone(actual)));
+        const base = partida?.guardada && mismoProyecto(actual, partida.guardada) ? partida.copia : actual;
+        const p = validarProyecto(aplicar(structuredClone(base)));
         await tx.proyecto.update({ where: { id: proyectoId }, data: { formato: p.formato, plantilla: p.plantilla, nombre: p.nombre } });
         return cerrarGuardado(tx, proyectoId, fila, p, nota);
       },
@@ -82,6 +93,14 @@ export async function guardarEncima(proyectoId: string, nota: string, aplicar: (
     ),
   );
 }
+
+/** Lo guardado ahora del proyecto (para `guardarEncima` con `partida`). */
+export async function leerGuardado(proyectoId: string): Promise<Proyecto | null> {
+  const fila = await db.proyecto.findUnique({ where: { id: proyectoId }, select: { slug: true } });
+  return fila ? leerProyecto(fila.slug) : null;
+}
+
+const mismoProyecto = (a: Proyecto, b: Proyecto) => JSON.stringify(validarProyecto(a)) === JSON.stringify(validarProyecto(b));
 
 type Tx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 

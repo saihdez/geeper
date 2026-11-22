@@ -12,6 +12,10 @@ import { correr, type Registro } from "./proceso";
 import { PYTHON_VOZ, RAIZ_REPO } from "./rutas";
 import { MOTOR_WHISPER, transcribirWhisper, whisperDirectoDisponible } from "./whisper";
 import type { Palabra } from "./esquema";
+import { detectarSilencios, puntuarPalabras, resumirConfianza } from "./confianza";
+import { probar } from "./media";
+import { etiquetaPesos } from "./modelos";
+import { paso, type Contexto } from "./pasos";
 
 export const MODELO_WHISPER = "medium";
 
@@ -23,18 +27,27 @@ interface PalabraW {
   p?: number;
 }
 
-/** Huella del motor de transcripción para los pasos: cambia si se pasa de Hyperframes a whisper directo. */
-export async function motorTranscripcion(): Promise<string> {
-  return (await whisperDirectoDisponible(MODELO_WHISPER)) ? MOTOR_WHISPER : "hf-transcribe";
+/**
+ * Huella del motor de transcripción para los pasos: cambia si se pasa de Hyperframes a whisper directo, o
+ * si se transcribe sin VAD (así no se reutiliza una alineación hecha con VAD).
+ */
+export async function motorTranscripcion(o: { vad?: boolean } = {}): Promise<string> {
+  if (!(await whisperDirectoDisponible(MODELO_WHISPER))) return "hf-transcribe";
+  return o.vad === false ? `${MOTOR_WHISPER}+sin-vad` : MOTOR_WHISPER;
 }
 
 /**
  * Transcribe con whisper `medium` y devuelve tiempos por palabra (como mpt_acabado.py). `glosario`:
  * nombres propios para guiar a whisper (sólo con whisper directo; ver whisper.ts).
  */
-export async function transcribir(audio: string, idioma: string, log: Registro, o: { glosario?: string; signal?: AbortSignal } = {}): Promise<PalabraW[]> {
+export async function transcribir(
+  audio: string,
+  idioma: string,
+  log: Registro,
+  o: { glosario?: string; signal?: AbortSignal; /** Usar VAD (por defecto sí; ver alinearVozNueva). */ vad?: boolean } = {},
+): Promise<PalabraW[]> {
   if (await whisperDirectoDisponible(MODELO_WHISPER)) {
-    return transcribirWhisper(audio, { modelo: MODELO_WHISPER, idioma, glosario: o.glosario, log, signal: o.signal });
+    return transcribirWhisper(audio, { modelo: MODELO_WHISPER, idioma, glosario: o.glosario, log, signal: o.signal, vad: o.vad });
   }
   if (o.glosario) log("Aviso: el glosario no se usa hasta que whisper esté instalado (esta primera vez va por Hyperframes)");
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "geeper-tr-"));
@@ -87,6 +100,58 @@ export async function alinear(guion: string, palabrasW: PalabraW[], durVoz: numb
     inicio: Math.max(0, Math.min(durVoz, w.start)),
     fin: Math.max(0, Math.min(durVoz, w.end)),
   }));
+}
+
+/**
+ * ¿Cuántas palabras de whisper caen fuera del audio? Con VAD, whisper.cpp a veces corre los tiempos
+ * hacia adelante (REN-05: hasta 1,8 s al final de 50 s de voz): las últimas quedan después del final y,
+ * al recortarlas, la última escena duraba 0,05 s y sus palabras no se veían.
+ */
+export function palabrasFueraDelAudio(palabras: { start: number; end: number }[], durVoz: number): number {
+  return palabras.filter((w) => w.start >= durVoz - 0.05 || w.end > durVoz + 0.1).length;
+}
+
+export const NO_SE_ACOMODA = "No se pudo acomodar la voz nueva. Vuelve a intentarlo.";
+
+/**
+ * Tiempos por palabra de una voz nueva (Kokoro o VoxCPM: voz sola, sin música), alineados al texto
+ * (paso con manifiesto). Va primero SIN VAD: en una voz sintetizada no hay ruido que saltar y el VAD
+ * corría los tiempos (REN-05). Si whisper deja palabras fuera del audio (o `revisar` encuentra un
+ * problema), prueba con VAD; si también, falla con NO_SE_ACOMODA en vez de guardar subtítulos corridos.
+ */
+export async function alinearVozNueva(
+  ctx: Contexto,
+  rutaVoz: string,
+  texto: string,
+  idioma: string,
+  /** Otra revisión de quien llama (p. ej. que ninguna escena quede de menos de 0,2 s): el problema o null. */
+  revisar: (palabras: Palabra[], dur: number) => string | null = () => null,
+): Promise<Palabra[]> {
+  const dur = (await probar(rutaVoz)).duracion;
+  const pesos = await etiquetaPesos(`whisper-${MODELO_WHISPER}`);
+  const silencios = await detectarSilencios(rutaVoz);
+  for (const vad of [false, true]) {
+    const salida = path.join(ctx.dir, "assets", `palabras-${path.parse(rutaVoz).name}-${vad ? "vad" : "sin-vad"}.json`);
+    const r = await paso(
+      ctx,
+      "voz.alinear",
+      { archivos: [rutaVoz], params: { texto, idioma, modelo: MODELO_WHISPER, vad }, motor: `alinear-v3+${await motorTranscripcion({ vad })}+${pesos}` },
+      [salida],
+      async ([tmp]) => {
+        const w = await transcribir(rutaVoz, idioma, ctx.log, { vad });
+        const palabras = puntuarPalabras(await alinear(texto, w, dur), w, silencios);
+        const c = resumirConfianza([{ id: "voz", palabras }]);
+        if (c.dudosas) ctx.log(`Aviso: ${c.dudosas} de ${c.medidas} palabras con tiempos dudosos (${(c.proporcion * 100).toFixed(0)} %)`);
+        await fs.writeFile(tmp!, JSON.stringify(palabras));
+        return { palabras: palabras.length, whisper: w.length, dudosas: c.dudosas, fuera: palabrasFueraDelAudio(w, dur) };
+      },
+    );
+    const palabras = JSON.parse(await fs.readFile(salida, "utf8")) as Palabra[];
+    const problema = r.resultado.fuera ? `dejó ${r.resultado.fuera} palabra(s) después del final de la voz (${dur.toFixed(2)} s)` : revisar(palabras, dur);
+    if (!problema) return palabras;
+    ctx.log(`Aviso: whisper${vad ? " con VAD" : " sin VAD"}: ${problema}${vad ? "" : "; pruebo con VAD"}`);
+  }
+  throw new Error(NO_SE_ACOMODA);
 }
 
 /** Kokoro-82M local por `hyperframes tts`. Escribe un WAV en `salida`. */

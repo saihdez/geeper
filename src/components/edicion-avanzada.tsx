@@ -3,7 +3,7 @@
  * Edición avanzada (esquema v2): edición por texto, efectos del plano de cada escena, destino del video,
  * música al ritmo, textos superpuestos y pistas libres. Todo son ediciones de geeper.json (sin GPU).
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ACCEPT_IMAGEN } from "@/lib/formatos-vector";
 import type { Fusion } from "@/lib/efectos-esquema";
 import { segundos } from "./comun";
@@ -93,8 +93,20 @@ function useTramo(audio: string) {
 }
 
 /**
- * Palabras de una escena: se seleccionan con clic (Mayús+clic extiende), se escuchan y se recortan o
- * restauran. Las de tiempo dudoso se revisan una por una («Revisar dudosas»): se escucha el tramo y se
+ * Tramo elegido tras tocar la palabra `i` (A11-07). Con una sola palabra elegida, tocar otra elige el
+ * tramo entre las dos (en un teléfono no hay Mayús); tocar la misma la suelta; con un tramo ya elegido,
+ * se empieza de nuevo. `extender` (Mayús+clic, Mayús+flecha) alarga el tramo hasta `i`.
+ */
+export function elegirTramo(sel: [number, number] | null, i: number, extender = false): [number, number] | null {
+  if (sel && extender) return [Math.min(sel[0], i), Math.max(sel[1], i + 1)];
+  if (sel && sel[1] - sel[0] === 1) return sel[0] === i ? null : [Math.min(sel[0], i), Math.max(sel[1], i + 1)];
+  return [i, i + 1];
+}
+
+/**
+ * Palabras de una escena: se toca una y después la última del tramo (o Mayús+clic), se escuchan y se
+ * recortan o restauran. Con teclado: sólo una palabra está en el orden de Tab y las flechas se mueven
+ * entre ellas (A11-07: antes había que pasar por cada palabra con Tab). Las de tiempo dudoso se revisan una por una («Revisar dudosas»): se escucha el tramo y se
  * confirma («Suena bien»), se recorta o se salta. Idea de la pantalla «OCR Verify» de PdfCraft.
  */
 export function EdicionPorTexto({ escena, audio, palabras, duracion, duracionOriginal, editar, ocupado, vozReal = false, correcciones = [] }: {
@@ -116,10 +128,31 @@ export function EdicionPorTexto({ escena, audio, palabras, duracion, duracionOri
   // Al terminar: si hay otra escena con dudosas más abajo, para ofrecer seguir con ella.
   const [terminada, setTerminada] = useState<{ hayProxima: boolean } | null>(null);
   const caja = useRef<HTMLDivElement>(null);
+  const acciones = useRef<HTMLDivElement>(null);
+  // La palabra que está en el orden de Tab (las demás se alcanzan con las flechas).
+  const [foco, setFoco] = useState(0);
   const { tocar, parar, sonando } = useTramo(audio);
+  const enfocarPalabra = (i: number) => caja.current?.querySelector<HTMLButtonElement>(`[data-palabra="${i}"]`)?.focus();
   const elegir = (i: number, extender: boolean) => {
-    if (extender && sel) setSel([Math.min(sel[0], i), Math.max(sel[1], i + 1)]);
-    else setSel(sel && sel[0] === i && sel[1] === i + 1 ? null : [i, i + 1]);
+    const nuevo = elegirTramo(sel, i, extender);
+    setSel(nuevo);
+    // Con una palabra elegida, el foco pasa a sus acciones (Escuchar, Recortar…); Esc vuelve.
+    if (nuevo) requestAnimationFrame(() => acciones.current?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true }));
+  };
+  const cerrarAcciones = () => {
+    const i = sel?.[0] ?? foco;
+    setSel(null);
+    parar();
+    enfocarPalabra(i);
+  };
+  /** Flechas entre palabras; Mayús+flecha alarga el tramo elegido sin salir de las palabras. */
+  const teclaPalabra = (ev: React.KeyboardEvent, i: number) => {
+    const destino = ev.key === "ArrowRight" ? i + 1 : ev.key === "ArrowLeft" ? i - 1 : ev.key === "Home" ? 0 : ev.key === "End" ? palabras.length - 1 : null;
+    if (destino === null || destino < 0 || destino >= palabras.length) return;
+    ev.preventDefault();
+    if (ev.shiftKey) setSel(elegirTramo(sel ?? [i, i + 1], destino, true));
+    setFoco(destino);
+    enfocarPalabra(destino);
   };
   const recortadas = sel ? palabras.slice(sel[0], sel[1]).every((w) => w.recorte) : false;
   // Pendientes de revisar: dudosas que todavía se oyen.
@@ -158,7 +191,8 @@ export function EdicionPorTexto({ escena, audio, palabras, duracion, duracionOri
   return (
     <div className="space-y-2" ref={caja}>
       <p className="text-xs text-tenue">
-        Edición por texto: haz clic en una palabra (Mayús+clic para un tramo) y escúchala o recórtala: recortar quita lo que se oye y su tiempo.
+        Edición por texto: toca una palabra, o la primera y la última de un tramo, y escúchala o recórtala: recortar quita lo que se oye y su tiempo.
+        {" "}Con el teclado: flechas para moverte, Enter para elegir, Mayús+flecha para alargar y Esc para cerrar.
         {duracionOriginal - duracion > 0.05 && <> Recortado: {(duracionOriginal - duracion).toFixed(2)} s.</>}
       </p>
       {terminada && !revisando && (
@@ -191,13 +225,15 @@ export function EdicionPorTexto({ escena, audio, palabras, duracion, duracionOri
           <button type="button" data-revisar-dudosas className="boton ml-auto py-0.5" disabled={ocupado} onClick={() => siguiente(-1)}>Revisarlas una por una</button>
         </div>
       )}
-      <p className="flex flex-wrap gap-1 text-sm leading-relaxed" aria-label="Palabras de la escena">
+      <div role="toolbar" className="flex flex-wrap gap-1 text-sm leading-relaxed" aria-label="Palabras de la escena">
         {palabras.map((w, i) => {
           const elegida = sel && i >= sel[0] && i < sel[1];
           const n = nivel(w);
           return (
-            <button key={i} type="button" disabled={ocupado}
-              onClick={(ev) => { setRevisando(false); elegir(i, ev.shiftKey); }}
+            <button key={i} type="button" disabled={ocupado} data-palabra={i} tabIndex={i === Math.min(foco, palabras.length - 1) ? 0 : -1}
+              onFocus={() => setFoco(i)}
+              onKeyDown={(ev) => teclaPalabra(ev, i)}
+              onClick={(ev) => { setRevisando(false); setFoco(i); elegir(i, ev.shiftKey); }}
               aria-pressed={Boolean(elegida)}
               aria-description={n === "baja" ? (vozReal ? "quizás mal entendida" : "tiempo dudoso") : n === "media" ? (vozReal ? "poco segura" : "tiempo poco seguro") : undefined}
               title={[
@@ -206,7 +242,8 @@ export function EdicionPorTexto({ escena, audio, palabras, duracion, duracionOri
                 w.confianza !== null ? `${vozReal ? "seguridad de lo entendido" : "seguridad del tiempo"}: ${Math.round(w.confianza * 100)} %` : null,
               ].filter(Boolean).join(" · ") || undefined}
               className={[
-                "rounded px-1",
+                // En pantallas táctiles, palabras de 32 px de alto para poder tocarlas.
+                "rounded px-1 pointer-coarse:min-h-8 pointer-coarse:px-2",
                 elegida ? "bg-sky-700 text-white" : n === "baja" ? "bg-amber-500/20 hover:bg-amber-500/30" : "hover:bg-white/10",
                 w.recorte ? "text-tenue line-through" : "",
                 n === "baja" ? "underline decoration-amber-400 decoration-wavy underline-offset-4" : "",
@@ -216,7 +253,7 @@ export function EdicionPorTexto({ escena, audio, palabras, duracion, duracionOri
             </button>
           );
         })}
-      </p>
+      </div>
       {medidas && palabras.some((w) => nivel(w)) && (
         <p className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-tenue" aria-label="Qué significan las marcas">
           <span><span className="rounded bg-amber-500/20 px-1 underline decoration-amber-400 decoration-wavy underline-offset-4">palabra</span> {vozReal ? "quizás mal entendida: escúchala y corrígela si hace falta" : `tiempo dudoso (menos de ${DUDOSA * 100} %): escúchala antes de recortar`}</span>
@@ -271,7 +308,8 @@ export function EdicionPorTexto({ escena, audio, palabras, duracion, duracionOri
         </div>
       )}
       {sel && actual === null && (
-        <div className="flex flex-wrap gap-2">
+        <div ref={acciones} className="flex flex-wrap gap-2" role="group" aria-label={`Qué hacer con «${textoDe(sel)}»`}
+          onKeyDown={(ev) => { if (ev.key === "Escape") { ev.preventDefault(); cerrarAcciones(); } }}>
           <button type="button" className="boton py-1" onClick={() => (sonando ? parar() : escuchar(sel[0], sel[1]))}>{sonando ? "■ Parar" : "▶ Escuchar"}</button>
           {recortadas
             ? <button type="button" className="boton py-1" disabled={ocupado} onClick={() => void editar({ tipo: "restaurarPalabras", escena, desde: sel[0], hasta: sel[1] }).then(() => setSel(null))}>Restaurar</button>
@@ -279,7 +317,7 @@ export function EdicionPorTexto({ escena, audio, palabras, duracion, duracionOri
           {palabras.slice(sel[0], sel[1]).some((w) => w.dudosa) && (
             <button type="button" className="boton py-1" disabled={ocupado} onClick={() => void editar({ tipo: "confirmarPalabras", escena, desde: sel[0], hasta: sel[1] }).then(() => setSel(null))}>Suena bien</button>
           )}
-          <button type="button" className="boton py-1" onClick={() => { setSel(null); parar(); }}>Cancelar</button>
+          <button type="button" className="boton py-1" onClick={cerrarAcciones}>Cancelar</button>
         </div>
       )}
     </div>
@@ -302,9 +340,90 @@ const COLORES: Record<string, EfectosV["color"]> = {
 };
 const clave = <T,>(tabla: Record<string, T>, v: T) => Object.entries(tabla).find(([, x]) => JSON.stringify(x) === JSON.stringify(v))?.[0] ?? "personalizado";
 
-const NOMBRES_MOV: Record<string, string> = {
-  acercar: "acercar", alejar: "alejar", "izquierda-derecha": "paneo a la derecha", "derecha-izquierda": "paneo a la izquierda", personalizado: "personalizada",
-};
+/**
+ * Movimientos de cámara con los mismos nombres que «Animar esta escena» (UX-35). Cada tarjeta se mueve
+ * como el movimiento: la elegida siempre; las demás al pasar el cursor o con el foco.
+ */
+export const OPCIONES_MOV = [
+  { clave: "ninguno", nombre: "Quieta", ayuda: "La imagen queda quieta.", reposo: "none", anim: null },
+  { clave: "acercar", nombre: "Acercarse", ayuda: "La cámara se acerca despacio.", reposo: "scale(1.07)", anim: "gm-acercar" },
+  { clave: "alejar", nombre: "Alejarse", ayuda: "La cámara se aleja despacio.", reposo: "scale(1.07)", anim: "gm-alejar" },
+  { clave: "izquierda-derecha", nombre: "Hacia la derecha", ayuda: "La cámara se corre despacio hacia la derecha.", reposo: "scale(1.15)", anim: "gm-derecha" },
+  { clave: "derecha-izquierda", nombre: "Hacia la izquierda", ayuda: "La cámara se corre despacio hacia la izquierda.", reposo: "scale(1.15)", anim: "gm-izquierda" },
+] as const;
+
+const NOMBRES_MOV: Record<string, string> = { ...Object.fromEntries(OPCIONES_MOV.map((o) => [o.clave, o.nombre.toLowerCase()])), personalizado: "personalizada" };
+
+const tamMini = (formato: string) => (formato === "16:9" ? { w: 112, h: 63 } : formato === "1:1" ? { w: 80, h: 80 } : { w: 63, h: 112 });
+
+function EstilosMovimiento() {
+  return (
+    <style>{`
+      @keyframes gm-acercar { from { transform: scale(1); } to { transform: scale(1.15); } }
+      @keyframes gm-alejar { from { transform: scale(1.15); } to { transform: scale(1); } }
+      @keyframes gm-derecha { from { transform: scale(1.15) translateX(6%); } to { transform: scale(1.15) translateX(-6%); } }
+      @keyframes gm-izquierda { from { transform: scale(1.15) translateX(-6%); } to { transform: scale(1.15) translateX(6%); } }
+      .gm-tarjeta:hover .gm-img, .gm-tarjeta:focus-visible .gm-img, .gm-tarjeta[aria-checked="true"] .gm-img {
+        animation-name: var(--gm-anim); animation-duration: 2.4s; animation-iteration-count: infinite;
+        animation-direction: alternate; animation-timing-function: ease-in-out;
+      }
+      @media (prefers-reduced-motion: reduce) { .gm-img { animation: none !important; } }
+    `}</style>
+  );
+}
+
+/** «Movimiento de cámara» de una escena en tarjetas que se mueven (antes, una lista de nombres). */
+function GaleriaMovimiento({ valor, formato, img, deshabilitado, onElegir }: {
+  valor: string; formato: string; img?: string; deshabilitado: boolean; onElegir: (clave: string) => void;
+}) {
+  const id = useId();
+  const { w, h } = tamMini(formato);
+  const elegida = OPCIONES_MOV.find((o) => o.clave === valor);
+  return (
+    <div className="space-y-2">
+      <EstilosMovimiento />
+      <span id={id} className="etiqueta">Movimiento de cámara</span>
+      <div role="radiogroup" aria-labelledby={id} className="flex gap-2 overflow-x-auto pb-1">
+        {OPCIONES_MOV.map((o) => (
+          <button key={o.clave} type="button" role="radio" aria-checked={valor === o.clave} disabled={deshabilitado} title={o.ayuda}
+            onClick={() => onElegir(o.clave)}
+            className={`gm-tarjeta flex w-[92px] shrink-0 flex-col items-center gap-1 rounded-lg border p-1.5 text-center text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+              valor === o.clave ? "border-acento bg-acento/10" : "border-borde hover:border-white/30 hover:bg-white/5"}`}>
+            <span className="relative block overflow-hidden rounded bg-black" style={{ width: w, height: h }} aria-hidden>
+              <span className="gm-img absolute inset-0" style={{ transform: o.reposo, ...(o.anim ? { ["--gm-anim" as string]: o.anim } : {}) } as React.CSSProperties}>
+                {img
+                  // eslint-disable-next-line @next/next/no-img-element
+                  ? <img src={img} alt="" className="h-full w-full object-cover" draggable={false} />
+                  : <span className="block h-full w-full" style={{ background: "linear-gradient(160deg,#f59e0b,#be185d)" }} />}
+              </span>
+            </span>
+            <span className={`leading-tight ${valor === o.clave ? "font-medium text-white" : ""}`}>{o.nombre}</span>
+          </button>
+        ))}
+        {valor === "personalizado" && (
+          <span role="radio" aria-checked aria-disabled className="flex w-[92px] shrink-0 items-center justify-center rounded-lg border border-acento bg-acento/10 p-1.5 text-center text-xs">
+            Personalizado (puesto a mano o por Claude)
+          </span>
+        )}
+      </div>
+      {elegida && <p className="text-xs text-tenue"><strong className="text-white/90">{elegida.nombre}:</strong> {elegida.ayuda}</p>}
+    </div>
+  );
+}
+
+const VELOCIDADES = [0.5, 0.75, 1, 1.25, 1.5, 2];
+const coma = (x: number) => String(Math.round(x * 100) / 100).replace(".", ",");
+
+/**
+ * Opciones de «Velocidad del video de la escena». Si la escena va a una velocidad que no está en la lista
+ * (animar con IA o traducir la ajustan para llenar la escena: 0,759×, 0,97×…), se agrega y queda elegida
+ * como «Ajustada a la escena»; antes se mostraba «0.5×», que era falso (UX-22).
+ */
+export function opcionesVelocidad(actual: number): { valor: string; texto: string }[] {
+  const lista = VELOCIDADES.map((x) => ({ valor: String(x), texto: x === 1 ? "Normal" : x < 1 ? `${coma(x)}× (cámara lenta)` : `${coma(x)}× (más rápido)` }));
+  if (VELOCIDADES.includes(actual)) return lista;
+  return [{ valor: String(actual), texto: `Ajustada a la escena (${coma(actual)}×)` }, ...lista];
+}
 
 /** Estilo del video tal como lo muestra la UI (vista.ts). */
 export interface EstiloV {
@@ -351,25 +470,16 @@ export function EfectosEscena({ escena, indice, efectos, estilo, formato, imgA, 
           // «Natural» sin estilo que heredar no es una excepción: se guarda como «sin valor propio».
           onElegir={(e) => void ed({ efectos: e.length === 0 && !estilo?.efectos?.length ? null : e })}
           onVolver={() => void ed({ efectos: null })} />
-        <div className="grid gap-2 sm:grid-cols-3">
-          <label className="etiqueta">Movimiento de cámara
-            <select className="campo py-1" disabled={ocupado} value={mov}
-              onChange={(ev) => {
-                const m = MOVIMIENTOS[ev.target.value];
-                void ed({ movimiento: m ? { ...m, ...(curva ? { curva } : {}) } : null });
-              }}>
-              <option value="ninguno">Ninguno (imagen quieta)</option>
-              <option value="acercar">Acercar despacio</option>
-              <option value="alejar">Alejar despacio</option>
-              <option value="izquierda-derecha">Paneo a la derecha</option>
-              <option value="derecha-izquierda">Paneo a la izquierda</option>
-              {mov === "personalizado" && <option value="personalizado" disabled>Personalizado</option>}
-            </select>
-          </label>
-          <label className="etiqueta">Velocidad del clip
+        <GaleriaMovimiento valor={mov} formato={formato} img={imgB} deshabilitado={ocupado}
+          onElegir={(k) => {
+            const m = MOVIMIENTOS[k];
+            void ed({ movimiento: m ? { ...m, ...(curva ? { curva } : {}) } : null });
+          }} />
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="etiqueta">Velocidad del video de la escena
             <select className="campo py-1" disabled={ocupado} value={String(efectos.velocidad)}
               onChange={(ev) => void ed({ velocidad: Number(ev.target.value) })}>
-              {[0.5, 0.75, 1, 1.25, 1.5, 2].map((x) => <option key={x} value={String(x)}>{x === 1 ? "Normal" : x < 1 ? `${x}× (cámara lenta)` : `${x}× (más rápido)`}</option>)}
+              {opcionesVelocidad(efectos.velocidad).map((o) => <option key={o.valor} value={o.valor}>{o.texto}</option>)}
             </select>
           </label>
           <label className="etiqueta">Color
@@ -379,7 +489,8 @@ export function EfectosEscena({ escena, indice, efectos, estilo, formato, imgA, 
               <option value="vivo">Más vivo</option>
               <option value="claro">Más claro</option>
               <option value="apagado">Apagado</option>
-              <option value="blanco-negro">Blanco y negro</option>
+              {/* Blanco y negro está en «Aspecto»: aquí sólo se muestra si la escena ya lo tiene. */}
+              {col === "blanco-negro" && <option value="blanco-negro">Blanco y negro</option>}
               {col === "personalizado" && <option value="personalizado" disabled>Personalizado</option>}
             </select>
           </label>
@@ -411,7 +522,7 @@ export function PanelEstilo({ estilo, escenas, formato, imgs, editar, editarVari
         <h2 className="font-medium">Estilo del video</h2>
         <p className="text-xs text-tenue">
           Se aplica a todas las escenas de una vez. Si una escena necesita algo distinto, cámbialo en sus «Efectos del plano»;
-          el resto sigue este estilo. Pasa el cursor sobre cada opción para verla en movimiento.
+          el resto sigue este estilo. La opción elegida se ve en movimiento; en la computadora, pasa el cursor sobre las otras para verlas.
         </p>
       </div>
       <GaleriaAspectos titulo="Aspecto" valor={(estilo.efectos ?? []) as EfectoUI[]} formato={formato} img={imgs[0]} deshabilitado={ocupado}
@@ -463,11 +574,40 @@ function AjustesSuperposicion({ clip, formato, img, editar, ocupado }: {
   );
 }
 
+/** Escena tal como la necesita «Textos en pantalla»: dónde empieza en el video y cuánto dura (s). */
+export interface EscenaT {
+  numero: number;
+  inicio: number;
+  duracion: number;
+}
+
+const coma1 = (x: number) => x.toFixed(1).replace(".", ",");
+const ESTILOS_TEXTO: Record<string, string> = { rotulo: "Rótulo", titulo: "Título", cita: "Cita" };
+const POSICIONES_TEXTO: Record<string, string> = { arriba: "arriba", centro: "al centro", abajo: "sobre los subtítulos" };
+
+/** Cuándo aparece un texto, dicho por escenas (UX-35): «Al empezar la escena 2» o «En la escena 2, a los 1,5 s». */
+export function cuandoAparece(inicio: number, escenas: EscenaT[]): string {
+  const e = [...escenas].reverse().find((x) => inicio >= x.inicio - 0.05);
+  if (!e) return `Al empezar el video, a los ${coma1(inicio)} s`;
+  const dentro = inicio - e.inicio;
+  return dentro < 0.05 ? `Al empezar la escena ${e.numero}` : `En la escena ${e.numero}, a los ${coma1(dentro)} s`;
+}
+
+/** Inicio y duración (s) de un texto nuevo a partir de lo elegido en «¿Cuándo aparece?» y «¿Cuánto dura?». */
+export function tiempoDelTexto(cuando: string, segundo: string, dura: string, escenas: EscenaT[]): { inicio: number; duracion: number } {
+  const e = cuando.startsWith("escena:") ? escenas.find((x) => x.numero === Number(cuando.slice(7))) : undefined;
+  const inicio = e ? e.inicio : Math.max(0, Number(segundo) || 0);
+  const duracion = dura === "escena" ? (e ? e.duracion : 3) : Number(dura) || 3;
+  return { inicio: Math.round(inicio * 100) / 100, duracion: Math.min(60, Math.max(0.3, Math.round(duracion * 100) / 100)) };
+}
+
 const PLATAFORMAS = [["youtube", "YouTube Shorts"], ["tiktok", "TikTok"], ["instagram", "Instagram Reels"], ["facebook", "Facebook Reels"]] as const;
 
 /** Destino, edición por texto global, música, textos superpuestos y pistas libres del proyecto. */
-export function PanelAvanzado({ extras, formato, total, editar, alinearMusica, subirLibre, ocupado, slug }: {
+export function PanelAvanzado({ extras, formato, total, editar, alinearMusica, subirLibre, ocupado, slug, escenas = [] }: {
   extras: ExtrasV; formato: string; total: number; ocupado: boolean;
+  /** Escenas del video, para poner un texto «al empezar la escena N» sin calcular segundos. */
+  escenas?: EscenaT[];
   /** Para las miniaturas de las superposiciones. */
   slug?: string;
   editar: Editar;
@@ -475,7 +615,7 @@ export function PanelAvanzado({ extras, formato, total, editar, alinearMusica, s
   subirLibre: (f: File, pista: string, inicio: number, licencia: string) => Promise<void>;
 }) {
   const d = extras.destino;
-  const [texto, setTexto] = useState({ texto: "", inicio: "0", duracion: "3", estilo: "rotulo", posicion: "arriba" });
+  const [texto, setTexto] = useState({ texto: "", cuando: escenas.length ? "escena:1" : "segundo", inicio: "0", duracion: "3", estilo: "rotulo", posicion: "arriba" });
   const [libre, setLibre] = useState({ inicio: "0", licencia: "" });
   const conPlataformas = (pl: string, on: boolean) => editar({ tipo: "cambiarDestino", plataformas: on ? [...d.plataformas, pl] : d.plataformas.filter((x) => x !== pl) });
   return (
@@ -529,8 +669,12 @@ export function PanelAvanzado({ extras, formato, total, editar, alinearMusica, s
           <ul className="space-y-1 text-sm">
             {extras.textos.map((t) => (
               <li key={t.id} className="flex items-center gap-2">
-                <span className="w-24 shrink-0 font-mono text-xs text-tenue">{t.inicio.toFixed(1)}–{(t.inicio + t.duracion).toFixed(1)} s</span>
-                <span className="min-w-0 flex-1 truncate">«{t.texto}» <span className="text-xs text-tenue">({t.estilo}, {t.posicion})</span></span>
+                <span className="min-w-0 flex-1 truncate">
+                  «{t.texto}»{" "}
+                  <span className="text-xs text-tenue">
+                    ({escenas.length ? cuandoAparece(t.inicio, escenas) : `a los ${coma1(t.inicio)} s`}, {coma1(t.duracion)} s · {ESTILOS_TEXTO[t.estilo] ?? t.estilo}, {POSICIONES_TEXTO[t.posicion] ?? t.posicion})
+                  </span>
+                </span>
                 <button type="button" className="boton py-0.5 text-xs" disabled={ocupado} onClick={() => void editar({ tipo: "quitarTexto", id: t.id })}>Quitar</button>
               </li>
             ))}
@@ -538,14 +682,28 @@ export function PanelAvanzado({ extras, formato, total, editar, alinearMusica, s
         )}
         <form className="grid gap-2 sm:grid-cols-6" onSubmit={(ev) => {
           ev.preventDefault();
-          void editar({ tipo: "agregarTexto", texto: { texto: texto.texto.trim(), inicio: Number(texto.inicio), duracion: Number(texto.duracion), estilo: texto.estilo, posicion: texto.posicion } })
+          const t = tiempoDelTexto(texto.cuando, texto.inicio, texto.duracion, escenas);
+          void editar({ tipo: "agregarTexto", texto: { texto: texto.texto.trim(), ...t, estilo: texto.estilo, posicion: texto.posicion } })
             .then(() => setTexto({ ...texto, texto: "" }));
         }}>
           <input aria-label="Texto" className="campo sm:col-span-6" placeholder="Título, dato o rótulo" maxLength={160} value={texto.texto} onChange={(e) => setTexto({ ...texto, texto: e.target.value })} />
-          <label className="etiqueta sm:col-span-1">Desde (s)<input className="campo py-1" type="number" min={0} max={total} step={0.1} value={texto.inicio} onChange={(e) => setTexto({ ...texto, inicio: e.target.value })} /></label>
-          <label className="etiqueta sm:col-span-1">Dura (s)<input className="campo py-1" type="number" min={0.3} max={60} step={0.1} value={texto.duracion} onChange={(e) => setTexto({ ...texto, duracion: e.target.value })} /></label>
-          <label className="etiqueta sm:col-span-2">Estilo<select className="campo py-1" value={texto.estilo} onChange={(e) => setTexto({ ...texto, estilo: e.target.value })}><option value="rotulo">Rótulo</option><option value="titulo">Título</option><option value="cita">Cita</option></select></label>
-          <label className="etiqueta sm:col-span-2">Dónde<select className="campo py-1" value={texto.posicion} onChange={(e) => setTexto({ ...texto, posicion: e.target.value })}><option value="arriba">Arriba</option><option value="centro">Centro</option><option value="abajo">Sobre los subtítulos</option></select></label>
+          <label className="etiqueta sm:col-span-2">¿Cuándo aparece?
+            <select className="campo py-1" value={texto.cuando} onChange={(e) => setTexto({ ...texto, cuando: e.target.value, duracion: e.target.value === "segundo" && texto.duracion === "escena" ? "3" : texto.duracion })}>
+              {escenas.map((e) => <option key={e.numero} value={`escena:${e.numero}`}>Al empezar la escena {e.numero}</option>)}
+              <option value="segundo">En un segundo exacto…</option>
+            </select>
+          </label>
+          {texto.cuando === "segundo" && (
+            <label className="etiqueta sm:col-span-1">Segundo<input className="campo py-1" type="number" min={0} max={total} step={0.1} value={texto.inicio} onChange={(e) => setTexto({ ...texto, inicio: e.target.value })} /></label>
+          )}
+          <label className={`etiqueta ${texto.cuando === "segundo" ? "sm:col-span-3" : "sm:col-span-4"}`}>¿Cuánto dura?
+            <select className="campo py-1" value={texto.duracion} onChange={(e) => setTexto({ ...texto, duracion: e.target.value })}>
+              {["2", "3", "5", "8"].map((x) => <option key={x} value={x}>{x} segundos</option>)}
+              {texto.cuando !== "segundo" && <option value="escena">Toda la escena</option>}
+            </select>
+          </label>
+          <label className="etiqueta sm:col-span-3">Estilo<select className="campo py-1" value={texto.estilo} onChange={(e) => setTexto({ ...texto, estilo: e.target.value })}><option value="rotulo">Rótulo</option><option value="titulo">Título</option><option value="cita">Cita</option></select></label>
+          <label className="etiqueta sm:col-span-3">Dónde<select className="campo py-1" value={texto.posicion} onChange={(e) => setTexto({ ...texto, posicion: e.target.value })}><option value="arriba">Arriba</option><option value="centro">Centro</option><option value="abajo">Sobre los subtítulos</option></select></label>
           <button type="submit" className="boton sm:col-span-6" disabled={ocupado || !texto.texto.trim()}>Agregar texto</button>
         </form>
       </div>
