@@ -64,3 +64,36 @@ describe("etapas (UX-15)", () => {
     expect(s).toContain("etapaSimple(t.etapa");
   });
 });
+
+describe("errores de trabajos (UX-14)", () => {
+  it("lo técnico se dice simple y se pliega", async () => {
+    const { ERROR_GENERICO, explicarError } = await import("@/lib/textos");
+    for (const crudo of [
+      "Falló (1): /home/x/venvs/clips/bin/python -I -m yt_dlp -J https://youtu.be/abc\nERROR: [youtube] abc: Private video",
+      "Invalid `prisma.trabajo.update()` invocation: database is locked",
+      "ENOENT: no such file or directory, open 'C:\\Users\\x\\geeper-data\\a.json'",
+      "TypeError: Cannot read properties of undefined (reading 'n')\n    at importarClip (src/lib/importador-clip.ts:20:3)",
+    ]) {
+      const r = explicarError(crudo);
+      expect(r.simple).toBe(ERROR_GENERICO);
+      expect(r.detalle).toBe(crudo);
+    }
+  });
+
+  it("lo que ya viene explicado se respeta y el detalle va aparte", async () => {
+    const { explicarError, SEPARADOR_DETALLE } = await import("@/lib/textos");
+    expect(explicarError("Cancelado por la persona")).toEqual({ simple: "Cancelado por la persona", detalle: null });
+    expect(explicarError(`Ese video es privado.${SEPARADOR_DETALLE}Falló (1): yt_dlp …`)).toEqual({ simple: "Ese video es privado.", detalle: "Falló (1): yt_dlp …" });
+  });
+
+  it("la fila muestra la frase simple y «Ver detalle técnico»; los botones se entienden", async () => {
+    const { ErrorTrabajo } = await import("@/components/lista-trabajos");
+    const html = renderToStaticMarkup(createElement(ErrorTrabajo, { error: "Falló (1): /usr/bin/ffmpeg -i /tmp/a.mp4\nboom" }));
+    expect(html).toContain("Algo falló al hacer esto");
+    expect(html).toContain("Ver detalle técnico");
+    expect(html).toContain("/usr/bin/ffmpeg");
+    const s = leer("src/components/lista-trabajos.tsx");
+    expect(s).toContain("Volver a intentar");
+    expect(s).not.toMatch(/>Relanzar<|"Log"/);
+  });
+});

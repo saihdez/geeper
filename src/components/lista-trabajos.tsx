@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { etapaSimple, nombreTipo } from "@/lib/textos";
+import { etapaSimple, explicarError, nombreTipo } from "@/lib/textos";
 import { Aviso, Barra, Estado, postJson, segundos, useSondeo } from "./comun";
 
 interface Trabajo {
@@ -41,6 +41,22 @@ function Log({ id, vivo }: { id: string; vivo: boolean }) {
     };
   }, [id, vivo]);
   return <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-all rounded bg-black/60 p-3 text-xs leading-relaxed text-slate-300">{texto}</pre>;
+}
+
+/** UX-14: el error en palabras simples; el texto tal cual, plegado, para quien dé soporte. */
+export function ErrorTrabajo({ error }: { error: string }) {
+  const { simple, detalle } = explicarError(error);
+  return (
+    <div className="mt-2 text-sm text-red-200">
+      <p>{simple}</p>
+      {detalle && (
+        <details className="mt-1 text-xs">
+          <summary className="cursor-pointer text-tenue">Ver detalle técnico</summary>
+          <pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap break-all rounded bg-black/60 p-2 text-red-300">{detalle}</pre>
+        </details>
+      )}
+    </div>
+  );
 }
 
 export function ListaTrabajos({ proyectoId }: { proyectoId?: string }) {
@@ -87,11 +103,11 @@ export function ListaTrabajos({ proyectoId }: { proyectoId?: string }) {
                 <span className="text-xs text-tenue">{duracion(t, datos.ahora)}</span>
                 <span className="ml-auto flex gap-2">
                   {["fallido", "interrumpido", "cancelado"].includes(t.estado) && (
-                    <button type="button" className="boton" onClick={() => void accion(t.id, "relanzar")}>Relanzar</button>
+                    <button type="button" className="boton" onClick={() => void accion(t.id, "relanzar")}>Volver a intentar</button>
                   )}
                   {vivo && <button type="button" className="boton boton-peligro" onClick={() => void accion(t.id, "cancelar")}>Cancelar</button>}
                   <button type="button" className="boton" aria-expanded={abierto === t.id} onClick={() => setAbierto(abierto === t.id ? null : t.id)}>
-                    {abierto === t.id ? "Ocultar log" : "Log"}
+                    {abierto === t.id ? "Ocultar el registro" : "Ver el registro"}
                   </button>
                 </span>
               </div>
@@ -101,7 +117,7 @@ export function ListaTrabajos({ proyectoId }: { proyectoId?: string }) {
                   <Barra valor={t.progreso} etiqueta={`Avance: ${nombreTipo(t.tipo)}`} />
                 </div>
               )}
-              {t.error && <p className="mt-2 whitespace-pre-wrap text-xs text-red-300">{t.error.split("\n").slice(0, 4).join("\n")}</p>}
+              {t.error && <ErrorTrabajo error={t.error} />}
               {abierto === t.id && <Log id={t.id} vivo={vivo} />}
             </li>
           );

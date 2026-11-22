@@ -112,3 +112,41 @@ export function etapaSimple(etapa: string, estado = "corriendo"): string {
     .replace(/ con (?:Gemma|Qwen|Kokoro|VoxCPM2?)\b/gi, "")
     .trim() || "Trabajando…";
 }
+
+/** Separa, dentro de un error, lo que se le dice a la persona del detalle para soporte. */
+export const SEPARADOR_DETALLE = "\n\nDetalle técnico:\n";
+
+export const ERROR_GENERICO = "Algo falló al hacer esto. Pulsa «Volver a intentar»; si vuelve a fallar, pide ayuda y muestra el detalle técnico.";
+
+/** Señales de que un texto salió tal cual del código: rutas, comandos, trazas, comillas invertidas. */
+const TECNICO = [
+  /(^|\s)(\/[\w.@-]+){2,}/, // ruta de Linux
+  /[A-Z]:\\[\w\\]/, // ruta de Windows
+  /`/,
+  /\b\w*Error:/, // «Error:», «TypeError:», «PrismaClientKnownRequestError:»
+  /^Falló \(/m,
+  /^\s+at\s/m, // traza
+  /\b(?:ENOENT|EACCES|ECONNREFUSED|ETIMEDOUT|SIGKILL|SIGTERM|errno)\b/,
+  /\bprisma\b|\binvocation\b/i,
+];
+
+export function esTecnico(texto: string): boolean {
+  return TECNICO.some((re) => re.test(texto));
+}
+
+/**
+ * El error de un trabajo dicho para quien no sabe de video (UX-14): si ya trae una explicación
+ * (antes de `SEPARADOR_DETALLE`) se usa ésa; si es técnico, el aviso genérico. El texto completo
+ * queda en `detalle` para quien dé soporte.
+ */
+export function explicarError(error: string | null | undefined): { simple: string; detalle: string | null } {
+  const e = (error ?? "").trim();
+  if (!e) return { simple: ERROR_GENERICO, detalle: null };
+  const i = e.indexOf(SEPARADOR_DETALLE.trim());
+  if (i > 0) {
+    const simple = e.slice(0, i).trim();
+    return { simple, detalle: e.slice(i + SEPARADOR_DETALLE.trim().length).trim() || null };
+  }
+  if (esTecnico(e) || e.length > 300) return { simple: ERROR_GENERICO, detalle: e };
+  return { simple: e, detalle: null };
+}
