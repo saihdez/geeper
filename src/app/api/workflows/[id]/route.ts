@@ -4,6 +4,7 @@ import { z } from "zod";
 import { encolar } from "@/lib/cola";
 import { estadoModelos, leerCatalogo, leerWorkflowJson, modelosDeWorkflow, notasDeWorkflow, textosDeWorkflow } from "@/lib/comfyui";
 import { json, manejar } from "@/lib/http";
+import { borrarRecibidos, recibirMultipart } from "@/lib/multipart-flujo";
 import { revisarComfyui } from "@/lib/instalar-comfyui";
 import { infoNodos, permitirNodos } from "@/lib/nodos-comfy";
 import { aviso, bloqueo, dirCorrida, escribirCorrida, nuevaCorrida, PedidoWorkflow } from "@/lib/workflows";
@@ -12,6 +13,8 @@ export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ id: string }> };
 
 const MAX_ARCHIVO = 500 * 1024 ** 2;
+/** Lo que el formulario agrega a los archivos (separadores y los otros campos). */
+const MARGEN = 1024 ** 2;
 const EXT: Record<string, string[]> = { image: [".png", ".jpg", ".jpeg", ".webp"], video: [".mp4", ".mov", ".webm"], audio: [".wav", ".mp3", ".flac", ".m4a", ".ogg"] };
 
 async function buscar(id: string) {
@@ -52,7 +55,10 @@ export async function GET(_: Request, ctx: Ctx) {
   });
 }
 
-/** Crea una corrida: multipart con `textos` (JSON) y un archivo por entrada (`archivo-<nodo>`). */
+/**
+ * Crea una corrida: multipart con `textos` (JSON) y un archivo por entrada (`archivo-<nodo>`). Los archivos
+ * llegan en flujo a la carpeta de la corrida, con el tope de 500 MB mirado mientras llegan (SRV-01).
+ */
 export async function POST(req: Request, ctx: Ctx) {
   return manejar(async () => {
     const { id } = await ctx.params;
@@ -60,30 +66,49 @@ export async function POST(req: Request, ctx: Ctx) {
     const w = await buscar(id);
     const motivo = bloqueo(w);
     if (motivo) throw new Error(motivo);
-    const form = await req.formData();
-    if (w.complementos.length) {
-      if (form.get("permitirNodos") === "1") await permitirNodos(w.complementos);
-      const sin = (await infoNodos(w.complementos)).filter((n) => !n.permitido);
-      if (sin.length) throw new Error("Para usar este workflow, marca la casilla que permite instalar su código de la comunidad.");
-    }
-    const textos = z.array(z.object({ nodo: z.string(), indice: z.number().int(), valor: z.string().max(5000) })).max(20).parse(JSON.parse(String(form.get("textos") ?? "[]")));
+    if (Number(req.headers.get("content-length") ?? 0) > MAX_ARCHIVO * Math.max(1, w.entradas.length) + MARGEN) throw new Error("El archivo pasa de 500 MB");
     const corrida = nuevaCorrida(w.id);
     const dir = dirCorrida(corrida);
-    await fs.mkdir(path.join(dir, "entradas"), { recursive: true });
-    const archivos: { nodo: number; nombre: string }[] = [];
-    for (const e of w.entradas) {
-      const f = form.get(`archivo-${e.nodo}`);
-      if (!(f instanceof File) || !f.size) continue; // sin archivo: queda el ejemplo de la plantilla
-      const ext = path.extname(f.name).toLowerCase();
-      if (!(EXT[e.medio] ?? EXT.image!).includes(ext)) throw new Error(`Ese archivo no sirve aquí: hace falta ${e.medio === "video" ? "un video" : e.medio === "audio" ? "un audio" : "una imagen"}.`);
-      if (f.size > MAX_ARCHIVO) throw new Error("El archivo pasa de 500 MB");
-      const nombre = `entrada-${e.nodo}${ext}`;
-      await fs.writeFile(path.join(dir, "entradas", nombre), Buffer.from(await f.arrayBuffer()));
-      archivos.push({ nodo: e.nodo, nombre });
+    const entradas = path.join(dir, "entradas");
+    let creada = false;
+    try {
+      const { campos, archivos } = await recibirMultipart(req, {
+        dir: entradas,
+        archivo: (campo, nombre) => {
+          const e = w.entradas.find((x) => campo === `archivo-${x.nodo}`);
+          if (!e) return null;
+          const ext = path.extname(nombre).toLowerCase();
+          if (!(EXT[e.medio] ?? EXT.image!).includes(ext)) throw new Error(`Ese archivo no sirve aquí: hace falta ${e.medio === "video" ? "un video" : e.medio === "audio" ? "un audio" : "una imagen"}.`);
+          return { tope: MAX_ARCHIVO, mensaje: "El archivo pasa de 500 MB" };
+        },
+      });
+      try {
+        if (w.complementos.length) {
+          if (campos.get("permitirNodos") === "1") await permitirNodos(w.complementos);
+          const sin = (await infoNodos(w.complementos)).filter((n) => !n.permitido);
+          if (sin.length) throw new Error("Para usar este workflow, marca la casilla que permite instalar su código de la comunidad.");
+        }
+        const textos = z.array(z.object({ nodo: z.string(), indice: z.number().int(), valor: z.string().max(5000) })).max(20).parse(JSON.parse(campos.get("textos") ?? "[]"));
+        const usados: { nodo: number; nombre: string }[] = [];
+        for (const e of w.entradas) {
+          const f = archivos.find((a) => a.campo === `archivo-${e.nodo}`);
+          if (!f || !f.bytes) continue; // sin archivo: queda el ejemplo de la plantilla
+          const nombre = `entrada-${e.nodo}${path.extname(f.nombre).toLowerCase()}`;
+          await fs.rename(f.ruta, path.join(entradas, nombre));
+          usados.push({ nodo: e.nodo, nombre });
+        }
+        const pedido = PedidoWorkflow.parse({ workflow: w.id, textos, archivos: usados });
+        await escribirCorrida({ id: corrida, workflow: w.id, titulo: w.titulo, creada: new Date().toISOString(), estado: "preparada", salidas: [] });
+        creada = true;
+        const t = await encolar(null, "workflow.correr", { corrida, pedido });
+        return json({ corrida, trabajo: t.id }, 201);
+      } finally {
+        await borrarRecibidos(archivos);
+      }
+    } catch (e) {
+      // Si no llegó a crearse, no queda una carpeta de corrida a medias.
+      if (!creada) await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+      throw e;
     }
-    const pedido = PedidoWorkflow.parse({ workflow: w.id, textos, archivos });
-    await escribirCorrida({ id: corrida, workflow: w.id, titulo: w.titulo, creada: new Date().toISOString(), estado: "preparada", salidas: [] });
-    const t = await encolar(null, "workflow.correr", { corrida, pedido });
-    return json({ corrida, trabajo: t.id }, 201);
   });
 }
