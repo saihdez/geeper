@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { etapaSimple, explicarError, nombreTipo } from "@/lib/textos";
-import { Aviso, Barra, Estado, haceCuanto, postJson, segundos, useSondeo } from "./comun";
+import { Aviso, Barra, Estado, haceCuanto, MotorApagado, postJson, segundos, useSondeo } from "./comun";
 
 interface Trabajo {
   id: string;
@@ -87,7 +87,7 @@ export function ErrorTrabajo({ error }: { error: string }) {
 }
 
 export function ListaTrabajos({ proyectoId }: { proyectoId?: string }) {
-  const { datos, error, recargar } = useSondeo<{ trabajos: Trabajo[]; workerVivo: boolean; ahora: number }>(
+  const { datos, error, recargar } = useSondeo<{ trabajos: Trabajo[]; workerVivo: boolean; escritorio?: boolean; ahora: number }>(
     `/api/trabajos${proyectoId ? `?proyecto=${proyectoId}` : ""}`,
     2000,
   );
@@ -149,12 +149,7 @@ export function ListaTrabajos({ proyectoId }: { proyectoId?: string }) {
 
   return (
     <div className="space-y-3">
-      {datos && !workerVivo && (
-        <Aviso tipo="alerta">
-          <p className="font-medium">El motor de Geeper está apagado, así que nada avanza.</p>
-          <p className="mt-1">Cierra Geeper y ábrelo otra vez con <code>pnpm run dev:up</code> (enciende la web y el motor juntos).</p>
-        </Aviso>
-      )}
+      {datos && !workerVivo && <MotorApagado escritorio={datos.escritorio} />}
       {error && <Aviso tipo="error">{error}</Aviso>}
       {fallo && <Aviso tipo="error">{fallo}</Aviso>}
       {datos?.trabajos.length === 0 && <p className="text-sm text-tenue">Todavía no hay nada: aquí verás cada cosa que Geeper haga por ti.</p>}

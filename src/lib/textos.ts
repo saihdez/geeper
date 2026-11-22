@@ -85,7 +85,7 @@ const ETAPAS: [RegExp, string | ((m: RegExpExecArray) => string)][] = [
   [/^MPT generando(?:\D*(\d+) %)?/i, (m) => `Haciendo el video nuevo${m[1] ? ` (${m[1]} %)` : ""}…`],
   [/Copiando la tarea de MPT/i, "Preparando el video y sus subtítulos…"],
   [/^Cortando el tramo/i, "Cortando el momento y escribiendo los subtítulos…"],
-  [/^Trayendo la fuente/i, "Midiendo dónde hay más reacción…"],
+  [/^Trayendo la fuente/i, "Trayendo el video y midiendo dónde hay más reacción…"],
   [/^Buscando la cara/i, "Buscando la cara en el video…"],
   [/^Verificando render/i, "Revisando el video y la cuenta…"],
   [/^Mezclando audio/i, "Mezclando el sonido…"],

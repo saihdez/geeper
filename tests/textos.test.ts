@@ -48,6 +48,7 @@ describe("etapas (UX-15)", () => {
     ["Cortando el tramo, reencuadrando y transcribiendo (CPU)", "Cortando el momento y escribiendo los subtítulos…"],
     ["Traduciendo al inglés con Gemma (tarjeta gráfica)", "Traduciendo al inglés (tarjeta gráfica)"],
     ["Poniendo a tu avatar en la escena", "Poniendo a tu avatar en la escena"],
+    ["Trayendo la fuente y midiendo el sonido", "Trayendo el video y midiendo dónde hay más reacción…"],
   ])("«%s» → «%s»", (cruda, simple) => {
     expect(etapaSimple(cruda)).toBe(simple);
   });
@@ -95,5 +96,17 @@ describe("errores de trabajos (UX-14)", () => {
     const s = leer("src/components/lista-trabajos.tsx");
     expect(s).toContain("Volver a intentar");
     expect(s).not.toMatch(/>Relanzar<|"Log"/);
+  });
+});
+
+describe("motor apagado (UX-15)", () => {
+  it("en la app de escritorio no manda a correr comandos", async () => {
+    const { createElement } = await import("react");
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { MotorApagado } = await import("@/components/comun");
+    const app = renderToStaticMarkup(createElement(MotorApagado, { escritorio: true }));
+    expect(app).toContain("Cierra Geeper y ábrelo otra vez.");
+    expect(app).not.toContain("pnpm");
+    expect(renderToStaticMarkup(createElement(MotorApagado, {}))).toContain("pnpm run dev:up");
   });
 });

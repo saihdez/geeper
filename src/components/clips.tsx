@@ -5,7 +5,7 @@
  */
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { Aviso, Barra, archivo, numero, pedir, postJson, segundos, useSondeo } from "./comun";
+import { Aviso, Barra, MotorApagado, archivo, numero, pedir, postJson, segundos, useSondeo } from "./comun";
 import { SugerenciasBusqueda } from "./sugerencias-busqueda";
 import { sugerirGlosario, sumarAlGlosario } from "@/lib/glosario";
 import { etapaSimple, explicarError, ERROR_GENERICO } from "@/lib/textos";
@@ -27,7 +27,7 @@ interface TrabajoM {
   payload: PedidoAnalisis; resultado: { fuente?: string } | null;
 }
 interface PedidoAnalisis { src?: string; idioma?: string; top?: number; min?: number; max?: number; maxMinutos?: number }
-interface Datos { fuentes: Fuente[]; trabajos: TrabajoM[]; workerVivo: boolean }
+interface Datos { fuentes: Fuente[]; trabajos: TrabajoM[]; workerVivo: boolean; escritorio?: boolean }
 interface Tendencia { url: string; titulo: string; canal: string; vistas: number; horas: number; vistasPorHora: number; minutos: number; loMasVisto: boolean; fueDirecto: boolean }
 
 const mmss = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
@@ -73,12 +73,7 @@ export function PaginaClips() {
         <p className="text-sm text-tenue">Geeper encuentra los mejores momentos de un video y los convierte en clips verticales listos para redes.</p>
       </div>
       <Pasos actual={paso} ir={(n) => (n === 1 ? ir(null) : n === 2 && fuente ? ir(fuente.id) : undefined)} />
-      {datos && !datos.workerVivo && (
-        <Aviso tipo="alerta">
-          <p className="font-medium">El motor de Geeper está apagado, así que nada avanza.</p>
-          <p className="mt-1">Cierra Geeper y ábrelo otra vez con <code>pnpm run dev:up</code> (enciende la web y el motor juntos).</p>
-        </Aviso>
-      )}
+      {datos && !datos.workerVivo && <MotorApagado escritorio={datos.escritorio} />}
       {!datos && <p className="text-tenue">Cargando…</p>}
       {datos && paso === 1 && <Paso1 datos={datos} recargar={recargar} elegir={(id) => ir(id)} trabajoInicial={trabajoPedido} />}
       {datos && paso === 2 && fuente && <Paso2 f={fuente} elegir={(n) => ir(fuente.id, n)} volver={(trabajo) => ir(null, null, trabajo ?? null)} />}

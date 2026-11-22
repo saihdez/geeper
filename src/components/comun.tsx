@@ -117,6 +117,21 @@ export function Aviso({ tipo = "info", children }: { tipo?: "info" | "error" | "
   return <div className={`rounded-lg border px-3 py-2 text-sm ${c}`} role={tipo === "error" ? "alert" : "status"}>{children}</div>;
 }
 
+/**
+ * El motor (worker) no da señales. En la app de escritorio basta con cerrarla y abrirla; en desarrollo,
+ * `pnpm run dev:up` enciende la web y el motor juntos (UX-15).
+ */
+export function MotorApagado({ escritorio }: { escritorio?: boolean }) {
+  return (
+    <Aviso tipo="alerta">
+      <p className="font-medium">El motor de Geeper está apagado, así que nada avanza.</p>
+      {escritorio
+        ? <p className="mt-1">Cierra Geeper y ábrelo otra vez.</p>
+        : <p className="mt-1">Cierra Geeper y ábrelo otra vez con <code>pnpm run dev:up</code> (enciende la web y el motor juntos).</p>}
+    </Aviso>
+  );
+}
+
 /** «Cargando…» igual en todas las pantallas, y anunciado al lector de pantalla. */
 export function Cargando({ children = "Cargando…" }: { children?: React.ReactNode }) {
   return <p className="text-sm text-tenue" role="status">{children}</p>;
