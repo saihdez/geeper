@@ -1,6 +1,5 @@
 /** Ejecutores por tipo de trabajo. Cada uno devuelve su resultado y, si toca, el siguiente de la cadena. */
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { crearCarpetas, guardarProyecto, registrarAssetsEnDb } from "@/lib/almacen";
 import { generarPropuesta, retocarAvatar } from "@/lib/avatares";
@@ -16,7 +15,6 @@ import { ENCUADRES, importarClip, type EncuadreClip } from "@/lib/importador-cli
 import { apiViva, crearVideo, cuerpoVideo, estadoTarea, modeloImagen, soltarCuandoTermine } from "@/lib/mpt";
 import type { Contexto } from "@/lib/pasos";
 import { obtenerPlantilla } from "@/lib/plantillas";
-import { correr } from "@/lib/proceso";
 import { generarPlanoEscena, type OpcionesPlano } from "@/lib/plano";
 import { generarPresentador, type OpcionesPresentador } from "@/lib/presentador";
 import { PedidoRehacer, rehacerEscena } from "@/lib/rehacer";
@@ -67,32 +65,9 @@ function siguienteDe(payload: Payload, extra: Payload = {}): Salida["siguiente"]
   return { tipo, payload: { ...extra, cadena: resto } };
 }
 
-/** Telemetría de la GPU cada 5 s en un CSV que sobrevive a un reinicio (fsync en cada línea). */
-function telemetria(ruta: string): () => void {
-  let activo = true;
-  const tick = async () => {
-    if (!activo) return;
-    try {
-      const r = await correr("nvidia-smi", ["--query-gpu=temperature.gpu,power.draw,memory.used,utilization.gpu", "--format=csv,noheader,nounits"], { permitirFallo: true });
-      const carga = os.loadavg()[0]!.toFixed(2); // 0 en Windows
-      const fh = await fs.open(ruta, "a");
-      await fh.write(`${new Date().toISOString()},${r.stdout.trim().replace(/\s/g, "")},${carga}\n`);
-      await fh.sync();
-      await fh.close();
-    } catch {
-      /* sin nvidia-smi */
-    }
-    if (activo) setTimeout(() => void tick(), 5000).unref();
-  };
-  void fs.writeFile(ruta, "tiempo,temp_c,potencia_w,vram_mib,uso_pct,carga1\n").then(tick);
-  return () => {
-    activo = false;
-  };
-}
-
 async function mptGenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
   const proyecto = await db.proyecto.findUniqueOrThrow({ where: { id: t.proyectoId! } });
-  const dir = await crearCarpetas(proyecto.slug);
+  await crearCarpetas(proyecto.slug);
   const plantilla = await obtenerPlantilla(proyecto.plantilla);
   if (!(await apiViva())) throw new Error("El generador de videos está apagado. Abre Docker Desktop, espera un minuto y pulsa «Relanzar».");
   await db.proyecto.update({ where: { id: proyecto.id }, data: { estado: "generando" } });
@@ -121,7 +96,7 @@ async function mptGenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
       void h.etapa(`Esperando la GPU (la tiene: ${quien.slice(0, 80)})`, 0.01);
     },
   });
-  const pararTelemetria = telemetria(path.join(dir, "logs", `${t.id}-telemetria.csv`));
+  // La telemetría de la tarjeta (CSV y pico en el resultado) la lleva el worker para todo trabajo de GPU (GPU-10).
   let terminada = false;
   try {
     if (!taskId) {
@@ -146,7 +121,6 @@ async function mptGenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
     terminada = true;
     h.log(`MPT terminó la tarea ${taskId} en ${((Date.now() - t0) / 1000).toFixed(0)} s`);
   } finally {
-    pararTelemetria();
     if (candado && taskId && !terminada && h.signal.aborted) {
       // Cancelado con la tarea en marcha: la tarjeta sigue tomada hasta que MPT la suelte (tope 10 min).
       // El trabajo siguiente lo muestra como «Esperando la GPU (la tiene: mpt …)».
