@@ -82,4 +82,19 @@ describe.skipIf(process.platform === "win32")("worker como proceso", () => {
     expect(await w.fin).toBe(1);
     expect(w.salida()).toContain("dentro de gpu-lock");
   });
+
+  it("un segundo worker sobre la misma cola avisa y no arranca (WRK-10)", async () => {
+    const a = lanzarWorker();
+    await a.hasta("Ejecutores:");
+    const b = lanzarWorker({ GEEPER_WORKER_ESPERA_MS: "500" });
+    expect(await b.fin).toBe(1);
+    expect(b.salida()).toContain("Ya hay otro worker atendiendo esta cola");
+    a.hijo.kill("SIGTERM");
+    expect(await a.fin).toBe(0);
+    // Muerto el primero, el siguiente arranca sin esperar.
+    const c = lanzarWorker();
+    await c.hasta("Ejecutores:", 10_000);
+    c.hijo.kill("SIGTERM");
+    expect(await c.fin).toBe(0);
+  }, 60_000);
 });

@@ -1,6 +1,9 @@
 /** Tareas periódicas del worker que no son de un trabajo concreto (separadas para poder probarlas). */
+import { readFile } from "node:fs/promises";
 import { latido, recuperarVencidos } from "@/lib/cola";
 import { db } from "@/lib/db";
+import { candadoArchivo, type Candado } from "@/lib/gpu";
+import { rutaBaseDatos } from "@/lib/rutas";
 
 /** Cada cuánto se mira si alguien canceló un trabajo en curso (el latido del lease va cada 15 s). */
 export const REVISAR_CANCELADOS_MS = 2000;
@@ -47,4 +50,25 @@ export async function esperarVacio(enCurso: { readonly size: number }, topeMs = 
     await new Promise((ok) => setTimeout(ok, pasoMs));
   }
   return true;
+}
+
+/** Candado de «un worker por cola»: va junto a la base, así cada instancia (GEEPER_DB) tiene el suyo. */
+export const rutaCandadoWorker = () => `${rutaBaseDatos()}.worker.lock`;
+
+/**
+ * Toma el candado de worker (WRK-10). Si otro worker vivo lo tiene, reintenta hasta `esperaMs` (en Windows los
+ * PID se reciclan rápido: el latido del candado vence a los 60 s) y devuelve el PID del otro si no lo suelta.
+ */
+export async function tomarCandadoWorker(op: { archivo?: string; esperaMs?: number; pasoMs?: number } = {}): Promise<{ candado: Candado } | { otro: number | null }> {
+  const archivo = op.archivo ?? rutaCandadoWorker();
+  const limite = Date.now() + (op.esperaMs ?? 65_000);
+  for (;;) {
+    const candado = await candadoArchivo(archivo, "worker", { esperar: false });
+    if (candado) return { candado };
+    if (Date.now() >= limite) {
+      const otro = await readFile(archivo, "utf8").then((t) => Number((JSON.parse(t) as { pid?: unknown }).pid) || null).catch(() => null);
+      return { otro };
+    }
+    await new Promise((ok) => setTimeout(ok, op.pasoMs ?? 2000));
+  }
 }

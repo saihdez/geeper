@@ -14,7 +14,7 @@ import { cerrarHuerfanos } from "@/lib/procesos-largos";
 import { tapar } from "@/lib/redes/secretos";
 import { dirProyecto } from "@/lib/rutas";
 import { EJECUTORES, rutaLog } from "./ejecutores";
-import { barrerLeases, esperarVacio, REVISAR_CANCELADOS_MS, TOPE_APAGAR_MS, yaNoSonNuestros } from "./sistema";
+import { barrerLeases, esperarVacio, REVISAR_CANCELADOS_MS, tomarCandadoWorker, TOPE_APAGAR_MS, yaNoSonNuestros } from "./sistema";
 
 const workerId = nuevoWorkerId();
 let apagando = false;
@@ -126,6 +126,13 @@ async function main() {
   // trabajos de tarjeta correrían a la vez (GPU-11). No se quita la variable: se avisa y no se sigue.
   if (process.env.GPU_LOCK_ACTIVE === "1") {
     avisar("Se lanzó dentro de gpu-lock (GPU_LOCK_ACTIVE=1): así no se respetaría el turno de la tarjeta. Lánzalo sin gpu-lock.");
+    process.exit(1);
+  }
+  // Un worker por cola: con dos, habría dos trabajos de CPU por fila y uno podría correr código viejo (WRK-10).
+  const espera = Number(process.env.GEEPER_WORKER_ESPERA_MS) || undefined;
+  const turno = await tomarCandadoWorker({ esperaMs: espera });
+  if ("otro" in turno) {
+    avisar(`Ya hay otro worker atendiendo esta cola${turno.otro ? ` (proceso ${turno.otro})` : ""}. Ciérralo antes de abrir otro; éste no arranca.`);
     process.exit(1);
   }
   await prepararDb();
