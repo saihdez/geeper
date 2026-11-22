@@ -113,3 +113,22 @@ export function preguntaVozEscena(escenaId: string, escenas: EscenaVoz[], voces:
   const resto = otras.length === 1 ? "la otra escena seguirá" : `las otras ${otras.length} escenas seguirán`;
   return `Esta escena quedará con la voz ${nombre(elegida)} y ${resto} con ${cuenta.size === 1 ? nombre(comun) : "otras voces"}.`;
 }
+
+/** UX-27: el ritmo de la voz en palabras (los números quedan sólo por dentro). */
+export const RITMOS: { valor: number; nombre: string }[] = [
+  { valor: 0.85, nombre: "Pausado (recomendado)" },
+  { valor: 0.9, nombre: "Un poco más rápido" },
+  { valor: 0.95, nombre: "Algo más rápido" },
+  { valor: 1, nombre: "Rápido" },
+  { valor: 1.05, nombre: "Muy rápido" },
+];
+
+/** Las opciones del selector; si el proyecto tiene otro valor, se agrega para no perderlo. */
+export function opcionesRitmo(actual: number): { valor: number; nombre: string }[] {
+  return RITMOS.some((r) => r.valor === actual) ? RITMOS : [...RITMOS, { valor: actual, nombre: `Otro (${String(actual).replace(".", ",")})` }].sort((a, b) => a.valor - b.valor);
+}
+
+/** Desde 0,9 los subtítulos pueden pasar de 17 letras por segundo y el QC rechaza el video. */
+export function avisoRitmo(velocidad: number): string | null {
+  return velocidad >= 0.9 ? "Con este ritmo los subtítulos pueden pasar muy rápido y el video no se podrá descargar." : null;
+}

@@ -18,7 +18,7 @@ import { SelectorEncuadre, type EncuadreV } from "./selector-encuadre";
 import { PanelOtroEditor } from "./panel-otro-editor";
 import { useAccionesProyecto } from "./acciones-proyecto";
 import { FranjaAviso, type MensajeEditor } from "./franja-aviso";
-import { correccionesVacias, enLista, errorSubtitulo, escenasConOtraVoz, estaActivo, estadoCreacion, mismoContenido, pasoRender, preguntaVozEscena, renderEnCurso, verTrabajos, type TrabajoV, type VocesV } from "./editor-estado";
+import { avisoRitmo, correccionesVacias, enLista, opcionesRitmo, errorSubtitulo, escenasConOtraVoz, estaActivo, estadoCreacion, mismoContenido, pasoRender, preguntaVozEscena, renderEnCurso, verTrabajos, type TrabajoV, type VocesV } from "./editor-estado";
 import { Plegable } from "./plegable";
 import { EdicionPorTexto, EfectosEscena, PanelAvanzado, PanelEstilo, type EfectosV, type EstiloV, type ExtrasV, type PalabraV } from "./edicion-avanzada";
 
@@ -610,18 +610,22 @@ export function EditorProyecto({ id }: { id: string }) {
                 )}
               </div>
             )}
-            <div className="flex flex-wrap items-end gap-2 border-t border-borde pt-3">
-              <div>
-                <label className="etiqueta" htmlFor="vel">Velocidad de la voz (para la próxima regeneración)</label>
-                <select id="vel" className="campo w-auto" value={String(p.voz.velocidad)} disabled={ocupado}
-                  onChange={(e) => void editar({ tipo: "cambiarVoz", velocidad: Number(e.target.value) })}>
-                  {[0.85, 0.9, 0.95, 1, 1.05].map((x) => <option key={x} value={String(x)}>{x}</option>)}
-                </select>
+            {/* UX-27: en un clip la voz es la del creador: ni ritmo ni regenerar. */}
+            {!v.extras?.clip && (
+              <div className="flex flex-wrap items-end gap-2 border-t border-borde pt-3">
+                <div>
+                  <label className="etiqueta" htmlFor="vel">Ritmo de la voz (cuenta la próxima vez que se diga el guion)</label>
+                  <select id="vel" className="campo w-auto" value={String(p.voz.velocidad)} disabled={ocupado} aria-describedby={avisoRitmo(p.voz.velocidad) ? "aviso-ritmo" : undefined}
+                    onChange={(e) => void editar({ tipo: "cambiarVoz", velocidad: Number(e.target.value) })}>
+                    {opcionesRitmo(p.voz.velocidad).map((x) => <option key={x.valor} value={String(x.valor)}>{x.nombre}</option>)}
+                  </select>
+                </div>
+                <button type="button" className="boton" disabled={ocupado} onClick={() => { if (confirm("¿Regenerar la voz de todo el guion? Se realinean los subtítulos y se vuelve a renderizar. No usa la GPU.")) void regenerarVoz(null); }}>
+                  Regenerar voz del guion completo
+                </button>
+                {avisoRitmo(p.voz.velocidad) && <p id="aviso-ritmo" className="w-full text-xs text-amber-200">{avisoRitmo(p.voz.velocidad)}</p>}
               </div>
-              <button type="button" className="boton" disabled={ocupado || Boolean(v.extras?.clip)} title={v.extras?.clip ? "Es un clip: la voz es la del creador" : undefined} onClick={() => { if (confirm("¿Regenerar la voz de todo el guion? Se realinean los subtítulos y se vuelve a renderizar. No usa la GPU.")) void regenerarVoz(null); }}>
-                Regenerar voz del guion completo
-              </button>
-            </div>
+            )}
           </div>
         </section>
       )}
