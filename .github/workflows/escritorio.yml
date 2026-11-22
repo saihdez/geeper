@@ -44,6 +44,8 @@ jobs:
       # Las pruebas que no dependen del estudio de desarrollo (ffmpeg en ~/.local, mpt_acabado, WSL):
       # las de la app de escritorio, que tienen que pasar en Windows y en macOS.
       - run: pnpm test:escritorio
+      # Las de la carcasa y del empaquetado (escritorio/, scripts/escritorio/), también en los dos sistemas.
+      - run: pnpm exec vitest run tests/escritorio-carcasa.test.ts tests/escritorio-armado.test.ts tests/escritorio-vigia.test.ts tests/escritorio-probar-app.test.ts tests/ci-escritorio.test.ts
       - run: pnpm escritorio:empaquetar
       - uses: actions/upload-artifact@v4
         with:

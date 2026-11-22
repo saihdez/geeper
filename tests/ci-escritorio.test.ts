@@ -34,3 +34,11 @@ describe("instalador (ESC-06)", () => {
     expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1024, 1024]);
   });
 });
+
+describe("CI corre las pruebas de la carcasa y del empaquetado (ESC-12)", () => {
+  const flujo = fs.readFileSync(path.join(__dirname, "..", ".github", "workflows", "escritorio.yml"), "utf8");
+  it.each(["escritorio-carcasa", "escritorio-armado", "escritorio-vigia", "escritorio-probar-app"])("%s", (nombre) => {
+    expect(flujo).toContain(`tests/${nombre}.test.ts`);
+    expect(fs.existsSync(path.join(__dirname, `${nombre}.test.ts`))).toBe(true);
+  });
+});
