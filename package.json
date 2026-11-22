@@ -9,15 +9,16 @@
     "pnpm": ">=10.34.7"
   },
   "scripts": {
-    "dev": "next dev --port 3300",
+    "dev": "next dev --hostname 127.0.0.1 --port 3300",
     "build": "next build",
-    "start": "next start --port 3300",
+    "start": "next start --hostname 127.0.0.1 --port 3300",
     "escritorio:preparar": "tsx scripts/escritorio/empaquetar.ts --sin-instalador",
     "escritorio:probar": "env -u ELECTRON_RUN_AS_NODE electron escritorio-app",
     "escritorio:empaquetar": "tsx scripts/escritorio/empaquetar.ts",
     "worker": "tsx worker/index.ts",
     "dev:up": "tsx scripts/dev-up.ts",
     "doctor": "tsx scripts/doctor.ts",
+    "respaldo": "tsx scripts/respaldo.ts",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "setup": "prisma generate && prisma db push && tsx prisma/seed.ts",
