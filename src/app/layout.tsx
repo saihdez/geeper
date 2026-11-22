@@ -2,7 +2,11 @@ import type { Metadata } from "next";
 import { Barra } from "@/components/barra";
 import "./globals.css";
 
-export const metadata: Metadata = { title: "Geeper", description: "Estudio de video local de Dimerso" };
+export const metadata: Metadata = {
+  // Cada sección pone el suyo («Clips · Geeper»); así se distinguen las pestañas y el historial.
+  title: { default: "Mis videos · Geeper", template: "%s · Geeper" },
+  description: "Estudio de video local de Dimerso",
+};
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
