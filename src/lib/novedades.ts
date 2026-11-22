@@ -82,24 +82,53 @@ const recortar = (s: string) => (s.length > MAX_NOTAS ? `${s.slice(0, MAX_NOTAS)
 
 type Pedir = (url: string) => Promise<unknown>;
 
-async function pedirJson(url: string): Promise<unknown> {
-  const headers: Record<string, string> = { "user-agent": "geeper-novedades", accept: "application/vnd.github+json" };
-  // Opcional: con un token sube el límite de GitHub (60 consultas por hora sin él; Geeper usa ~25 al día).
-  if (process.env.GITHUB_TOKEN && url.startsWith("https://api.github.com/")) headers.authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
-  // La conexión con GitHub a veces tarda o se corta: tres intentos con pausa creciente.
-  for (let i = 1; ; i++) {
-    try {
-      const r = await fetch(url, { headers, signal: AbortSignal.timeout(60_000) });
-      if (r.status === 403 || r.status === 429) throw new Error("GitHub limitó las consultas por ahora; se vuelve a intentar más tarde");
-      if (!r.ok) throw new Error(`${new URL(url).host} respondió ${r.status}`);
-      return await r.json();
-    } catch (e) {
-      const http = e instanceof Error && /respondió|limitó/.test(e.message);
-      if (http || i >= 3) throw new Error(http ? (e as Error).message : `No se pudo conectar con ${new URL(url).host} (${e instanceof Error ? e.message : String(e)})`);
-      await new Promise((r) => setTimeout(r, 2000 * i));
-    }
-  }
+/** Respuesta guardada de una consulta, con su ETag: si GitHub responde 304, se reutiliza (TER-08). */
+export interface Guardada {
+  etag: string;
+  cuerpo: unknown;
 }
+
+/**
+ * Pide JSON con reintentos. Con `memoria` manda `If-None-Match` con el ETag de la última respuesta de
+ * esa URL: un 304 no gasta cuota de GitHub (60 consultas por hora sin token) y devuelve lo guardado.
+ * `hacerFetch` se inyecta en las pruebas.
+ */
+export function crearPedidor(memoria: Map<string, Guardada> = new Map(), hacerFetch: typeof fetch = fetch): Pedir {
+  return async (url) => {
+    const headers: Record<string, string> = { "user-agent": "geeper-novedades", accept: "application/vnd.github+json" };
+    // Opcional: con un token sube el límite de GitHub (60 consultas por hora sin él; Geeper usa ~25 al día).
+    if (process.env.GITHUB_TOKEN && url.startsWith("https://api.github.com/")) headers.authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+    const previa = memoria.get(url);
+    if (previa) headers["if-none-match"] = previa.etag;
+    // La conexión con GitHub a veces tarda o se corta: tres intentos con pausa creciente.
+    for (let i = 1; ; i++) {
+      try {
+        const r = await hacerFetch(url, { headers, signal: AbortSignal.timeout(60_000) });
+        if (r.status === 304 && previa) return previa.cuerpo;
+        if (r.status === 403 || r.status === 429) throw new Error("GitHub limitó las consultas por ahora; se vuelve a intentar más tarde");
+        if (!r.ok) throw new Error(`${new URL(url).host} respondió ${r.status}`);
+        const cuerpo: unknown = await r.json();
+        const etag = r.headers.get("etag");
+        if (etag) memoria.set(url, { etag, cuerpo });
+        return cuerpo;
+      } catch (e) {
+        const http = e instanceof Error && /respondió|limitó/.test(e.message);
+        if (http || i >= 3) throw new Error(http ? (e as Error).message : `No se pudo conectar con ${new URL(url).host} (${e instanceof Error ? e.message : String(e)})`);
+        await new Promise((r) => setTimeout(r, 2000 * i));
+      }
+    }
+  };
+}
+
+const pedirJson: Pedir = crearPedidor();
+
+interface CommitGh {
+  sha: string;
+  html_url: string;
+  commit: { message: string; committer?: { date?: string } };
+}
+
+const MAX_COMMITS = 30;
 
 /** Lo nuevo de una fuente respecto de su base. `pedir` se inyecta en las pruebas. */
 export async function consultar(f: Fuente, pedir: Pedir = pedirJson): Promise<Novedad> {
@@ -120,13 +149,33 @@ export async function consultar(f: Fuente, pedir: Pedir = pedirJson): Promise<No
         .sort((a, b) => compararVersiones(b.version, a.version));
     }
     if (f.tipo === "commits" || f.como.includes("codigo")) {
-      const q = new URLSearchParams({ since: `${f.revisado}T00:00:00Z`, per_page: "30" });
-      if (f.ruta) q.set("path", f.ruta);
-      const cs = (await pedir(`https://api.github.com/repos/${f.repo}/commits?${q}`)) as { sha: string; html_url: string; commit: { message: string; committer?: { date?: string } } }[];
-      n.commits = cs
-        .filter((c) => !f.commit || !c.sha.startsWith(f.commit))
-        .map((c) => ({ sha: c.sha.slice(0, 7), fecha: (c.commit.committer?.date ?? "").slice(0, 10), mensaje: c.commit.message.split("\n")[0]!.slice(0, 200), url: c.html_url }));
-      n.masCommits = cs.length === 30;
+      const comoNuevos = (cs: CommitGh[]) =>
+        cs
+          .filter((c) => !f.commit || !c.sha.startsWith(f.commit))
+          .slice(0, MAX_COMMITS)
+          .map((c) => ({ sha: c.sha.slice(0, 7), fecha: (c.commit.committer?.date ?? "").slice(0, 10), mensaje: c.commit.message.split("\n")[0]!.slice(0, 200), url: c.html_url }));
+      // Con un commit fijado y sin ruta: lo que vino después de ese commit, no lo fechado después de la
+      // revisión (un commit viejo que se fusiona tarde también cuenta). Si GitHub no conoce el commit,
+      // se cae a la fecha.
+      let hecho = false;
+      if (f.commit && !f.ruta) {
+        try {
+          const cmp = (await pedir(`https://api.github.com/repos/${f.repo}/compare/${f.commit}...HEAD`)) as { total_commits?: number; commits?: CommitGh[] };
+          const cs = [...(cmp.commits ?? [])].reverse(); // GitHub los da del más viejo al más nuevo.
+          n.commits = comoNuevos(cs);
+          n.masCommits = (cmp.total_commits ?? cs.length) > n.commits.length;
+          hecho = true;
+        } catch (e) {
+          if (!(e instanceof Error && /respondió 404/.test(e.message))) throw e;
+        }
+      }
+      if (!hecho) {
+        const q = new URLSearchParams({ since: `${f.revisado}T00:00:00Z`, per_page: String(MAX_COMMITS) });
+        if (f.ruta) q.set("path", f.ruta);
+        const cs = (await pedir(`https://api.github.com/repos/${f.repo}/commits?${q}`)) as CommitGh[];
+        n.commits = comoNuevos(cs);
+        n.masCommits = cs.length === MAX_COMMITS;
+      }
     }
   } catch (e) {
     n.error = e instanceof Error ? e.message : String(e);
@@ -137,7 +186,9 @@ export async function consultar(f: Fuente, pedir: Pedir = pedirJson): Promise<No
 export const tieneNovedades = (n: Novedad) => n.nuevas.length > 0 || n.commits.length > 0;
 
 const rutaCache = () => path.join(dirDatos(), "novedades.json");
+const rutaEtags = () => path.join(dirDatos(), "novedades-etag.json");
 const UN_DIA = 24 * 60 * 60 * 1000;
+const UNA_HORA = 60 * 60 * 1000;
 
 export async function leerCache(): Promise<Informe | null> {
   try {
@@ -147,20 +198,42 @@ export async function leerCache(): Promise<Informe | null> {
   }
 }
 
+/**
+ * Un informe vale un día; uno con errores (red caída, GitHub limitó) sólo una hora (TER-08): si no,
+ * el informe incompleto quedaba 24 h y no se veían las novedades de esas fuentes.
+ */
+export function informeFresco(inf: Informe | null, ahora = Date.now()): inf is Informe {
+  if (!inf) return false;
+  const edad = ahora - Date.parse(inf.fecha);
+  return edad < (inf.novedades.some((n) => n.error) ? UNA_HORA : UN_DIA);
+}
+
+async function leerEtags(): Promise<Map<string, Guardada>> {
+  try {
+    return new Map(Object.entries(JSON.parse(await fs.readFile(rutaEtags(), "utf8")) as Record<string, Guardada>));
+  } catch {
+    return new Map();
+  }
+}
+
 const g = globalThis as unknown as { __buscandoNovedades?: Promise<Informe> };
 
-/** Novedades de todas las fuentes: del caché si tiene menos de un día (o si `forzar` es false y falla la red). */
-export async function buscarNovedades({ forzar = false, pedir = pedirJson }: { forzar?: boolean; pedir?: Pedir } = {}): Promise<Informe> {
+/** Novedades de todas las fuentes: del caché si sigue fresco (ver `informeFresco`), salvo con `forzar`. */
+export async function buscarNovedades({ forzar = false, pedir }: { forzar?: boolean; pedir?: Pedir } = {}): Promise<Informe> {
   const cache = await leerCache();
-  if (!forzar && cache && Date.now() - Date.parse(cache.fecha) < UN_DIA) return cache;
+  if (!forzar && informeFresco(cache)) return cache;
   g.__buscandoNovedades ??= (async () => {
     const fuentes = (await leerFuentes()).filter((f) => !f.archivada);
+    // Sin `pedir` inyectado: las respuestas anteriores con su ETag, para que lo que no cambió no gaste cuota.
+    const etags = pedir ? null : await leerEtags();
+    const pedirAhora = pedir ?? crearPedidor(etags!);
     const novedades: Novedad[] = [];
     // De a 4 para no saturar la red ni el límite de GitHub.
-    for (let i = 0; i < fuentes.length; i += 4) novedades.push(...(await Promise.all(fuentes.slice(i, i + 4).map((f) => consultar(f, pedir)))));
+    for (let i = 0; i < fuentes.length; i += 4) novedades.push(...(await Promise.all(fuentes.slice(i, i + 4).map((f) => consultar(f, pedirAhora)))));
     const informe: Informe = { fecha: new Date().toISOString(), novedades };
     await fs.mkdir(dirDatos(), { recursive: true });
     await escribirAtomico(rutaCache(), JSON.stringify(informe, null, 2));
+    if (etags) await escribirAtomico(rutaEtags(), JSON.stringify(Object.fromEntries(etags)));
     return informe;
   })().finally(() => {
     g.__buscandoNovedades = undefined;
