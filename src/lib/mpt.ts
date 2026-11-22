@@ -81,6 +81,36 @@ export async function estadoTarea(taskId: string): Promise<EstadoMpt> {
   return { estado: "procesando", progreso };
 }
 
+/**
+ * Tras cancelar «Generar video», MPT sigue generando la tarea 3–7 min más: si se soltara la tarjeta en ese
+ * momento, el video siguiente correría encima (GPU-03). Esto vigila la tarea hasta que MPT la dé por
+ * terminada, fallida o perdida (o hasta `topeMs`) y entonces suelta el candado. No espera: vigila aparte.
+ */
+export function soltarCuandoTermine(
+  taskId: string,
+  candado: { liberar(): void },
+  op: { topeMs?: number; pasoMs?: number; log?: (l: string) => void; estado?: (id: string) => Promise<EstadoMpt> } = {},
+): Promise<EstadoMpt["estado"] | "tope"> {
+  const estado = op.estado ?? estadoTarea;
+  const limite = Date.now() + (op.topeMs ?? 10 * 60_000);
+  return (async () => {
+    try {
+      while (Date.now() < limite) {
+        const e = await estado(taskId).catch(() => null);
+        if (e && e.estado !== "procesando") {
+          op.log?.(`MPT dejó la tarea ${taskId} (${e.estado}): se suelta la tarjeta`);
+          return e.estado;
+        }
+        await new Promise((ok) => setTimeout(ok, op.pasoMs ?? 5000));
+      }
+      op.log?.(`MPT sigue con la tarea ${taskId} tras el tope: se suelta la tarjeta igual`);
+      return "tope" as const;
+    } finally {
+      candado.liberar();
+    }
+  })();
+}
+
 export async function apiViva(): Promise<boolean> {
   try {
     const r = await fetch(`${MPT_API}/api/v1/tasks?page=1&page_size=1`, { signal: AbortSignal.timeout(5000) });

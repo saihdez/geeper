@@ -20,6 +20,11 @@ export interface OpcionesCandado {
   /** Se llama cada vez que gpu-lock avisa que está esperando. */
   alEsperar?: (quien: string) => void;
   signal?: AbortSignal;
+  /**
+   * Por defecto, cancelar suelta el candado. Con false, cancelar sólo corta la espera: una vez tomado, lo
+   * suelta quien llama, p. ej. cuando MPT de verdad terminó con lo que tenía en la tarjeta (GPU-03).
+   */
+  soltarAlCancelar?: boolean;
 }
 
 export function tomarGpu(descripcion: string, op: OpcionesCandado): Promise<Candado | null> {
@@ -82,7 +87,7 @@ export function tomarGpu(descripcion: string, op: OpcionesCandado): Promise<Cand
         resuelto = true;
         matarGrupo();
         mal(new Error("Cancelado mientras esperaba la GPU"));
-      } else liberar();
+      } else if (op.soltarAlCancelar !== false) liberar();
     });
   });
 }
@@ -148,7 +153,7 @@ export async function candadoArchivo(archivo: string, descripcion: string, op: O
           if (d?.pid === yo.pid && d.desde === yo.desde) await fs.rm(archivo, { force: true });
         })().catch(() => {});
       };
-      op.signal?.addEventListener("abort", liberar, { once: true });
+      if (op.soltarAlCancelar !== false) op.signal?.addEventListener("abort", liberar, { once: true });
       return { liberar };
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
