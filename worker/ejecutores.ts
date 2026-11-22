@@ -26,7 +26,7 @@ import { correrWorkflow, PedidoWorkflow } from "@/lib/workflows";
 import { regenerarVoz } from "@/lib/regenerar";
 import { IdiomaTraduccion, traducirProyecto } from "@/lib/traducir";
 import { disenarVoz } from "@/lib/voces";
-import { agregarEfecto, describirEnIngles, generarEfecto } from "@/lib/efectos-sonido";
+import { agregarEfecto, describirEnIngles, generarEfecto, generarEfectos, presetsQueFaltan } from "@/lib/efectos-sonido";
 import type { Avance } from "@/lib/wan2gp";
 import { reencuadrarEscena } from "@/lib/reencuadre";
 import { renderEntregar, versionDeProyecto } from "@/lib/render";
@@ -281,6 +281,18 @@ async function efectoGenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
   return { resultado: { version, efecto: e.id } };
 }
 
+/** Los sonidos listos que faltan en la biblioteca, en un solo proceso de MOSS (una carga del modelo, GPU-05). */
+async function efectosPreparar(_t: Trabajo, h: Herramientas): Promise<Salida> {
+  const faltan = await presetsQueFaltan();
+  if (!faltan.length) {
+    h.log("Los sonidos listos ya están todos en la biblioteca: no se usa la tarjeta gráfica.");
+    return { resultado: { generados: 0, fallidos: [] } };
+  }
+  await h.etapa(`Creando ${faltan.length} sonidos listos (tarjeta gráfica; unos ${Math.ceil(1.5 + faltan.length / 6)} min)`, 0.1);
+  const r = await generarEfectos(h, faltan);
+  return { resultado: { generados: r.generados, fallidos: r.fallidos, medidas: r.medidas } };
+}
+
 async function vozDisenar(t: Trabajo, h: Herramientas): Promise<Salida> {
   await h.etapa("Creando 3 voces que cumplan la descripción (VoxCPM2, tarjeta gráfica)", 0.1);
   const r = await disenarVoz(h, String(t.payload.propuesta ?? ""), String(t.payload.descripcion ?? ""));
@@ -480,6 +492,7 @@ export const EJECUTORES: Record<TipoTrabajo, (t: Trabajo, h: Herramientas) => Pr
   "proyecto.traducir": proyectoTraducir,
   "voz.disenar": vozDisenar,
   "efecto.generar": efectoGenerar,
+  "efectos.preparar": efectosPreparar,
   "render.entregar": renderEntregarEj,
   "publicar.subir": publicarSubirEj,
 };

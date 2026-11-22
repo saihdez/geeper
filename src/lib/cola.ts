@@ -31,6 +31,8 @@ export const TIPOS = {
   "voz.disenar": { motor: "tarjeta", usaGpu: true, nombre: "Diseñar una voz" },
   // Casi 16 GB de VRAM con gpu-solo: en la fila de MPT y Wan, que también usan toda la GPU.
   "efecto.generar": { motor: "mpt", usaGpu: true, nombre: "Crear efecto de sonido" },
+  // Los sonidos listos que faltan, todos con una sola carga del modelo (GPU-05; worker/preparar-efectos.ts).
+  "efectos.preparar": { motor: "mpt", usaGpu: true, nombre: "Preparar los sonidos listos" },
   // Mismo motor que MPT: los dos usan toda la GPU y así nunca corren a la vez.
   "plano.generar": { motor: "mpt", usaGpu: true, nombre: "Animar escena" },
   // Avatares (Wan2GP): también toda la GPU, en la misma fila.
