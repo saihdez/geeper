@@ -35,7 +35,7 @@
     "@hyperframes/player": "0.9.27",
     "@prisma/adapter-better-sqlite3": "^7.10.1",
     "@prisma/client": "^7.10.1",
-    "better-sqlite3": "^13.2.0",
+    "better-sqlite3": "12.11.1",
     "fflate": "0.8.2",
     "next": "^16.4.6",
     "react": "^19.3.1",
@@ -44,7 +44,6 @@
   },
   "devDependencies": {
     "@electron/rebuild": "4.2.1",
-    "@eslint/eslintrc": "^3.3.7",
     "@tailwindcss/postcss": "^4.3.5",
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^24.19.2",
