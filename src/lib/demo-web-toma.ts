@@ -35,6 +35,47 @@ const espera = (ms: number, signal?: AbortSignal) =>
     }, { once: true });
   });
 
+/** Códigos de red con los que el link no puede abrir (mal escrito, el sitio no existe o no contesta). */
+const SIN_SITIO = new Set(["ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED", "ECONNRESET", "EHOSTUNREACH", "ENETUNREACH", "ERR_INVALID_URL"]);
+
+/** Mensaje simple cuando la página no abre; el detalle técnico va aparte (registro del trabajo). */
+export const noAbre = (url: string) => `No se pudo abrir ${url}: revisa que el link esté bien escrito y que la página abra en tu navegador.`;
+
+/**
+ * Prueba en hasta 10 s que el link abre, antes de hacer la voz (UX-17): un link mal escrito se
+ * descubre en segundos y no después de esperar la voz. Sólo corta si el sitio no existe o no contesta;
+ * si responde con error (muchos sitios rechazan a los robots) o tarda, avisa en el registro y sigue:
+ * la grabación con el navegador puede funcionar igual.
+ */
+export async function probarLink(
+  url: string,
+  op: { log?: Registro; signal?: AbortSignal; timeoutMs?: number; fetch?: typeof fetch } = {},
+): Promise<void> {
+  const log = op.log ?? (() => {});
+  const plazo = AbortSignal.timeout(op.timeoutMs ?? 10_000);
+  const signal = op.signal ? AbortSignal.any([op.signal, plazo]) : plazo;
+  try {
+    const r = await (op.fetch ?? fetch)(url, { method: "GET", redirect: "follow", signal, headers: { accept: "text/html,*/*" } });
+    await r.body?.cancel().catch(() => {});
+    if (!r.ok) log(`Aviso: la página respondió ${r.status}; se intenta grabar igual (algunos sitios rechazan a los robots).`);
+  } catch (e) {
+    if (op.signal?.aborted) throw new Error("Cancelado");
+    const err = e as Error & { cause?: { code?: string; message?: string }; code?: string };
+    const codigo = err.cause?.code ?? err.code;
+    const detalle = [err.message, err.cause?.message].filter(Boolean).join(": ");
+    if (plazo.aborted || err.name === "TimeoutError") {
+      log(`Aviso: la página tardó más de ${Math.round((op.timeoutMs ?? 10_000) / 1000)} s en contestar; se intenta grabar igual.`);
+      return;
+    }
+    if (codigo && SIN_SITIO.has(codigo)) {
+      log(`Detalle técnico: ${detalle}`);
+      throw new Error(noAbre(url));
+    }
+    // Otro error (certificado, protocolo…): se avisa y el navegador lo intenta igual.
+    log(`Aviso: no se pudo probar el link (${detalle}); se intenta grabar igual.`);
+  }
+}
+
 export interface OpcionesToma {
   formato: FormatoDemo;
   historia?: Historia;
@@ -74,7 +115,9 @@ export async function tomarDemo(url: string, dir: string, op: OpcionesToma): Pro
     try {
       await page.goto(url, { waitUntil: "load", timeout: 60_000 });
     } catch (e) {
-      throw new Error(`No se pudo abrir ${url}: revisa que el link esté bien escrito y que la página abra en tu navegador (${e instanceof Error ? e.message.split("\n")[0] : e}).`);
+      // «(page.goto: net::ERR_NAME_NOT_RESOLVED at …)» sólo en el registro, no en el mensaje (UX-17).
+      log(`Detalle técnico: ${e instanceof Error ? e.message.split("\n")[0] : e}`);
+      throw new Error(noAbre(url));
     }
     await dormir(2600);
 

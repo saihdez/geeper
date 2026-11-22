@@ -1,7 +1,7 @@
 "use client";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { MAX_CARACTERES_DEMO, segundosEstimados } from "@/lib/demo-web";
+import { leerBorradorDemo, MAX_CARACTERES_DEMO, segundosEstimados } from "@/lib/demo-web";
 import { Aviso, postJson, useSondeo } from "./comun";
 
 interface Plantilla {
@@ -27,18 +27,21 @@ function Muestra({ estilo, vertical }: { estilo: "3d" | "plano"; vertical: boole
 
 export function FormDemo() {
   const router = useRouter();
+  const params = useSearchParams();
   const { datos } = useSondeo<{ plantillas: Plantilla[] }>("/api/plantillas", 60_000);
-  const [url, setUrl] = useState("");
-  const [formato, setFormato] = useState<"9:16" | "16:9">("9:16");
-  const [estilo, setEstilo] = useState<"3d" | "plano">("3d");
-  const [texto, setTexto] = useState("");
-  const [plantilla, setPlantilla] = useState("");
-  const [propio, setPropio] = useState(false);
+  // «Cambiar el link» de un video que falló vuelve aquí con lo que se había escrito (UX-17).
+  const [borrador] = useState(() => leerBorradorDemo(params));
+  const [url, setUrl] = useState(borrador.url ?? "");
+  const [formato, setFormato] = useState<"9:16" | "16:9">(borrador.formato ?? "9:16");
+  const [estilo, setEstilo] = useState<"3d" | "plano">(borrador.estilo ?? "3d");
+  const [texto, setTexto] = useState(borrador.texto ?? "");
+  const [plantilla, setPlantilla] = useState(borrador.plantilla ?? "");
+  const [propio, setPropio] = useState(borrador.propio ?? false);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const seg = segundosEstimados(texto);
   const largo = texto.trim().length;
-  const plantillaElegida = plantilla || datos?.plantillas[0]?.slug || "";
+  const plantillaElegida = (plantilla && (!datos || datos.plantillas.some((p) => p.slug === plantilla)) ? plantilla : datos?.plantillas[0]?.slug) || "";
   const linkOk = /^(https?:\/\/)?[^\s/]+\.[^\s]{2,}/i.test(url.trim());
 
   async function enviar(e: React.FormEvent) {

@@ -20,6 +20,48 @@ export const MAX_CARACTERES_DEMO = 700;
 export const CPS_VOZ = 11.5;
 
 /** Segundos aproximados que dura decir `texto` (contador de la página Nuevo). */
+/** Lo que se escribió en «Desde una página web», para volver a Nuevo con todo puesto. */
+export interface BorradorDemo {
+  url: string;
+  texto: string;
+  formato: "16:9" | "9:16";
+  estilo: "3d" | "plano";
+  plantilla: string;
+  propio: boolean;
+}
+
+/**
+ * Enlace a Nuevo con lo que se escribió (UX-17): para el botón «Cambiar el link» de un video de
+ * página web que falló antes de armarse. Lo arma quien tiene los datos del trabajo `demo.crear`.
+ */
+export function enlaceCambiarLink(b: Partial<BorradorDemo>): string {
+  const q = new URLSearchParams({ modo: "web" });
+  if (b.url) q.set("url", b.url);
+  if (b.texto) q.set("texto", b.texto.slice(0, MAX_CARACTERES_DEMO));
+  if (b.formato) q.set("formato", b.formato);
+  if (b.estilo) q.set("estilo", b.estilo);
+  if (b.plantilla) q.set("plantilla", b.plantilla);
+  if (b.propio) q.set("propio", "1");
+  return `/nuevo?${q.toString()}`;
+}
+
+/** Lo que trae el enlace de enlaceCambiarLink (lo que no sea válido se ignora). */
+export function leerBorradorDemo(q: Pick<URLSearchParams, "get">): Partial<BorradorDemo> {
+  const b: Partial<BorradorDemo> = {};
+  const url = q.get("url");
+  if (url) b.url = url.slice(0, 2000);
+  const texto = q.get("texto");
+  if (texto) b.texto = texto.slice(0, MAX_CARACTERES_DEMO);
+  const formato = q.get("formato");
+  if (formato === "16:9" || formato === "9:16") b.formato = formato;
+  const estilo = q.get("estilo");
+  if (estilo === "3d" || estilo === "plano") b.estilo = estilo;
+  const plantilla = q.get("plantilla");
+  if (plantilla && /^[\w-]{1,80}$/.test(plantilla)) b.plantilla = plantilla;
+  if (q.get("propio") === "1") b.propio = true;
+  return b;
+}
+
 export function segundosEstimados(texto: string): number {
   return Math.round((texto.replace(/\s+/g, " ").trim().length / CPS_VOZ) * 10) / 10;
 }
