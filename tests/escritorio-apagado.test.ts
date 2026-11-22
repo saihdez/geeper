@@ -112,10 +112,10 @@ describe.skipIf(process.platform === "win32")("apagar el worker con un trabajo e
     const w = seguir(spawn(process.execPath, ["--import", "tsx", "worker/index.ts"], { cwd: RAIZ, env, stdio: ["ignore", "pipe", "pipe"] }));
     await w.hasta("Ejecutores:");
     await hastaEsperandoGpu(id);
-    const t0 = Date.now();
+    const t0 = performance.now(); // monotónico: la hora del sistema puede saltar (WSL)
     w.hijo.kill("SIGTERM");
     expect(await w.fin).toBe(0);
-    expect(Date.now() - t0).toBeLessThan(PLAZO_VIGIA_MS);
+    expect(performance.now() - t0).toBeLessThan(PLAZO_VIGIA_MS);
     expect(w.salida()).toContain("SIGTERM: apagando");
     expect(await estado(id)).toMatchObject({ estado: "interrumpido", error: expect.stringContaining("el worker se apagó") });
   }, 90_000);

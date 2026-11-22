@@ -12,11 +12,17 @@ beforeEach(() => {
 });
 afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
+/** Reloj monotónico en ms, común a todos los procesos de la máquina (CLOCK_MONOTONIC en Linux). */
+const ahora = () => Number(process.hrtime.bigint() / 1_000_000n);
+/** Lo que el hijo imprime al recibir el Ctrl+C, con la hora del mismo reloj. */
+const AVISO = `console.log("aviso " + (process.hrtime.bigint() / 1000000n))`;
+
 /**
  * Lanza `codigo` por vigia.mjs como lo hace la carcasa; cuando imprime «listo», le cierra la entrada.
  * `ms` cuenta desde que esta prueba vio «listo»; `msDesdeAviso`, desde que el hijo imprimió «aviso <hora>»
  * al recibir el Ctrl+C. Con la máquina cargada, esta prueba puede ver «listo» tarde (y `ms` sale más corto
- * de lo real): para los pisos se usa la hora que anota el propio hijo.
+ * de lo real): para los pisos se usa la hora que anota el propio hijo. Se mide con el reloj monotónico y
+ * no con Date.now(): en WSL la hora del sistema llegó a saltar 1,5 s hacia atrás en plena prueba.
  */
 function correr(
   codigo: string,
@@ -33,14 +39,14 @@ function correr(
     p.stdout.on("data", (d: Buffer) => {
       salida += d.toString();
       if (!desde && salida.includes("listo")) {
-        desde = Date.now();
+        desde = ahora();
         p.stdin.end();
       }
     });
     p.stderr.on("data", (d: Buffer) => (salida += d.toString()));
     p.on("error", mal);
     p.on("exit", (c) => {
-      const fin = Date.now();
+      const fin = ahora();
       const aviso = /aviso (\d+)/.exec(salida);
       ok({ codigo: c, salida, ms: fin - desde, msDesdeAviso: aviso ? fin - Number(aviso[1]) : null });
     });
@@ -69,7 +75,7 @@ describe("vigia.mjs: el hijo se apaga en orden cuando la app cierra (ESC-11)", (
     // Tope corto para la prueba. El piso se mide desde que el hijo recibió el aviso (el temporizador de
     // vigia.mjs arranca antes, así que no puede salir antes de 1 s) y el techo deja 20 s de holgura por si
     // la máquina está cargada (antes fallaba con 9 s).
-    const r = await correr(`process.on("SIGINT", () => console.log("aviso " + Date.now())); setInterval(() => {}, 1000); console.log("listo");`, [], 1000);
+    const r = await correr(`process.on("SIGINT", () => ${AVISO}); setInterval(() => {}, 1000); console.log("listo");`, [], 1000);
     const detalle = JSON.stringify(r);
     expect(r.codigo, detalle).toBe(0);
     expect(r.salida, detalle).toContain("aviso ");
@@ -79,7 +85,7 @@ describe("vigia.mjs: el hijo se apaga en orden cuando la app cierra (ESC-11)", (
 
   it("si el proceso necesita tiempo para cerrar en orden, se le dan los segundos que pida dentro del tope", async () => {
     const r = await correr(
-      `process.on("SIGINT", () => { console.log("aviso " + Date.now()); setTimeout(() => { console.log("cerré en orden"); process.exit(0); }, 1500); }); setInterval(() => {}, 1000); console.log("listo");`,
+      `process.on("SIGINT", () => { ${AVISO}; setTimeout(() => { console.log("cerré en orden"); process.exit(0); }, 1500); }); setInterval(() => {}, 1000); console.log("listo");`,
       [],
       30_000,
     );
