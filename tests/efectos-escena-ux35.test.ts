@@ -5,7 +5,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { cuandoAparece, EfectosEscena, OPCIONES_MOV, PanelAvanzado, tiempoDelTexto, type EfectosV, type ExtrasV } from "@/components/edicion-avanzada";
+import { cuandoAparece, cuandoDe, EfectosEscena, OPCIONES_MOV, PanelAvanzado, tiempoDelTexto, type EfectosV, type ExtrasV } from "@/components/edicion-avanzada";
 
 const efectos = (o: Partial<EfectosV> = {}): EfectosV => ({ transicion: null, movimiento: null, velocidad: 1, color: null, efectos: null, ...o });
 const panel = (e: EfectosV) =>
@@ -48,6 +48,17 @@ describe("Textos en pantalla por escena (UX-35)", () => {
     expect(tiempoDelTexto("escena:2", "0", "escena", ESCENAS)).toEqual({ inicio: 4.5, duracion: 6 });
     expect(tiempoDelTexto("escena:1", "0", "3", ESCENAS)).toEqual({ inicio: 0.5, duracion: 3 });
     expect(tiempoDelTexto("segundo", "7.2", "5", ESCENAS)).toEqual({ inicio: 7.2, duracion: 5 });
+  });
+
+  it("si las escenas llegan después de abrir el panel, «¿Cuándo aparece?» pasa a la escena 1", () => {
+    // Al montar todavía no hay escenas: en un segundo exacto.
+    expect(cuandoDe(null, [])).toBe("segundo");
+    // Llegan las escenas y la persona no eligió nada: al empezar la escena 1.
+    expect(cuandoDe(null, ESCENAS)).toBe("escena:1");
+    // Lo que eligió se respeta; si esa escena ya no está, vuelve a la 1.
+    expect(cuandoDe("segundo", ESCENAS)).toBe("segundo");
+    expect(cuandoDe("escena:2", ESCENAS)).toBe("escena:2");
+    expect(cuandoDe("escena:5", ESCENAS)).toBe("escena:1");
   });
 
   it("el formulario pregunta «¿Cuándo aparece?» y «¿Cuánto dura?»", () => {
