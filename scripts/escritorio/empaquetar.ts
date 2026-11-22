@@ -17,6 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import { build } from "esbuild";
 import { unzipSync } from "fflate";
+import { electronDelRepo, probarApp } from "./probar-app";
 import { copiarStandalone, faltantesApp, podarNodeModules, revisarStandalone, tamanoCarpeta } from "./armado";
 
 const REPO = path.resolve(__dirname, "..", "..");
@@ -223,6 +224,11 @@ async function main() {
   // Lo que se lee en tiempo de ejecución tiene que estar: si no, se vería en el equipo de alguien.
   const falta = faltantesApp(APP);
   if (falta.length) throw new Error(`A la app le falta lo que necesita al correr: ${falta.join(", ")}`);
+  // Se abre la app armada una vez (con el Node de Electron) antes de hacer el instalador: ESC-12.
+  if (process.env.GEEPER_SIN_PRUEBA !== "1") {
+    const fallas = await probarApp({ app: APP, ejecutable: electronDelRepo() });
+    if (fallas.length) throw new Error(`La app armada no funciona; no se hace el instalador:\n  ${fallas.join("\n  ")}`);
+  }
 
   if (sinInstalador) {
     console.log(`Lista: ${APP}\nProbar: pnpm exec electron ${APP}`);

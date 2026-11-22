@@ -19,7 +19,7 @@ import net from "node:net";
 import path from "node:path";
 import { app, BrowserWindow, dialog, Menu, shell } from "electron";
 import { esVueltaOAuth } from "./oauth";
-import { comoRematar, esDeGeeper, paginaAbriendo, permitirReinicio, plantillaMenu, registrar, rotarRegistro } from "./reglas";
+import { comoRematar, entornoHijos, esDeGeeper, paginaAbriendo, permitirReinicio, plantillaMenu, registrar, rotarRegistro } from "./reglas";
 
 const RAIZ = app.isPackaged ? path.join(process.resourcesPath, "app") : path.join(__dirname, "..", "escritorio-app");
 const hijos: { nombre: string; p: ChildProcess }[] = [];
@@ -46,24 +46,12 @@ function log(nombre: string): fs.WriteStream {
 }
 
 
-/** Entorno de los hijos: dónde viven las cosas en este sistema (src/lib/plataforma.ts lo lee). */
+/** Entorno de los hijos: dónde viven las cosas en este sistema (escritorio/reglas.ts, entornoHijos). */
 function entorno(puerto: number): NodeJS.ProcessEnv {
-  return {
-    ...process.env,
-    ELECTRON_RUN_AS_NODE: "1",
-    NODE_ENV: "production",
-    GEEPER_ESCRITORIO: "1",
-    GEEPER_DOCUMENTOS: app.getPath("documents"),
-    GEEPER_APPDATA: app.getPath("userData"),
-    // Herramientas pesadas (venvs, modelos, CLIs): en Windows en Local, no en Roaming (que se sincroniza).
-    GEEPER_HERRAMIENTAS: process.platform === "win32" && process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Geeper", "herramientas") : path.join(app.getPath("userData"), "herramientas"),
-    GEEPER_RECURSOS: path.join(RAIZ, "recursos"),
-    GEEPER_REPO: RAIZ,
-    GEEPER_HYPERFRAMES_CLI: path.join(RAIZ, "node_modules", "hyperframes", "bin", "hyperframes.mjs"),
-    PORT: String(puerto),
-    HOSTNAME: "127.0.0.1",
-    NEXT_TELEMETRY_DISABLED: "1",
-  };
+  return entornoHijos(
+    { raiz: RAIZ, documentos: app.getPath("documents"), appData: app.getPath("userData"), localAppData: process.env.LOCALAPPDATA, plataforma: process.platform, puerto },
+    process.env,
+  );
 }
 
 function lanzar(nombre: string, script: string, env: NodeJS.ProcessEnv, cwd = RAIZ): ChildProcess {

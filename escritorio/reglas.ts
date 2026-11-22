@@ -3,6 +3,7 @@
  */
 import type { ChildProcess } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 import type { MenuItemConstructorOptions } from "electron";
 
 /** Si el registro pasa de `maxBytes`, se guarda como `<ruta>.1` (pisando el anterior) y se empieza otro. */
@@ -126,4 +127,39 @@ export function comoRematar(plataforma: NodeJS.Platform, pid: number | undefined
   if (!pid) return null;
   if (plataforma === "win32") return { comando: "taskkill", args: ["/PID", String(pid), "/T", "/F"] };
   return { senal: "SIGKILL" };
+}
+
+export interface RutasHijos {
+  /** Carpeta de la app (resources/app): standalone/, node_modules/, py/, recursos/. */
+  raiz: string;
+  documentos: string;
+  appData: string;
+  /** LOCALAPPDATA en Windows, si existe: las herramientas pesadas no van en Roaming. */
+  localAppData?: string;
+  plataforma: NodeJS.Platform;
+  puerto: number;
+}
+
+/**
+ * Entorno de los procesos hijos (servidor, worker, preparar-db): dónde viven las cosas en este sistema
+ * (src/lib/plataforma.ts y src/lib/rutas.ts lo leen). Lo usan la carcasa y la prueba del empaquetado
+ * (scripts/escritorio/probar-app.ts), para que la prueba arranque la app igual que la carcasa.
+ */
+export function entornoHijos(r: RutasHijos, base: Record<string, string | undefined> = {}): NodeJS.ProcessEnv {
+  const p = r.plataforma === "win32" ? path.win32 : path.posix;
+  return {
+    ...base,
+    ELECTRON_RUN_AS_NODE: "1",
+    NODE_ENV: "production",
+    GEEPER_ESCRITORIO: "1",
+    GEEPER_DOCUMENTOS: r.documentos,
+    GEEPER_APPDATA: r.appData,
+    GEEPER_HERRAMIENTAS: r.plataforma === "win32" && r.localAppData ? p.join(r.localAppData, "Geeper", "herramientas") : p.join(r.appData, "herramientas"),
+    GEEPER_RECURSOS: p.join(r.raiz, "recursos"),
+    GEEPER_REPO: r.raiz,
+    GEEPER_HYPERFRAMES_CLI: p.join(r.raiz, "node_modules", "hyperframes", "bin", "hyperframes.mjs"),
+    PORT: String(r.puerto),
+    HOSTNAME: "127.0.0.1",
+    NEXT_TELEMETRY_DISABLED: "1",
+  };
 }
