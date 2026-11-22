@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { assetsConFondo, compilar } from "@/lib/compilador";
 import { pista, validarProyecto, type Proyecto } from "@/lib/esquema";
-import { filtroFondo, prepararFondos } from "@/lib/fondos";
+import { corteFondo, filtroFondo, finUsado, prepararFondos } from "@/lib/fondos";
 import { metricas } from "@/lib/formatos";
 import { opcionesDe } from "@/lib/linea";
 import { probar } from "@/lib/media";
@@ -87,6 +87,40 @@ describe("REN-09: fondo borroso horneado", () => {
       const log = (m: string) => void avisos.push(m);
       expect(await prepararFondos(horizontalEnVertical(), dir, {}, 1080, 1920, log)).toEqual({});
       expect(avisos.join("\n")).toContain("queda el de CSS");
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("sólo hornea hasta donde el video usa el clip (más 1 s), sin cortar el comienzo", async () => {
+    const p = horizontalEnVertical();
+    // Tres escenas de 3 s desde el segundo 0; la primera cubre además 0,3 s de entrada.
+    expect(finUsado(p, 1080, 1920).tramo).toBeCloseTo(3.3, 5);
+    expect(corteFondo(3.3, 11)).toBe(5);
+    expect(corteFondo(10.5, 11)).toBeNull(); // casi entero: se hornea todo
+    expect(corteFondo(undefined, 11)).toBeNull();
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "geeper-fondo-"));
+    try {
+      await fs.mkdir(path.join(dir, "assets"));
+      await correr(FFMPEG, ["-hide_banner", "-nostdin", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc=s=160x90:d=11:r=10", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", path.join(dir, "assets", "tramo.mp4")]);
+      const fondos = await prepararFondos(p, dir, {}, 1080, 1920);
+      const d = (await probar(fondos.tramo!)).duracion;
+      expect(d).toBeGreaterThan(4.5);
+      expect(d).toBeLessThan(5.5);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("si se cancela, no sigue con el desenfoque de CSS: corta el render", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "geeper-fondo-"));
+    try {
+      await fs.mkdir(path.join(dir, "assets"));
+      await correr(FFMPEG, ["-hide_banner", "-nostdin", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc=s=160x90:d=1:r=10", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", path.join(dir, "assets", "tramo.mp4")]);
+      const ac = new AbortController();
+      ac.abort();
+      await expect(prepararFondos(horizontalEnVertical(), dir, {}, 1080, 1920, undefined, process.env, ac.signal)).rejects.toThrow();
+      expect(await fs.readdir(path.join(dir, "assets", "fondo")).catch(() => [])).toEqual([]);
     } finally {
       await fs.rm(dir, { recursive: true, force: true });
     }
