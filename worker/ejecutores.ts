@@ -13,7 +13,7 @@ import { importarDemo } from "@/lib/importador-demo";
 import { buscarMomentos } from "@/lib/buscar-momentos";
 import { Campania } from "@/lib/clips";
 import { ENCUADRES, importarClip, type EncuadreClip } from "@/lib/importador-clip";
-import { apiViva, crearVideo, cuerpoVideo, estadoTarea, modeloImagen } from "@/lib/mpt";
+import { apiViva, crearVideo, cuerpoVideo, estadoTarea, modeloImagen, soltarCuandoTermine } from "@/lib/mpt";
 import type { Contexto } from "@/lib/pasos";
 import { obtenerPlantilla } from "@/lib/plantillas";
 import { correr } from "@/lib/proceso";
@@ -112,12 +112,15 @@ async function mptGenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
   const candado = await tomarGpu(`mpt ${proyecto.slug}`, {
     esperar: true,
     signal: h.signal,
+    // Cancelar no suelta la tarjeta: MPT sigue con la tarea 3–7 min más (GPU-03). La suelta el finally.
+    soltarAlCancelar: false,
     alEsperar: (quien) => {
       h.log(`GPU ocupada por: ${quien}. Esperando...`);
       void h.etapa(`Esperando la GPU (la tiene: ${quien.slice(0, 80)})`, 0.01);
     },
   });
   const pararTelemetria = telemetria(path.join(dir, "logs", `${t.id}-telemetria.csv`));
+  let terminada = false;
   try {
     if (!taskId) {
       const guion = typeof t.payload.guion === "string" ? t.payload.guion : undefined;
@@ -131,14 +134,23 @@ async function mptGenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
     for (;;) {
       const e = await estadoTarea(taskId);
       if (e.estado === "completa") break;
-      if (e.estado === "fallida" || e.estado === "perdida") throw new Error(`MPT: tarea ${taskId} ${e.estado}. ${e.detalle ?? ""}`);
+      if (e.estado === "fallida" || e.estado === "perdida") {
+        terminada = true;
+        throw new Error(`MPT: tarea ${taskId} ${e.estado}. ${e.detalle ?? ""}`);
+      }
       await h.etapa(`MPT generando (${e.progreso} %, ${Math.round((Date.now() - t0) / 1000)} s)`, 0.02 + (e.progreso / 100) * 0.95);
       await dormir(5000, h.signal);
     }
+    terminada = true;
     h.log(`MPT terminó la tarea ${taskId} en ${((Date.now() - t0) / 1000).toFixed(0)} s`);
   } finally {
     pararTelemetria();
-    candado?.liberar();
+    if (candado && taskId && !terminada && h.signal.aborted) {
+      // Cancelado con la tarea en marcha: la tarjeta sigue tomada hasta que MPT la suelte (tope 10 min).
+      // El trabajo siguiente lo muestra como «Esperando la GPU (la tiene: mpt …)».
+      h.log(`Cancelado: MPT sigue con la tarea ${taskId}; la tarjeta se suelta cuando la termine (como mucho 10 min)`);
+      void soltarCuandoTermine(taskId, candado, { log: h.log });
+    } else candado?.liberar();
   }
   return { resultado: { taskId }, siguiente: siguienteDe(t.payload, { taskId }) };
 }
