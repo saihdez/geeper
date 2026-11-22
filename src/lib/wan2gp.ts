@@ -22,6 +22,7 @@ import { tomarGpu } from "./gpu";
 import { comandoGpuSolo } from "./gpu-solo";
 import { LICENCIAS } from "./licencias";
 import { aplicarParchesWan2gp } from "./parches-wan2gp";
+import { matarArbol, patronComando } from "./proceso";
 import { GPU_SOLO_BIN, WAN2GP_DIR, WAN2GP_PYTHON } from "./rutas";
 
 export interface ModeloPlano {
@@ -389,37 +390,14 @@ function archivosDe(dir: string, tipos: Set<string>): string[] {
 
 const videoMasNuevo = (dir: string): string | null => archivosDe(dir, MEDIOS).at(-1) ?? null;
 
-const escaparRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
 /**
- * Mata wgp.py y lo que haya lanzado (ffmpeg, compiladores): tiene su propio grupo de procesos. Primero
- * SIGTERM a todo el grupo; si a los 5 s sigue vivo, SIGKILL. Con gpu-solo, el SIGKILL va sólo al Python:
+ * Mata wgp.py y lo que haya lanzado (ffmpeg, compiladores): tiene su propio grupo de procesos. SIGTERM a
+ * todo el grupo y, si a los 5 s el grupo sigue vivo, SIGKILL (WRK-03: se mira el grupo y no el hijo
+ * directo, que con gpu-solo es gpu-lock y muere enseguida). Con gpu-solo, el SIGKILL va sólo al Python:
  * matar el bash de gpu-solo antes de su `trap` dejaría detenidos los contenedores de MPT.
  */
-function matarArbol(hijo: ChildProcess, i: InstalacionWan2gp, conGpuSolo: boolean) {
-  if (!hijo.pid || hijo.exitCode !== null || hijo.signalCode !== null) return;
-  if (process.platform === "win32") {
-    spawn("taskkill", ["/pid", String(hijo.pid), "/T", "/F"], { stdio: "ignore" });
-    return;
-  }
-  try {
-    process.kill(-hijo.pid, "SIGTERM");
-  } catch {
-    /* ya terminó */
-  }
-  setTimeout(() => {
-    if (hijo.exitCode !== null || hijo.signalCode !== null) return;
-    if (conGpuSolo) {
-      // Sólo los procesos del grupo cuya línea de comando empieza con «<python> <wgp.py>».
-      spawn("pkill", ["-KILL", "-g", String(hijo.pid), "-f", `^${escaparRegex(i.python)} ${escaparRegex(i.wgp)}`], { stdio: "ignore" }).on("error", () => {});
-      return;
-    }
-    try {
-      process.kill(-hijo.pid!, "SIGKILL");
-    } catch {
-      /* ya terminó */
-    }
-  }, 5000).unref();
+function matarWan2gp(hijo: ChildProcess, i: InstalacionWan2gp, conGpuSolo: boolean) {
+  matarArbol(hijo, { patronDuro: conGpuSolo ? patronComando(i.python) : undefined });
 }
 
 const TOPE_SALIDA = 2 * 1024 * 1024;
@@ -535,7 +513,7 @@ async function correrWan2gp(op: OpcionesGenerar, tipo: "video" | "imagen"): Prom
       const bajado = tamanoCarpeta(ckpts) - base;
       if (bajado > 0) op.alAvanzar?.({ fase: "descargando", bytes: bajado, avance: 0.02 });
     }, 2000);
-    const cancelar = () => matarArbol(hijo, i, conGpuSolo);
+    const cancelar = () => matarWan2gp(hijo, i, conGpuSolo);
     signal?.addEventListener("abort", cancelar, { once: true });
     try {
       return await new Promise<string[]>((ok, mal) => {
