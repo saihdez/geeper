@@ -105,3 +105,22 @@ describe("el botón apagado dice qué falta (UX-31)", () => {
     expect(html).toMatch(/<input[^>]*id="demo-url"[^>]*aria-invalid="true"[^>]*aria-describedby="demo-url-error"[^>]*style="border-color:#f87171"[^>]*\/><p id="demo-url-error"[^>]*>Ese link no parece completo/);
   });
 });
+
+describe("usar un video de MoneyPrinterTurbo (UX-39)", () => {
+  it("va dentro de «Más opciones», sin task_id ni MPT, y dice dónde está el código", () => {
+    const html = pintar();
+    const mas = html.match(/<details[^>]*><summary[^>]*>Más opciones<\/summary>([\s\S]*?)<\/details>/)?.[1] ?? "";
+    expect(mas).toContain("Usar un video que ya hice con MoneyPrinterTurbo");
+    expect(mas).toContain("Código del video (36 letras y números)");
+    expect(mas).toContain("storage/tasks");
+    expect(html).not.toMatch(/task_id|\bMPT\b|Kokoro|\bQC\b/);
+  });
+
+  it("un código incompleto se avisa antes de enviar, con la misma regla que el servidor", async () => {
+    const { CODIGO_MPT } = await import("@/components/form-nuevo");
+    expect(CODIGO_MPT.test("c721927b-353e-4dce-9bbb-8ce7d33ed5f2")).toBe(true);
+    expect(CODIGO_MPT.test("hola")).toBe(false);
+    const servidor = readFileSync(path.join(process.cwd(), "src", "lib", "servicios.ts"), "utf8");
+    expect(servidor).toContain(`if (!${CODIGO_MPT.toString()}.test(taskId))`);
+  });
+});

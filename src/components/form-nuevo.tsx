@@ -11,6 +11,9 @@ interface Plantilla {
   datos: { descripcion: string };
 }
 
+/** El código (task_id) de un video de MoneyPrinterTurbo, como lo valida el servidor (servicios.ts). */
+export const CODIGO_MPT = /^[0-9a-f-]{36}$/;
+
 /** Lo que falta para poder enviar, en palabras de la persona (UX-31): va debajo del botón apagado. */
 export function faltaNuevo(o: { temas: number; necesitaGpu: boolean; aceptoGpu: boolean }): string[] {
   const falta: string[] = [];
@@ -37,15 +40,16 @@ export function FormNuevo() {
   const [error, setError] = useState<string | null>(null);
   const lista = temas.split("\n").map((t) => t.trim()).filter(Boolean);
   const importa = mptTaskId.trim().length > 0;
+  const codigoMal = importa && !CODIGO_MPT.test(mptTaskId.trim());
   const necesitaGpu = !importa;
-  const faltan = faltaNuevo({ temas: lista.length, necesitaGpu, aceptoGpu });
+  const faltan = [...faltaNuevo({ temas: lista.length, necesitaGpu, aceptoGpu }), ...(codigoMal ? ["un código de video completo"] : [])];
 
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
     setEnviando(true);
     setError(null);
     try {
-      const r = await postJson<{ proyectos: { id: string }[] }>("/api/proyectos", { temas, formato, plantilla, mptTaskId: mptTaskId || undefined, rehacerVoz, avatar: !importa && avatar ? avatar : undefined, estilo: importa ? undefined : estilo });
+      const r = await postJson<{ proyectos: { id: string }[] }>("/api/proyectos", { temas, formato, plantilla, mptTaskId: mptTaskId.trim() || undefined, rehacerVoz, avatar: !importa && avatar ? avatar : undefined, estilo: importa ? undefined : estilo });
       router.push(r.proyectos.length === 1 ? `/proyectos/${r.proyectos[0]!.id}` : "/");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -115,19 +119,26 @@ export function FormNuevo() {
           <p className="text-xs text-tenue">{tiempoEstimado(estilo)}</p>
         </fieldset>
       )}
-      <details className="tarjeta p-3">
-        <summary className="cursor-pointer text-sm">Importar un short que MPT ya generó (sin usar la GPU)</summary>
-        <label className="etiqueta mt-3" htmlFor="mpt">task_id de MoneyPrinterTurbo</label>
-        <input id="mpt" className="campo font-mono" value={mptTaskId} onChange={(e) => setMpt(e.target.value)} placeholder="c721927b-353e-4dce-9bbb-8ce7d33ed5f2" />
-        <p className="mt-1 text-xs text-tenue">Usa la primera línea de «Tema» como nombre.</p>
+      {/* Para quien instaló MoneyPrinterTurbo (UX-39): queda guardado en «Más opciones». */}
+      <details className="tarjeta p-3" open={importa || undefined}>
+        <summary className="cursor-pointer text-sm">Más opciones</summary>
+        <p className="mt-3 text-sm font-medium">Usar un video que ya hice con MoneyPrinterTurbo</p>
+        <p className="text-xs text-tenue">No usa la tarjeta de video: Geeper toma ese video y lo deja listo para editar.</p>
+        <label className="etiqueta mt-2" htmlFor="mpt">Código del video (36 letras y números)</label>
+        <input id="mpt" className="campo font-mono" value={mptTaskId} onChange={(e) => setMpt(e.target.value)} placeholder="c721927b-353e-4dce-9bbb-8ce7d33ed5f2"
+          aria-invalid={codigoMal || undefined} aria-describedby="mpt-ayuda" autoComplete="off" spellCheck={false} />
+        <p id="mpt-ayuda" className={`mt-1 text-xs ${codigoMal ? "text-red-400" : "text-tenue"}`}>
+          {codigoMal ? "Ese código no está completo: son 36 letras y números separados por guiones, como el de ejemplo. " : ""}
+          Lo ves en MoneyPrinterTurbo al terminar un video, y es el nombre de su carpeta dentro de storage/tasks. El nombre del proyecto sale de la primera línea de «Tema».
+        </p>
         <label className="mt-2 flex items-center gap-2 text-sm">
           <input type="checkbox" checked={rehacerVoz} onChange={(e) => setRehacerVoz(e.target.checked)} />
-          Rehacer la voz con la de la plantilla (Kokoro en CPU; los shorts viejos de MPT van muy rápido para el QC)
+          Rehacer la voz con la del estilo del canal (sin la tarjeta de video; las voces viejas de MoneyPrinterTurbo hablan muy rápido para la revisión)
         </label>
       </details>
       {necesitaGpu && (
         <Aviso tipo="alerta">
-          <p className="font-medium">Generar usa la GPU (guion, imágenes y voz con MPT, unos 3 min por tema).</p>
+          <p className="font-medium">Crear el video usa la tarjeta de video (guion, imágenes y voz; unos 3 min por tema).</p>
           <p className="mt-1">Windows se ha reiniciado sin aviso durante generaciones: guarda tu trabajo antes. Si se reinicia, el trabajo queda «interrumpido» y lo relanzas tú desde Trabajos; nunca se reintenta solo.</p>
           <label className="mt-2 flex items-center gap-2">
             <input type="checkbox" checked={aceptoGpu} onChange={(e) => setAcepto(e.target.checked)} />
