@@ -123,6 +123,8 @@ async function main() {
   };
   process.on("SIGINT", () => void apagar("SIGINT"));
   process.on("SIGTERM", () => void apagar("SIGTERM"));
+  // Cerrar la ventana de la terminal manda SIGHUP: sin esto el worker moría sin apagar sus procesos.
+  process.on("SIGHUP", () => void apagar("SIGHUP"));
   avisar(`Ejecutores: ${MOTORES.join(", ")}. Datos en ${path.dirname(dirProyecto("x"))}`);
   await Promise.all(MOTORES.map((m) => bucle(m)));
 }
