@@ -53,10 +53,18 @@ export type Motor = (typeof MOTORES)[number];
 
 export type Payload = Record<string, unknown> & { cadena?: TipoTrabajo[] };
 
+/**
+ * Veces que un trabajo de CPU puede empezar antes de que, si el worker vuelve a caerse con él a medias,
+ * quede «interrumpido» en vez de volver a la cola (WRK-09). Sin tope, uno que tumbe el worker se repetía
+ * sin fin (y en desarrollo dev-up apagaba la web a la sexta caída).
+ */
+export const MAX_INTENTOS = 2;
+export const CORTADO_DOS_VECES = "Se cortó dos veces. Revísalo antes de relanzar.";
+
 export async function encolar(proyectoId: string | null, tipo: TipoTrabajo, payload: Payload, prioridad = 0) {
   const t = TIPOS[tipo];
   return db.trabajo.create({
-    data: { proyectoId, tipo, motor: t.motor, usaGpu: t.usaGpu, payload: payload as object, prioridad, maxIntentos: 1 },
+    data: { proyectoId, tipo, motor: t.motor, usaGpu: t.usaGpu, payload: payload as object, prioridad, maxIntentos: MAX_INTENTOS },
   });
 }
 
@@ -125,7 +133,7 @@ export async function terminar(
           motor: t.motor,
           usaGpu: t.usaGpu,
           payload: siguiente.payload as object,
-          maxIntentos: 1,
+          maxIntentos: MAX_INTENTOS,
         },
       });
     }
@@ -190,7 +198,8 @@ export async function ultimoLatidoWorker(): Promise<Date | null> {
 /**
  * Al arrancar el worker: si Windows se reinició desde el último latido, todo lo que estaba
  * «corriendo» pasa a «interrumpido». Si no, los de lease vencido: los de GPU a «interrumpido»
- * (nunca se reintentan solos) y los demás vuelven a «pendiente».
+ * (nunca se reintentan solos) y los demás vuelven a «pendiente», salvo que ya hayan empezado
+ * `maxIntentos` veces: entonces quedan «interrumpidos» (WRK-09).
  */
 export async function recuperarAlArrancar(): Promise<{ reinicio: Reinicio; interrumpidos: number; reencolados: number }> {
   const reinicio = await detectarReinicio(await ultimoLatidoWorker());
@@ -212,6 +221,9 @@ export async function recuperarAlArrancar(): Promise<{ reinicio: Reinicio; inter
         },
       });
       interrumpidos++;
+    } else if (agotado(t)) {
+      await db.trabajo.update({ where: { id: t.id }, data: { estado: "interrumpido", leaseUntil: null, terminado: ahora, error: CORTADO_DOS_VECES } });
+      interrumpidos++;
     } else {
       await db.trabajo.update({ where: { id: t.id }, data: { estado: "pendiente", leaseUntil: null, workerId: null, etapa: "En cola (recuperado)" } });
       reencolados++;
@@ -220,13 +232,19 @@ export async function recuperarAlArrancar(): Promise<{ reinicio: Reinicio; inter
   return { reinicio, interrumpidos, reencolados };
 }
 
+/** Ya empezó tantas veces como permite su fila (`maxIntentos`). */
+function agotado(t: { intentos: number; maxIntentos: number }): boolean {
+  return t.intentos >= t.maxIntentos;
+}
+
 export function nuevoWorkerId(): string {
   return `${os.hostname()}:${process.pid}:${Date.now().toString(36)}`;
 }
 
 /**
  * Durante la marcha: trabajos «corriendo» cuyo lease venció (su worker murió sin avisar, p. ej. kill -9).
- * Los de GPU quedan «interrumpidos» (los relanza la persona); los demás vuelven a la cola.
+ * Los de GPU quedan «interrumpidos» (los relanza la persona); los demás vuelven a la cola hasta
+ * `maxIntentos` veces (WRK-09).
  */
 export async function recuperarVencidos(): Promise<number> {
   const vencidos = await db.trabajo.findMany({ where: { estado: "corriendo", leaseUntil: { lt: new Date() } } });
@@ -235,7 +253,9 @@ export async function recuperarVencidos(): Promise<number> {
       where: { id: t.id, estado: "corriendo", leaseUntil: { lt: new Date() } },
       data: t.usaGpu
         ? { estado: "interrumpido", leaseUntil: null, terminado: new Date(), error: "Interrumpido: el worker que lo corría dejó de responder. Relánzalo cuando quieras." }
-        : { estado: "pendiente", leaseUntil: null, workerId: null, etapa: "En cola (recuperado)" },
+        : agotado(t)
+          ? { estado: "interrumpido", leaseUntil: null, terminado: new Date(), error: CORTADO_DOS_VECES }
+          : { estado: "pendiente", leaseUntil: null, workerId: null, etapa: "En cola (recuperado)" },
     });
   }
   return vencidos.length;

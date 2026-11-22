@@ -75,4 +75,35 @@ describe("cola en SQLite", () => {
     await cola.cancelar(t.id);
     expect(await cola.latido(t.id, "w1")).toBe(false);
   });
+
+  it("un trabajo de CPU que se corta dos veces queda «interrumpido» y no vuelve solo a la cola (WRK-09)", async () => {
+    await db.trabajo.updateMany({ data: { estado: "cancelado" } });
+    await cola.guardarLatidoWorker();
+    const t = await cola.encolar("p1", "proyecto.importar", {});
+    expect(t.maxIntentos).toBe(cola.MAX_INTENTOS);
+    const vencer = () => db.trabajo.update({ where: { id: t.id }, data: { leaseUntil: new Date(Date.now() - 1000) } });
+    // Primera caída: vuelve a la cola.
+    await cola.reclamar("voz", "muerto-1");
+    await vencer();
+    expect(await cola.recuperarVencidos()).toBe(1);
+    expect((await db.trabajo.findUniqueOrThrow({ where: { id: t.id } })).estado).toBe("pendiente");
+    // Segunda caída: queda para la persona, con un mensaje claro.
+    await cola.reclamar("voz", "muerto-2");
+    await vencer();
+    await cola.recuperarVencidos();
+    const fila = await db.trabajo.findUniqueOrThrow({ where: { id: t.id } });
+    expect(fila.estado).toBe("interrumpido");
+    expect(fila.error).toBe(cola.CORTADO_DOS_VECES);
+    // Lo mismo si la segunda caída se ve al arrancar el worker.
+    await cola.relanzar(t.id);
+    await cola.reclamar("voz", "muerto-3");
+    await vencer();
+    await cola.recuperarAlArrancar();
+    expect((await db.trabajo.findUniqueOrThrow({ where: { id: t.id } })).estado).toBe("pendiente");
+    await cola.reclamar("voz", "muerto-4");
+    await vencer();
+    const r = await cola.recuperarAlArrancar();
+    expect(r.interrumpidos).toBe(1);
+    expect((await db.trabajo.findUniqueOrThrow({ where: { id: t.id } })).error).toBe(cola.CORTADO_DOS_VECES);
+  }, 60_000);
 });
