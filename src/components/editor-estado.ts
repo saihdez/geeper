@@ -82,3 +82,34 @@ export function estadoCreacion(trabajos: TrabajoV[]): { fase: "en-curso" | "fall
 export function verTrabajos(abiertaPorPersona: boolean | null, hayActivos: boolean, creando: boolean): boolean {
   return abiertaPorPersona ?? (hayActivos || creando);
 }
+
+/** «2», «2 y 5», «2, 4 y 5». */
+export function enLista(n: number[]): string {
+  return n.length <= 1 ? String(n[0] ?? "") : `${n.slice(0, -1).join(", ")} y ${n[n.length - 1]}`;
+}
+
+interface EscenaVoz { id: string; indice: number; voz: { voz?: string | null } }
+export interface VocesV { elegida: string | null; nombres: Record<string, string> }
+
+/** UX-12: escenas (n.º desde 1) que hoy suenan con otra voz que la elegida. Sin voz conocida, no cuentan. */
+export function escenasConOtraVoz(escenas: EscenaVoz[], elegida: string | null): number[] {
+  if (!elegida) return [];
+  return escenas.filter((e) => e.voz.voz && e.voz.voz !== elegida).map((e) => e.indice + 1);
+}
+
+/**
+ * UX-12: antes de regenerar una sola escena con la voz elegida, si el resto del video suena con otra:
+ * «Esta escena quedará con la voz Álex y las otras 7 escenas seguirán con Dora.» Si no hay mezcla, null.
+ */
+export function preguntaVozEscena(escenaId: string, escenas: EscenaVoz[], voces: VocesV | null): string | null {
+  const elegida = voces?.elegida;
+  if (!elegida) return null;
+  const otras = escenas.filter((e) => e.id !== escenaId && e.voz.voz && e.voz.voz !== elegida);
+  if (!otras.length) return null;
+  const cuenta = new Map<string, number>();
+  for (const e of otras) cuenta.set(e.voz.voz!, (cuenta.get(e.voz.voz!) ?? 0) + 1);
+  const comun = [...cuenta].sort((a, b) => b[1] - a[1])[0]![0];
+  const nombre = (x: string) => voces.nombres[x] ?? x;
+  const resto = otras.length === 1 ? "la otra escena seguirá" : `las otras ${otras.length} escenas seguirán`;
+  return `Esta escena quedará con la voz ${nombre(elegida)} y ${resto} con ${cuenta.size === 1 ? nombre(comun) : "otras voces"}.`;
+}

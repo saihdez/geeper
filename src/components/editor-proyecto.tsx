@@ -18,7 +18,7 @@ import { SelectorEncuadre, type EncuadreV } from "./selector-encuadre";
 import { PanelOtroEditor } from "./panel-otro-editor";
 import { useAccionesProyecto } from "./acciones-proyecto";
 import { FranjaAviso, type MensajeEditor } from "./franja-aviso";
-import { correccionesVacias, errorSubtitulo, estaActivo, estadoCreacion, mismoContenido, pasoRender, renderEnCurso, verTrabajos, type TrabajoV } from "./editor-estado";
+import { correccionesVacias, enLista, errorSubtitulo, escenasConOtraVoz, estaActivo, estadoCreacion, mismoContenido, pasoRender, preguntaVozEscena, renderEnCurso, verTrabajos, type TrabajoV, type VocesV } from "./editor-estado";
 import { Plegable } from "./plegable";
 import { EdicionPorTexto, EfectosEscena, PanelAvanzado, PanelEstilo, type EfectosV, type EstiloV, type ExtrasV, type PalabraV } from "./edicion-avanzada";
 
@@ -50,7 +50,7 @@ interface EscenaV {
   efectos: EfectosV;
   correcciones: { desde: number; hasta: number; texto: string }[];
   visual: { asset: string; ruta: string; source: string; licencia: string; tipo: string; inicio: number; ajuste: string; ancla: string; prompt: unknown; encuadre: EncuadreV };
-  voz: { asset: string; source: string; ruta: string };
+  voz: { asset: string; source: string; ruta: string; voz?: string | null };
   grupos: Grupo[];
 }
 interface Regla { id: string; nombre: string; ok: boolean; aviso?: boolean; medido: unknown; objetivo: string; detalle?: string }
@@ -82,6 +82,8 @@ interface Vista {
   carasPendientes: boolean;
   /** REN-04: escenas con subtítulos rápidos, sabido antes de renderizar. */
   subtitulosRapidos: SubtitulosRapidos | null;
+  /** UX-12: la voz elegida y los nombres de las que suenan. */
+  voces?: VocesV | null;
 }
 
 /** Mensaje de una subida: el de éxito más lo que VectorCraft avisó al convertir (p. ej. una fuente que faltaba). */
@@ -226,23 +228,21 @@ export function EditorGrupo({ g, onGuardar, onQuitar, corregido }: { g: Grupo; c
   );
 }
 
-/** «2», «2 y 5», «2, 4 y 5». */
-function lista(n: number[]): string {
-  return n.length <= 1 ? String(n[0] ?? "") : `${n.slice(0, -1).join(", ")} y ${n[n.length - 1]}`;
-}
-
-function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, editar, editarOk, subirClip, regenerarVoz, reencuadrar, animar, ocupado, vozReal }: {
-  e: EscenaV; anterior?: EscenaV; slug: string; proyectoId: string; total: number; ocupado: boolean; formato: string; estilo: EstiloV | null;
+function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, editar, editarOk, subirClip, regenerarVoz, reencuadrar, animar, ocupado, vozReal, preguntaVoz }: {
+  e: EscenaV; anterior?: EscenaV;
+  /** UX-12: si regenerar sólo esta escena deja el video con dos voces, qué preguntar antes. */
+  preguntaVoz: string | null; slug: string; proyectoId: string; total: number; ocupado: boolean; formato: string; estilo: EstiloV | null;
   /** Clip de material largo: la voz es la del creador (la revisión de dudosas corrige texto). */
   vozReal: boolean;
   editar: (ed: object) => Promise<void>;
   /** Como `editar`, pero dice si se guardó (el campo del subtítulo sólo se limpia si salió bien). */
   editarOk: (ed: object) => Promise<boolean>;
   subirClip: (escena: string, f: File) => Promise<void>;
-  regenerarVoz: (escena: string) => Promise<void>;
+  regenerarVoz: (escena: string | null) => Promise<void>;
   reencuadrar: (escena: string, layout: string) => Promise<void>;
   animar: (escena: string, opciones: OpcionesAnimar) => Promise<void>;
 }) {
+  const [preguntando, setPreguntando] = useState(false);
   return (
     <li id={`escena-${e.id}`} className="tarjeta flex scroll-mt-4 flex-col gap-3 p-3 md:flex-row">
       <div className="shrink-0">
@@ -289,11 +289,21 @@ function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, 
             </select>
           )}
           {e.voz.source !== "archivo" && (
-            <button type="button" className="boton" disabled={ocupado} onClick={() => void regenerarVoz(e.id)}>Regenerar voz de la escena</button>
+            <button type="button" className="boton" disabled={ocupado} onClick={() => { if (preguntaVoz) setPreguntando(true); else void regenerarVoz(e.id); }}>Regenerar voz de la escena</button>
           )}
           <button type="button" className="boton boton-peligro" disabled={ocupado || total <= 1}
             onClick={() => { if (confirm(`¿Quitar la escena ${e.indice + 1}? Se quita también lo que se oye en ella. Puedes volver atrás en el historial.`)) void editar({ tipo: "quitarEscena", escena: e.id }); }}>Quitar</button>
         </div>
+        {preguntando && preguntaVoz && (
+          <div className="rounded-lg border border-amber-700 bg-amber-950/40 p-3 text-sm" role="group" aria-label="¿Cambiar la voz de todo el video?">
+            <p>{preguntaVoz} ¿Cambias la voz de todo el video para que suene igual?</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button type="button" className="boton boton-primario py-1" disabled={ocupado} onClick={() => { setPreguntando(false); void regenerarVoz(null); }}>Cambiar todas</button>
+              <button type="button" className="boton py-1" disabled={ocupado} onClick={() => { setPreguntando(false); void regenerarVoz(e.id); }}>Sólo ésta</button>
+              <button type="button" className="boton py-1" onClick={() => setPreguntando(false)}>Cancelar</button>
+            </div>
+          </div>
+        )}
         <EfectosEscena escena={e.id} indice={e.indice} efectos={e.efectos} estilo={estilo} formato={formato}
           imgA={anterior ? miniatura(slug, anterior) : undefined} imgB={miniatura(slug, e)} editar={editar} ocupado={ocupado} />
         <PanelAnimar proyectoId={proyectoId} escena={e.id} numero={e.indice + 1} ocupado={ocupado} animar={animar} />
@@ -418,6 +428,7 @@ export function EditorProyecto({ id }: { id: string }) {
   const enCurso = renderEnCurso(fila.trabajos);
   /** Otro trabajo en marcha que no es el render (ése ya tiene su franja). */
   const otroActivo = activos.find((t) => t !== enCurso) ?? null;
+  const otraVoz = v.extras?.clip ? [] : escenasConOtraVoz(escenas, v.voces?.elegida ?? null);
   const qc = render?.informeQc ? resumirQc(render.informeQc.reglas) : null;
   const avisoRapidos = avisoSubtitulosRapidos(v.subtitulosRapidos);
   const textoMostrar = mostrarTxt ?? (p?.mostrar ?? []).map((m) => `${m.de}=${m.a}`).join("\n");
@@ -484,7 +495,7 @@ export function EditorProyecto({ id }: { id: string }) {
       {caras?.fase === "listo" && (
         <Aviso tipo="ok">
           <p>
-            Encontramos caras en {caras.escenas.length === 1 ? "la escena" : "las escenas"} {lista(caras.escenas.map((e) => e.numero))} y
+            Encontramos caras en {caras.escenas.length === 1 ? "la escena" : "las escenas"} {enLista(caras.escenas.map((e) => e.numero))} y
             {caras.escenas.length === 1 ? " la encuadramos" : " las encuadramos"} para que la persona se vea a pantalla completa, en vez de achicada con fondo borroso.
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -582,6 +593,16 @@ export function EditorProyecto({ id }: { id: string }) {
             {!v.extras?.clip && (
               <div className="border-t border-borde pt-3">
                 <ElegirVoz actual={p.voz} idioma={p.voz.idioma} usar={usarVoz} ocupado={ocupado} />
+                {otraVoz.length > 0 && v.voces?.elegida && (
+                  // UX-12: mientras la voz elegida no sea la que suena, se dice y se ofrece ponerla.
+                  <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-amber-700 bg-amber-950/40 px-3 py-2 text-sm" role="status">
+                    <p className="min-w-0 flex-1">
+                      Elegiste la voz {v.voces.nombres[v.voces.elegida] ?? v.voces.elegida}, pero {otraVoz.length === escenas.length ? "el video todavía suena" : `${otraVoz.length === 1 ? "la escena" : "las escenas"} ${enLista(otraVoz)} todavía ${otraVoz.length === 1 ? "suena" : "suenan"}`} con otra voz.
+                    </p>
+                    <button type="button" className="boton py-1" disabled={ocupado || !!otroActivo}
+                      onClick={() => { if (confirm("Se vuelve a decir todo el guion con la voz elegida, se acomodan los subtítulos y se crea el video (unos minutos).")) void regenerarVoz(null); }}>Ponerla en todo el video</button>
+                  </div>
+                )}
               </div>
             )}
             <div className="flex flex-wrap items-end gap-2 border-t border-borde pt-3">
@@ -643,7 +664,7 @@ export function EditorProyecto({ id }: { id: string }) {
             {escenas.map((e, i) => (
               <TarjetaEscena key={e.id} e={e} anterior={escenas[i - 1]} slug={fila.slug} total={escenas.length} formato={p?.formato ?? fila.formato}
                 estilo={v.extras?.estilo ?? null} editar={editar} editarOk={editarOk} subirClip={subirClip} regenerarVoz={regenerarVoz} reencuadrar={reencuadrar} animar={animar} proyectoId={id} ocupado={ocupado}
-                vozReal={Boolean(v.extras?.clip)} />
+                vozReal={Boolean(v.extras?.clip)} preguntaVoz={preguntaVozEscena(e.id, escenas, v.voces ?? null)} />
             ))}
           </ol>
         </section>
