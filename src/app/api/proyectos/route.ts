@@ -7,11 +7,14 @@ import { crearLote, crearProyecto, importarTareaMpt } from "@/lib/servicios";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  // Sólo lo que pintan las listas (lista-proyectos, anuncios/conceptos, workflows): sin informes de QC,
+  // payloads (la sesión de subida de una publicación no debe salir) ni resultados.
   const proyectos = await db.proyecto.findMany({
     orderBy: [{ creado: "desc" }],
-    include: {
-      renders: { orderBy: { creado: "desc" }, take: 1 },
-      trabajos: { orderBy: { creado: "desc" }, take: 1 },
+    select: {
+      id: true, slug: true, nombre: true, tema: true, formato: true, plantilla: true, estado: true, versionActual: true, creado: true,
+      renders: { orderBy: { creado: "desc" }, take: 1, select: { estado: true, ruta: true, creado: true } },
+      trabajos: { orderBy: { creado: "desc" }, take: 1, select: { tipo: true, estado: true, etapa: true, progreso: true } },
       lote: { select: { nombre: true } },
     },
   });
