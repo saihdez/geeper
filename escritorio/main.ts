@@ -19,13 +19,15 @@ import net from "node:net";
 import path from "node:path";
 import { app, BrowserWindow, dialog, Menu, shell } from "electron";
 import { esVueltaOAuth } from "./oauth";
-import { permitirReinicio } from "./reglas";
+import { esDeGeeper, paginaAbriendo, permitirReinicio } from "./reglas";
 
 const RAIZ = app.isPackaged ? path.join(process.resourcesPath, "app") : path.join(__dirname, "..", "escritorio-app");
 const hijos: { nombre: string; p: ChildProcess }[] = [];
 let ventana: BrowserWindow | null = null;
 let saliendo = false;
 let url = "";
+/** El servidor ya respondió: la ventana puede cargar Geeper. */
+let listo = false;
 
 const dirLogs = () => path.join(app.getPath("userData"), "logs");
 function log(nombre: string): fs.WriteStream {
@@ -124,8 +126,11 @@ function puertoLibre(preferido = 3300): Promise<number> {
 async function esperarServidor(u: string, ms = 60_000): Promise<void> {
   const fin = Date.now() + ms;
   while (Date.now() < fin) {
+    const web = hijos.find((h) => h.nombre === "web")?.p;
+    if (web && web.exitCode !== null) throw new Error("El servidor de Geeper se cerró al arrancar.");
     try {
-      const r = await fetch(`${u}/api/media`);
+      // Con tope: un pedido colgado no debe comerse el minuto de espera.
+      const r = await fetch(`${u}/api/media`, { signal: AbortSignal.timeout(2000) });
       if (r.ok) return;
     } catch {
       /* todavía no */
@@ -170,24 +175,32 @@ function crearVentana(): void {
   ventana.once("ready-to-show", () => ventana?.show());
   // Lo que sale de Geeper (GitHub, redes, «en otra pestaña») se abre en el navegador.
   ventana.webContents.setWindowOpenHandler(({ url: destino }) => {
-    if (destino.startsWith(url) && !destino.includes("/craft/")) return { action: "allow" };
-    void shell.openExternal(destino);
+    if (esDeGeeper(url, destino) && !destino.includes("/craft/")) return { action: "allow" };
+    if (/^https?:\/\//.test(destino)) void shell.openExternal(destino);
     return { action: "deny" };
   });
   ventana.webContents.on("will-navigate", (e, destino) => {
     // «Conectar» una cuenta: el inicio de sesión de la red va en su propia ventana (ver abrirLogin).
-    if (destino.startsWith(`${url}/api/cuentas/conectar/`)) {
+    if (esDeGeeper(url, destino) && destino.startsWith(`${url}/api/cuentas/conectar/`)) {
       e.preventDefault();
       abrirLogin(destino);
       return;
     }
-    if (!destino.startsWith(url)) {
+    if (!esDeGeeper(url, destino)) {
       e.preventDefault();
-      void shell.openExternal(destino);
+      if (/^https?:\/\//.test(destino)) void shell.openExternal(destino);
     }
   });
-  void ventana.loadURL(url);
+  // Mientras arranca el servidor, «Abriendo Geeper…»; al responder se carga la dirección (mostrarGeeper).
+  void ventana.loadURL(url && listo ? url : paginaAbriendo());
   ventana.on("closed", () => (ventana = null));
+}
+
+/** El servidor ya responde: la ventana pasa de «Abriendo Geeper…» a Geeper. */
+function mostrarGeeper(): void {
+  listo = true;
+  if (!ventana) crearVentana();
+  else void ventana.loadURL(url);
 }
 
 /**
@@ -210,13 +223,13 @@ function abrirLogin(inicio: string): void {
     webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
   const guiar = (e: { preventDefault: () => void }, destino: string) => {
-    if (esVueltaOAuth(destino) && !destino.startsWith(url)) {
+    if (esVueltaOAuth(destino) && !esDeGeeper(url, destino)) {
       e.preventDefault();
       const u = new URL(destino);
       void login.loadURL(`${url}${u.pathname}${u.search}`);
       return;
     }
-    if (destino.startsWith(url)) {
+    if (esDeGeeper(url, destino)) {
       // Geeper ya procesó la vuelta (o devolvió un error): se muestra en la ventana principal.
       if (!new URL(destino).pathname.startsWith("/api/cuentas/")) {
         e.preventDefault();
@@ -281,9 +294,11 @@ if (!app.requestSingleInstanceLock()) {
   });
   app.whenReady().then(async () => {
     menu();
+    // La ventana sale ya, con «Abriendo Geeper…»: el arranque puede tardar varios segundos.
+    crearVentana();
     try {
       await arrancar();
-      crearVentana();
+      mostrarGeeper();
     } catch (e) {
       dialog.showErrorBox("No se pudo abrir Geeper", `${e instanceof Error ? e.message : String(e)}\n\nRegistros: ${dirLogs()}`);
       apagar();
@@ -291,7 +306,7 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
   app.on("activate", () => {
-    if (!ventana && url) crearVentana();
+    if (!ventana && listo) crearVentana();
   });
   app.on("window-all-closed", () => {
     apagar();
