@@ -19,7 +19,7 @@ import net from "node:net";
 import path from "node:path";
 import { app, BrowserWindow, dialog, Menu, shell } from "electron";
 import { esVueltaOAuth } from "./oauth";
-import { esDeGeeper, paginaAbriendo, permitirReinicio, plantillaMenu } from "./reglas";
+import { esDeGeeper, paginaAbriendo, permitirReinicio, plantillaMenu, registrar, rotarRegistro } from "./reglas";
 
 const RAIZ = app.isPackaged ? path.join(process.resourcesPath, "app") : path.join(__dirname, "..", "escritorio-app");
 const hijos: { nombre: string; p: ChildProcess }[] = [];
@@ -30,10 +30,18 @@ let url = "";
 let listo = false;
 
 const dirLogs = () => path.join(app.getPath("userData"), "logs");
+/** Registro de un proceso, con cabecera de fecha y versión. Pasado de ~5 MB se guarda como .1 y empieza otro. */
 function log(nombre: string): fs.WriteStream {
   fs.mkdirSync(dirLogs(), { recursive: true });
-  return fs.createWriteStream(path.join(dirLogs(), `${nombre}.log`), { flags: "a" });
+  const ruta = path.join(dirLogs(), `${nombre}.log`);
+  rotarRegistro(ruta);
+  const salida = fs.createWriteStream(ruta, { flags: "a" });
+  // Un registro que no se puede escribir (disco lleno, permisos) no debe tumbar la app.
+  salida.on("error", (e) => console.error(`registro ${nombre}: ${e.message}`));
+  salida.write(`\n--- ${new Date().toISOString()} ${app.getVersion()} ---\n`);
+  return salida;
 }
+
 
 /** Entorno de los hijos: dónde viven las cosas en este sistema (src/lib/plataforma.ts lo lee). */
 function entorno(puerto: number): NodeJS.ProcessEnv {
@@ -56,13 +64,9 @@ function entorno(puerto: number): NodeJS.ProcessEnv {
 }
 
 function lanzar(nombre: string, script: string, env: NodeJS.ProcessEnv, cwd = RAIZ): ChildProcess {
-  const salida = log(nombre);
-  salida.write(`\n--- ${new Date().toISOString()} ${app.getVersion()} ---\n`);
   const p = spawn(process.execPath, [script], { cwd, env, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
-  p.stdout?.pipe(salida);
-  p.stderr?.pipe(salida);
-  p.on("exit", (codigo) => {
-    salida.write(`--- terminó (${codigo}) ---\n`);
+  registrar(p, log(nombre));
+  p.on("exit", () => {
     if (saliendo) return;
     if (nombre === "worker") {
       // Como dev-up: si el worker muere solo, se vuelve a lanzar (al arrancar marca lo interrumpido),
@@ -145,10 +149,8 @@ async function esperarServidor(u: string, ms = 60_000): Promise<void> {
 
 function correrHasta(script: string, env: NodeJS.ProcessEnv): Promise<void> {
   return new Promise((ok, mal) => {
-    const salida = log("preparar-db");
     const p = spawn(process.execPath, [script], { cwd: RAIZ, env, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
-    p.stdout?.pipe(salida);
-    p.stderr?.pipe(salida);
+    registrar(p, log("preparar-db"));
     p.on("exit", (c) => (c === 0 ? ok() : mal(new Error("No se pudo preparar la base de datos de Geeper."))));
   });
 }

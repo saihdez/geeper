@@ -1,7 +1,36 @@
 /**
  * Reglas de la carcasa de escritorio (escritorio/main.ts) sin Electron, para poder probarlas.
  */
+import type { ChildProcess } from "node:child_process";
+import fs from "node:fs";
 import type { MenuItemConstructorOptions } from "electron";
+
+/** Si el registro pasa de `maxBytes`, se guarda como `<ruta>.1` (pisando el anterior) y se empieza otro. */
+export function rotarRegistro(ruta: string, maxBytes = 5 * 1024 * 1024): void {
+  try {
+    if (fs.statSync(ruta).size > maxBytes) fs.renameSync(ruta, `${ruta}.1`);
+  } catch {
+    /* no existe todavía, o no se pudo: se sigue escribiendo en el mismo */
+  }
+}
+
+/**
+ * Lleva la salida y los errores del proceso al registro. Las dos tuberías comparten el archivo, así que
+ * ninguna lo cierra (`end: false`): se cierra en el `close` del proceso, tras anotar cómo terminó.
+ */
+export function registrar(p: ChildProcess, salida: fs.WriteStream): void {
+  p.stdout?.pipe(salida, { end: false });
+  p.stderr?.pipe(salida, { end: false });
+  p.on("close", (codigo, senal) => {
+    salida.write(`--- terminó (${comoTermino(codigo, senal)}) ---\n`);
+    salida.end();
+  });
+}
+
+/** Cómo terminó un proceso, para el registro: el código de salida o la señal que lo cortó. */
+export function comoTermino(codigo: number | null, senal: NodeJS.Signals | null): string {
+  return senal ? `señal ${senal}` : `código ${codigo ?? "?"}`;
+}
 
 interface AccionesMenu {
   abrirProyectos: () => void;

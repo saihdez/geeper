@@ -1,6 +1,53 @@
 import { describe, expect, it } from "vitest";
+import { spawn } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type { MenuItemConstructorOptions } from "electron";
-import { esDeGeeper, paginaAbriendo, permitirReinicio, plantillaMenu } from "../escritorio/reglas";
+import { comoTermino, esDeGeeper, paginaAbriendo, permitirReinicio, plantillaMenu, registrar, rotarRegistro } from "../escritorio/reglas";
+
+describe("carcasa de escritorio: registros (ESC-14)", () => {
+  it("guarda salida y errores completos y anota con qué código terminó, sin escribir tras cerrar", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "geeper-registro-"));
+    try {
+      const ruta = path.join(dir, "worker.log");
+      const salida = fs.createWriteStream(ruta, { flags: "a" });
+      const errores: Error[] = [];
+      salida.on("error", (e) => errores.push(e));
+      const largo = "x".repeat(200_000);
+      const p = spawn(process.execPath, ["-e", `process.stdout.write("hola\\n"); process.stderr.write("x".repeat(200000) + "\\n"); process.exitCode = 3;`]);
+      registrar(p, salida);
+      await new Promise<void>((ok) => salida.on("finish", () => ok()));
+      const texto = fs.readFileSync(ruta, "utf8");
+      expect(texto).toContain("hola");
+      expect(texto).toContain(largo);
+      expect(texto.trimEnd().endsWith("--- terminó (código 3) ---")).toBe(true);
+      expect(errores).toEqual([]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  it("un registro de más de 5 MB pasa a .1 y el nuevo empieza vacío", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "geeper-registro-"));
+    try {
+      const ruta = path.join(dir, "web.log");
+      fs.writeFileSync(ruta, "a".repeat(100));
+      rotarRegistro(ruta, 50);
+      expect(fs.existsSync(ruta)).toBe(false);
+      expect(fs.readFileSync(`${ruta}.1`, "utf8")).toHaveLength(100);
+      fs.writeFileSync(ruta, "b");
+      rotarRegistro(ruta, 50);
+      expect(fs.readFileSync(ruta, "utf8")).toBe("b");
+      rotarRegistro(path.join(dir, "no-existe.log"));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  it("si lo cortó una señal, lo dice", () => {
+    expect(comoTermino(null, "SIGKILL")).toBe("señal SIGKILL");
+    expect(comoTermino(0, null)).toBe("código 0");
+  });
+});
 
 describe("carcasa de escritorio: menú en español (ESC-13)", () => {
   const nada = () => {};
