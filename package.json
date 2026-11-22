@@ -17,6 +17,7 @@
     "escritorio:empaquetar": "tsx scripts/escritorio/empaquetar.ts",
     "worker": "tsx worker/index.ts",
     "dev:up": "tsx scripts/dev-up.ts",
+    "up": "tsx scripts/up.ts",
     "doctor": "tsx scripts/doctor.ts",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
