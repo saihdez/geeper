@@ -43,6 +43,17 @@ export const VAD_SILERO = {
 export const ARGS_VAD = ["--vad-threshold", "0.5", "--vad-min-speech-duration-ms", "250", "--vad-min-silence-duration-ms", "200", "--vad-speech-pad-ms", "100", "--vad-samples-overlap", "0.5"];
 export const ARGS_DECODIFICADOR = ["--entropy-thold", "2.8", "--logprob-thold", "-1.25"];
 
+/**
+ * Hilos para whisper-cli (GPU-04). Sin `-t`, whisper.cpp usa 4 aunque haya 32 núcleos, y casi todo el tiempo
+ * de importar es esto. Por defecto la mitad de los núcleos, entre 4 (lo de whisper) y 8 (deja sitio a un
+ * render a la vez). Con `GEEPER_WHISPER_HILOS` se fija a mano. No cambia MOTOR_WHISPER: no se realinea nada.
+ */
+export function hilosWhisper(nucleos = os.availableParallelism(), env: string | undefined = process.env.GEEPER_WHISPER_HILOS): number {
+  const fijo = Number(env);
+  if (Number.isInteger(fijo) && fijo >= 1) return Math.min(fijo, 64);
+  return Math.max(1, Math.min(8, Math.max(Math.min(4, nucleos), Math.floor(nucleos / 2))));
+}
+
 export interface PalabraOidaP {
   text: string;
   start: number;
@@ -174,7 +185,7 @@ export async function transcribirWhisper(audio: string, o: OpcionesWhisper): Pro
     await correr(FFMPEG, ["-hide_banner", "-nostdin", "-loglevel", "error", "-y", "-i", audio, "-vn", "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", wav], { signal: o.signal });
     const base = path.join(tmp, "transcript");
     const glosario = limpiarGlosario(o.glosario);
-    const comunes = ["--model", rutaModeloWhisper(o.modelo), "--output-json-full", "--output-file", base, "--suppress-nst", "--language", o.idioma, ...ARGS_DECODIFICADOR, ...(glosario ? ["--prompt", glosario] : [])];
+    const comunes = ["--model", rutaModeloWhisper(o.modelo), "--output-json-full", "--output-file", base, "--suppress-nst", "--language", o.idioma, "--threads", String(hilosWhisper()), ...ARGS_DECODIFICADOR, ...(glosario ? ["--prompt", glosario] : [])];
 
     let vad: string[] = [];
     if (o.vad !== false) {
