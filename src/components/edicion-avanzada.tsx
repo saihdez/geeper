@@ -93,8 +93,20 @@ function useTramo(audio: string) {
 }
 
 /**
- * Palabras de una escena: se seleccionan con clic (Mayús+clic extiende), se escuchan y se recortan o
- * restauran. Las de tiempo dudoso se revisan una por una («Revisar dudosas»): se escucha el tramo y se
+ * Tramo elegido tras tocar la palabra `i` (A11-07). Con una sola palabra elegida, tocar otra elige el
+ * tramo entre las dos (en un teléfono no hay Mayús); tocar la misma la suelta; con un tramo ya elegido,
+ * se empieza de nuevo. `extender` (Mayús+clic, Mayús+flecha) alarga el tramo hasta `i`.
+ */
+export function elegirTramo(sel: [number, number] | null, i: number, extender = false): [number, number] | null {
+  if (sel && extender) return [Math.min(sel[0], i), Math.max(sel[1], i + 1)];
+  if (sel && sel[1] - sel[0] === 1) return sel[0] === i ? null : [Math.min(sel[0], i), Math.max(sel[1], i + 1)];
+  return [i, i + 1];
+}
+
+/**
+ * Palabras de una escena: se toca una y después la última del tramo (o Mayús+clic), se escuchan y se
+ * recortan o restauran. Con teclado: sólo una palabra está en el orden de Tab y las flechas se mueven
+ * entre ellas (A11-07: antes había que pasar por cada palabra con Tab). Las de tiempo dudoso se revisan una por una («Revisar dudosas»): se escucha el tramo y se
  * confirma («Suena bien»), se recorta o se salta. Idea de la pantalla «OCR Verify» de PdfCraft.
  */
 export function EdicionPorTexto({ escena, audio, palabras, duracion, duracionOriginal, editar, ocupado, vozReal = false, correcciones = [] }: {
@@ -116,10 +128,31 @@ export function EdicionPorTexto({ escena, audio, palabras, duracion, duracionOri
   // Al terminar: si hay otra escena con dudosas más abajo, para ofrecer seguir con ella.
   const [terminada, setTerminada] = useState<{ hayProxima: boolean } | null>(null);
   const caja = useRef<HTMLDivElement>(null);
+  const acciones = useRef<HTMLDivElement>(null);
+  // La palabra que está en el orden de Tab (las demás se alcanzan con las flechas).
+  const [foco, setFoco] = useState(0);
   const { tocar, parar, sonando } = useTramo(audio);
+  const enfocarPalabra = (i: number) => caja.current?.querySelector<HTMLButtonElement>(`[data-palabra="${i}"]`)?.focus();
   const elegir = (i: number, extender: boolean) => {
-    if (extender && sel) setSel([Math.min(sel[0], i), Math.max(sel[1], i + 1)]);
-    else setSel(sel && sel[0] === i && sel[1] === i + 1 ? null : [i, i + 1]);
+    const nuevo = elegirTramo(sel, i, extender);
+    setSel(nuevo);
+    // Con una palabra elegida, el foco pasa a sus acciones (Escuchar, Recortar…); Esc vuelve.
+    if (nuevo) requestAnimationFrame(() => acciones.current?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true }));
+  };
+  const cerrarAcciones = () => {
+    const i = sel?.[0] ?? foco;
+    setSel(null);
+    parar();
+    enfocarPalabra(i);
+  };
+  /** Flechas entre palabras; Mayús+flecha alarga el tramo elegido sin salir de las palabras. */
+  const teclaPalabra = (ev: React.KeyboardEvent, i: number) => {
+    const destino = ev.key === "ArrowRight" ? i + 1 : ev.key === "ArrowLeft" ? i - 1 : ev.key === "Home" ? 0 : ev.key === "End" ? palabras.length - 1 : null;
+    if (destino === null || destino < 0 || destino >= palabras.length) return;
+    ev.preventDefault();
+    if (ev.shiftKey) setSel(elegirTramo(sel ?? [i, i + 1], destino, true));
+    setFoco(destino);
+    enfocarPalabra(destino);
   };
   const recortadas = sel ? palabras.slice(sel[0], sel[1]).every((w) => w.recorte) : false;
   // Pendientes de revisar: dudosas que todavía se oyen.
@@ -158,7 +191,8 @@ export function EdicionPorTexto({ escena, audio, palabras, duracion, duracionOri
   return (
     <div className="space-y-2" ref={caja}>
       <p className="text-xs text-tenue">
-        Edición por texto: haz clic en una palabra (Mayús+clic para un tramo) y escúchala o recórtala: recortar quita lo que se oye y su tiempo.
+        Edición por texto: toca una palabra, o la primera y la última de un tramo, y escúchala o recórtala: recortar quita lo que se oye y su tiempo.
+        {" "}Con el teclado: flechas para moverte, Enter para elegir, Mayús+flecha para alargar y Esc para cerrar.
         {duracionOriginal - duracion > 0.05 && <> Recortado: {(duracionOriginal - duracion).toFixed(2)} s.</>}
       </p>
       {terminada && !revisando && (
@@ -191,13 +225,15 @@ export function EdicionPorTexto({ escena, audio, palabras, duracion, duracionOri
           <button type="button" data-revisar-dudosas className="boton ml-auto py-0.5" disabled={ocupado} onClick={() => siguiente(-1)}>Revisarlas una por una</button>
         </div>
       )}
-      <p className="flex flex-wrap gap-1 text-sm leading-relaxed" aria-label="Palabras de la escena">
+      <div role="toolbar" className="flex flex-wrap gap-1 text-sm leading-relaxed" aria-label="Palabras de la escena">
         {palabras.map((w, i) => {
           const elegida = sel && i >= sel[0] && i < sel[1];
           const n = nivel(w);
           return (
-            <button key={i} type="button" disabled={ocupado}
-              onClick={(ev) => { setRevisando(false); elegir(i, ev.shiftKey); }}
+            <button key={i} type="button" disabled={ocupado} data-palabra={i} tabIndex={i === Math.min(foco, palabras.length - 1) ? 0 : -1}
+              onFocus={() => setFoco(i)}
+              onKeyDown={(ev) => teclaPalabra(ev, i)}
+              onClick={(ev) => { setRevisando(false); setFoco(i); elegir(i, ev.shiftKey); }}
               aria-pressed={Boolean(elegida)}
               aria-description={n === "baja" ? (vozReal ? "quizás mal entendida" : "tiempo dudoso") : n === "media" ? (vozReal ? "poco segura" : "tiempo poco seguro") : undefined}
               title={[
@@ -206,7 +242,8 @@ export function EdicionPorTexto({ escena, audio, palabras, duracion, duracionOri
                 w.confianza !== null ? `${vozReal ? "seguridad de lo entendido" : "seguridad del tiempo"}: ${Math.round(w.confianza * 100)} %` : null,
               ].filter(Boolean).join(" · ") || undefined}
               className={[
-                "rounded px-1",
+                // En pantallas táctiles, palabras de 32 px de alto para poder tocarlas.
+                "rounded px-1 pointer-coarse:min-h-8 pointer-coarse:px-2",
                 elegida ? "bg-sky-700 text-white" : n === "baja" ? "bg-amber-500/20 hover:bg-amber-500/30" : "hover:bg-white/10",
                 w.recorte ? "text-tenue line-through" : "",
                 n === "baja" ? "underline decoration-amber-400 decoration-wavy underline-offset-4" : "",
@@ -216,7 +253,7 @@ export function EdicionPorTexto({ escena, audio, palabras, duracion, duracionOri
             </button>
           );
         })}
-      </p>
+      </div>
       {medidas && palabras.some((w) => nivel(w)) && (
         <p className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-tenue" aria-label="Qué significan las marcas">
           <span><span className="rounded bg-amber-500/20 px-1 underline decoration-amber-400 decoration-wavy underline-offset-4">palabra</span> {vozReal ? "quizás mal entendida: escúchala y corrígela si hace falta" : `tiempo dudoso (menos de ${DUDOSA * 100} %): escúchala antes de recortar`}</span>
@@ -271,7 +308,8 @@ export function EdicionPorTexto({ escena, audio, palabras, duracion, duracionOri
         </div>
       )}
       {sel && actual === null && (
-        <div className="flex flex-wrap gap-2">
+        <div ref={acciones} className="flex flex-wrap gap-2" role="group" aria-label={`Qué hacer con «${textoDe(sel)}»`}
+          onKeyDown={(ev) => { if (ev.key === "Escape") { ev.preventDefault(); cerrarAcciones(); } }}>
           <button type="button" className="boton py-1" onClick={() => (sonando ? parar() : escuchar(sel[0], sel[1]))}>{sonando ? "■ Parar" : "▶ Escuchar"}</button>
           {recortadas
             ? <button type="button" className="boton py-1" disabled={ocupado} onClick={() => void editar({ tipo: "restaurarPalabras", escena, desde: sel[0], hasta: sel[1] }).then(() => setSel(null))}>Restaurar</button>
@@ -279,7 +317,7 @@ export function EdicionPorTexto({ escena, audio, palabras, duracion, duracionOri
           {palabras.slice(sel[0], sel[1]).some((w) => w.dudosa) && (
             <button type="button" className="boton py-1" disabled={ocupado} onClick={() => void editar({ tipo: "confirmarPalabras", escena, desde: sel[0], hasta: sel[1] }).then(() => setSel(null))}>Suena bien</button>
           )}
-          <button type="button" className="boton py-1" onClick={() => { setSel(null); parar(); }}>Cancelar</button>
+          <button type="button" className="boton py-1" onClick={cerrarAcciones}>Cancelar</button>
         </div>
       )}
     </div>
