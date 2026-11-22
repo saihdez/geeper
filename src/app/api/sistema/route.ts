@@ -1,5 +1,5 @@
 import { diagnosticar } from "@/lib/doctor";
-import { json } from "@/lib/http";
+import { json, manejar } from "@/lib/http";
 import { memoConPlazo } from "@/lib/memo-plazo";
 import { destinoRespaldo, estadoRespaldo } from "@/lib/respaldo";
 
@@ -13,7 +13,9 @@ const revisar = memoConPlazo(diagnosticar, 60_000);
  * `?forzar` vuelve a revisar ahora («Volver a revisar»).
  */
 export async function GET(req: Request) {
-  const forzar = new URL(req.url).searchParams.has("forzar");
-  const [{ valor, cuando }, respaldo] = await Promise.all([revisar(forzar), estadoRespaldo()]);
-  return json({ chequeos: valor, revisado: new Date(cuando).toISOString(), respaldo: { ...respaldo, otroDisco: destinoRespaldo() !== null } });
+  return manejar(async () => {
+    const forzar = new URL(req.url).searchParams.has("forzar");
+    const [{ valor, cuando }, respaldo] = await Promise.all([revisar(forzar), estadoRespaldo()]);
+    return json({ chequeos: valor, revisado: new Date(cuando).toISOString(), respaldo: { ...respaldo, otroDisco: destinoRespaldo() !== null } });
+  });
 }
