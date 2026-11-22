@@ -223,7 +223,7 @@ function Paso1({ datos, recargar, elegir }: { datos: Datos; recargar: () => Prom
             <p className="text-base">Arrastra tu video aquí</p>
             <p className="text-sm text-tenue">o</p>
             <button type="button" className="boton boton-primario" disabled={subida !== null || ocupado} onClick={() => entrada.current?.click()}>Elegir un archivo</button>
-            <input ref={entrada} type="file" accept="video/*" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) subir(f); e.target.value = ""; }} />
+            <input ref={entrada} type="file" accept="video/*" className="hidden" tabIndex={-1} aria-hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) subir(f); e.target.value = ""; }} />
             <p className="text-xs text-tenue">Una grabación tuya, de un directo o de una partida. MP4, MOV, MKV…</p>
           </div>
         )}
@@ -634,7 +634,7 @@ function Paso3({ f, c, volver }: { f: Fuente; c: Candidato; volver: () => void }
         <h3 className="font-medium">2. ¿Cómo se ve en el teléfono?</h3>
         <div className="grid gap-3 sm:grid-cols-3" role="radiogroup" aria-label="Estilo">
           {ESTILOS.map((s) => (
-            <label key={s.id} className={`cursor-pointer rounded-xl border p-3 text-center ${estilo === s.id ? "border-cyan-500 bg-cyan-950/40" : "border-borde hover:border-cyan-800"}`}>
+            <label key={s.id} className={`cursor-pointer rounded-xl border p-3 text-center ${estilo === s.id ? "border-cyan-500 bg-cyan-950/40 ring-2 ring-cyan-500" : "border-borde hover:border-cyan-800"}`}>
               <input type="radio" name="estilo" value={s.id} checked={estilo === s.id} onChange={() => setEstilo(s.id)} className="sr-only" />
               <Dibujo id={s.id} />
               <span className="mt-2 block font-medium">{s.nombre}</span>
@@ -658,7 +658,7 @@ function Paso3({ f, c, volver }: { f: Fuente; c: Candidato; volver: () => void }
         {ideas && ideas.ganchos.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {ideas.ganchos.map((g) => (
-              <button key={g} type="button" onClick={() => setGancho(g)} className={`rounded-full border px-3 py-1 text-sm ${gancho === g ? "border-cyan-500 bg-cyan-950/50" : "border-borde hover:border-cyan-700"}`}>{g}</button>
+              <button key={g} type="button" aria-pressed={gancho === g} onClick={() => setGancho(g)} className={`rounded-full border px-3 py-1 text-sm ${gancho === g ? "border-cyan-500 bg-cyan-950/50 ring-2 ring-cyan-500" : "border-borde hover:border-cyan-700"}`}>{g}</button>
             ))}
           </div>
         )}
