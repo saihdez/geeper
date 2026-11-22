@@ -11,17 +11,24 @@ import { obtenerPlantilla } from "./plantillas";
 import { cpsDeGrupos, escenasConSubtitulosRapidos, OBJETIVO } from "./qc";
 import { lineas } from "./subtitulos";
 
+/**
+ * Topes de lo que viaja en cada sondeo de la vista (SRV-05): las listas crecen con el uso y la vista se
+ * pide cada pocos segundos. La UI muestra el historial más reciente; lo viejo sigue en la base.
+ */
+export const TOPES_VISTA = { versiones: 200, renders: 30, publicaciones: 50 } as const;
+
 export async function vistaProyecto(id: string) {
   const fila = await db.proyecto.findUnique({
     where: { id },
     include: {
-      versiones: { orderBy: { numero: "desc" }, select: { numero: true, nota: true, creado: true, hash: true } },
-      renders: { orderBy: { creado: "desc" } },
+      versiones: { orderBy: { numero: "desc" }, take: TOPES_VISTA.versiones, select: { numero: true, nota: true, creado: true, hash: true } },
+      renders: { orderBy: { creado: "desc" }, take: TOPES_VISTA.renders },
       // Sin payload (la sesión de subida de una publicación no debe salir), resultado ni log.
       trabajos: { orderBy: { creado: "desc" }, take: 30, select: { id: true, tipo: true, estado: true, etapa: true, progreso: true, error: true, creado: true, iniciado: true, terminado: true } },
       lote: { select: { id: true, nombre: true } },
       publicaciones: {
         orderBy: { creado: "desc" },
+        take: TOPES_VISTA.publicaciones,
         include: { cuenta: { select: { id: true, red: true, usuario: true, alias: true } } },
       },
     },
