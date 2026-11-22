@@ -132,10 +132,10 @@ export function MarcaDesdeWeb({ ctx }: { ctx: Ctx }) {
             <div className="grid grid-cols-3 gap-2">
               {ROLES.map((r) => (
                 <button key={r.id} onClick={() => setRol(r.id)} aria-pressed={rol === r.id} title={r.ayuda}
-                  className={`rounded-lg border p-2 text-left text-xs ${rol === r.id ? "border-cyan-600 bg-cyan-950/40" : "border-borde bg-[#0f131a]"}`}>
+                  className={`rounded-lg border p-2 text-left text-xs ${rol === r.id ? "border-cyan-600 bg-cyan-950/40 ring-2 ring-cyan-600" : "border-borde bg-[#0f131a]"}`}>
                   <span className="mb-1 block h-6 rounded" style={{ background: eleccion[r.id] }} />
                   {r.nombre}
-                  <input className="mt-1 w-full bg-transparent tabular-nums text-tenue outline-none" value={eleccion[r.id]} maxLength={7}
+                  <input className="mt-1 w-full bg-transparent rounded tabular-nums text-tenue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-acento" value={eleccion[r.id]} maxLength={7}
                     onChange={(e) => setEleccion((x) => ({ ...x, [r.id]: e.target.value }))} aria-label={`${r.nombre} en hexadecimal`} />
                 </button>
               ))}

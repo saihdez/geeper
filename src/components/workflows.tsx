@@ -82,7 +82,7 @@ export function PaginaWorkflows() {
             {filtro !== "local" && <p className="text-xs text-tenue">Los de pago usan servicios de la nube de Comfy que cobran por uso: aparecen para que los conozcas, pero están bloqueados porque Geeper funciona gratis.</p>}
             <div className="flex flex-wrap gap-1">
               {[["Todas", lista.length] as const, ...categorias].map(([c, n]) => (
-                <button key={c} className={`rounded-full border px-3 py-1 text-xs ${categoria === c ? "border-cyan-500 bg-cyan-950/40" : "border-borde text-tenue hover:text-white"}`} onClick={() => { setCategoria(c); setCuantos(48); }}>
+                <button key={c} aria-pressed={categoria === c} className={`rounded-full border px-3 py-1 text-xs ${categoria === c ? "border-cyan-500 bg-cyan-950/40 ring-2 ring-cyan-500" : "border-borde text-tenue hover:text-white"}`} onClick={() => { setCategoria(c); setCuantos(48); }}>
                   {c}{c !== "Todas" ? ` · ${n}` : ""}
                 </button>
               ))}
@@ -92,7 +92,7 @@ export function PaginaWorkflows() {
             ) : (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                 {lista.slice(0, cuantos).map((w) => (
-                  <button key={w.id} type="button" onClick={() => setAbierto(w.id)} className={`tarjeta overflow-hidden text-left hover:bg-white/5 ${abierto === w.id ? "outline outline-2 outline-cyan-500" : ""}`}>
+                  <button key={w.id} type="button" onClick={() => setAbierto(w.id)} className={`tarjeta overflow-hidden text-left hover:bg-white/5 ${abierto === w.id ? "ring-2 ring-cyan-500" : ""}`}>
                     <div className="relative aspect-video bg-slate-800">
                       {w.miniatura && (
                         // eslint-disable-next-line @next/next/no-img-element
