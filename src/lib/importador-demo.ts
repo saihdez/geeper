@@ -10,7 +10,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describirAsset, guardarProyecto, registrarAssetsEnDb, crearCarpetas } from "./almacen";
-import type { EstiloDemo, FormatoDemo, Historia, RegistroDemo } from "./demo-web";
+import { MAX_CARACTERES_DEMO, type EstiloDemo, type FormatoDemo, type Historia, type RegistroDemo } from "./demo-web";
 import { renderDemo, tomarDemo } from "./demo-web-toma";
 import { SCHEMA_VERSION, validarProyecto, type Asset, type Escena, type Proyecto } from "./esquema";
 import { huellaFfmpeg, probar } from "./media";
@@ -18,9 +18,6 @@ import { paso, type Contexto } from "./pasos";
 import type { DatosPlantilla } from "./plantillas";
 import { sintetizarAsset } from "./regenerar";
 import { segmentar } from "./segmentar";
-
-import { MAX_CARACTERES_DEMO } from "./demo-web";
-export { MAX_CARACTERES_DEMO, segundosEstimados } from "./demo-web";
 
 export interface DatosDemo {
   proyectoId: string;

@@ -11,7 +11,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { ajusteDe, posicionCara, sigueCara } from "./caras";
 import { bezier, CURVAS, cssFusion, easeDe, esMascara, filtroEfectos, mascaraTransicion, scriptEfectos, svgDefs, unirFiltro, type Efecto, type EncuadreGsap, type Grano } from "./efectos";
-import { aplicarEstilo, pista, pistasLibres, type Asset, type Clip, type Encuadre, type Proyecto, type Texto, type Transicion } from "./esquema";
+import { aplicarEstilo, pistasLibres, type Asset, type Clip, type Encuadre, type Proyecto, type Texto, type Transicion } from "./esquema";
 import { ANCHO_CARACTER, caracteresPorLinea, dentro, metricas, PADDING_PASTILLA, type Caja, type Metricas } from "./formatos";
 import { duracionEscenas, escenasEnLinea, intervalos, opcionesDe, todosLosGrupos, type EscenaEnLinea, type Grupo } from "./linea";
 import { zonasDelVideo } from "./caras-zonas";
@@ -70,8 +70,6 @@ export interface Anim {
   ease?: string;
 }
 
-/** Decide cubrir/contener (vive en caras.ts para que la vista previa del encuadre use el mismo cálculo). */
-export { ajusteDe };
 
 const ENCUADRE_BASE: Encuadre = { escala: 1, x: 0, y: 0 };
 const mezclarEncuadre = (a: Encuadre, b: Encuadre, k: number): Record<string, number> => ({
@@ -564,9 +562,3 @@ export async function escribirProyectoHf(dirBuild: string, comp: Compilado): Pro
     ),
   );
 }
-
-export function pistaMusica(p: Proyecto): Clip | undefined {
-  return p.pistas.find((x) => x.id === "musica")?.clips[0];
-}
-
-export { pista };

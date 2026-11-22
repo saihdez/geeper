@@ -25,7 +25,6 @@ import { correr, type Registro } from "./proceso";
 import { UV, WAN2GP_DIR } from "./rutas";
 import { ajustesWan2gp, faltaEnInstalacion, instalacionWan2gp, modeloPlano, MODELO_POR_DEFECTO, probarWan2gp, type InstalacionWan2gp } from "./wan2gp";
 
-export const WAN2GP_REPO = "https://github.com/deepbeepmeep/Wan2GP.git";
 /** El código de un commit, sin Git. */
 export const urlArchivoWan2gp = (commit: string) => `https://codeload.github.com/deepbeepmeep/Wan2GP/tar.gz/${commit}`;
 /** Marca con el commit instalado desde el archivo (en un checkout de git, manda git). */

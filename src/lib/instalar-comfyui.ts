@@ -188,7 +188,3 @@ export function instalarComfyui(): EstadoComfyui {
   return e;
 }
 
-export async function esperarComfyui(): Promise<EstadoComfyui> {
-  await memoria().enCurso;
-  return memoria().estado;
-}

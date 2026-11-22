@@ -7,7 +7,7 @@
  */
 import path from "node:path";
 import { pista, pistasLibres, type Proyecto } from "./esquema";
-import { duracionEscenas, ENTRADA, escenasEnLinea } from "./linea";
+import { ENTRADA, escenasEnLinea } from "./linea";
 import { ffmpeg } from "./media";
 import type { Registro } from "./proceso";
 
@@ -110,5 +110,3 @@ export async function mezclar(p: Proyecto, dir: string, total: number, ducking: 
   );
   return plan;
 }
-
-export { duracionEscenas };
