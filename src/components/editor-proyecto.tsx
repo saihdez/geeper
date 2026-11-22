@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Aviso, Estado, archivo, pedir, postJson, segundos, useSondeo } from "./comun";
+import { Aviso, Barra, Estado, archivo, pedir, postJson, segundos, useSondeo } from "./comun";
 import { ACCEPT_IMAGEN, esVector } from "@/lib/formatos-vector";
 import { avisoSubtitulosRapidos, explicarRegla, LIMITES_SUBTITULOS, porQueFalla, resumirQc, type FraseQc, type SubtitulosRapidos } from "@/lib/qc-explicado";
 import { VistaEnVivo } from "./vista-en-vivo";
@@ -18,7 +18,7 @@ import { SelectorEncuadre, type EncuadreV } from "./selector-encuadre";
 import { PanelOtroEditor } from "./panel-otro-editor";
 import { useAccionesProyecto } from "./acciones-proyecto";
 import { FranjaAviso, type MensajeEditor } from "./franja-aviso";
-import { correccionesVacias, errorSubtitulo, mismoContenido } from "./editor-estado";
+import { correccionesVacias, errorSubtitulo, estaActivo, mismoContenido, pasoRender, renderEnCurso, type TrabajoV } from "./editor-estado";
 import { EdicionPorTexto, EfectosEscena, PanelAvanzado, PanelEstilo, type EfectosV, type EstiloV, type ExtrasV, type PalabraV } from "./edicion-avanzada";
 
 /** Miniatura de una escena (la misma que su tarjeta). */
@@ -69,7 +69,7 @@ interface Vista {
     id: string; slug: string; nombre: string; tema: string; formato: string; plantilla: string; estado: string; versionActual: number;
     versiones: { numero: number; nota: string; creado: string; hash?: string | null }[];
     renders: Render[];
-    trabajos: { tipo: string; estado: string }[];
+    trabajos: TrabajoV[];
     lote: { nombre: string } | null;
     publicaciones: PublicacionV[];
   };
@@ -411,7 +411,9 @@ export function EditorProyecto({ id }: { id: string }) {
   const renderAlDia = !!render && alDia(render.versionNumero);
   // Por defecto: el render si está al día; si hay cambios sin renderizar, la vista en vivo.
   const modo = pestana ?? (renderAlDia ? "render" : "vivo");
-  const activos = fila.trabajos.filter((t) => t.estado === "pendiente" || t.estado === "corriendo");
+  const activos = fila.trabajos.filter(estaActivo);
+  const enCurso = renderEnCurso(fila.trabajos);
+  const qc = render?.informeQc ? resumirQc(render.informeQc.reglas) : null;
   const avisoRapidos = avisoSubtitulosRapidos(v.subtitulosRapidos);
   const textoMostrar = mostrarTxt ?? (p?.mostrar ?? []).map((m) => `${m.de}=${m.a}`).join("\n");
 
@@ -434,9 +436,35 @@ export function EditorProyecto({ id }: { id: string }) {
           {fila.estado === "entregado" && render && !renderAlDia
             ? <span className="inline-block rounded-full bg-amber-800 px-2 py-0.5 text-xs font-medium text-amber-100">Con cambios sin exportar</span>
             : <Estado valor={fila.estado} />}
-          <button type="button" className="boton boton-primario" disabled={ocupado || !p} onClick={() => void renderizar()}>Renderizar (sin GPU para generar)</button>
+          <button type="button" className="boton boton-primario" disabled={ocupado || !p || !!enCurso} onClick={() => void renderizar()}>{enCurso ? "Creando el video…" : "Renderizar (sin GPU para generar)"}</button>
         </div>
       </header>
+      {/* UX-10: el avance y el resultado del render, junto al botón (antes, la barra quedaba al final de la página). */}
+      {enCurso ? (
+        <div className="tarjeta space-y-2 p-3 text-sm" role="status">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="min-w-0 flex-1 font-medium">Creando tu video: {pasoRender(enCurso)}</p>
+            <button type="button" className="boton py-1" disabled={ocupado}
+              onClick={() => { if (confirm("¿Dejar de crear el video? Lo que editaste no se pierde; puedes crearlo otra vez cuando quieras.")) void hacer(() => postJson(`/api/trabajos/${enCurso.id}`, { accion: "cancelar" }), "Listo: dejé de crear el video."); }}>Cancelar</button>
+          </div>
+          <Barra valor={enCurso.progreso ?? 0} etiqueta="Avance del video" />
+          {render?.segundos ? <p className="text-xs text-tenue">La última vez tardó {segundos(render.segundos)}. Puedes seguir editando o cerrar esta página.</p> : null}
+        </div>
+      ) : render && renderAlDia && qc ? (
+        <div className={`flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm ${qc.estado === "falta" ? "border-red-900 bg-red-950/30" : "border-emerald-800 bg-emerald-950/40"}`}>
+          {qc.estado === "falta" ? (
+            <>
+              <p className="min-w-0 flex-1">{qc.titulo}.</p>
+              <a className="boton py-1" href="#listo">Ver qué falta</a>
+            </>
+          ) : (
+            <>
+              <p className="min-w-0 flex-1">Tu video está listo.</p>
+              {render.estado === "aprobado" && <a className="boton py-1" href={archivo(`${fila.slug}/${render.ruta}`, true)}>Descargar</a>}
+            </>
+          )}
+        </div>
+      ) : null}
       {avisoRapidos && (
         <Aviso tipo={v.subtitulosRapidos?.bloquea ? "alerta" : "info"}>
           <p>{avisoRapidos.texto}</p>
@@ -579,7 +607,7 @@ export function EditorProyecto({ id }: { id: string }) {
       {p && <PanelOtroEditor proyectoId={id} version={fila.versionActual} />}
 
       {render?.informeQc && (
-        <section className="tarjeta p-4">
+        <section id="listo" className="tarjeta scroll-mt-4 p-4">
           <h2 className="mb-3 font-medium">¿Está listo para publicar?</h2>
           <InformeQc r={render} slug={fila.slug} escenas={escenas} vectorizar={{ hacer: vectorizarImagen, sigue: (a) => !!v && (v.escenas.some((e) => e.visual.asset === a) || !!v.extras?.libres.some((pi) => pi.clips.some((c) => c.asset === a))), ocupado }} />
         </section>

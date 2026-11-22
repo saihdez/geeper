@@ -28,3 +28,37 @@ export function mismoContenido(versiones: { numero: number; hash?: string | null
   const hb = versiones.find((x) => x.numero === b)?.hash;
   return !!ha && ha === hb;
 }
+
+export interface TrabajoV {
+  id: string;
+  tipo: string;
+  estado: string;
+  etapa?: string | null;
+  progreso?: number | null;
+  error?: string | null;
+  creado?: string;
+  iniciado?: string | null;
+  terminado?: string | null;
+}
+
+export const estaActivo = (t: { estado: string }) => t.estado === "pendiente" || t.estado === "corriendo";
+
+/** UX-10: el render en curso de este proyecto (la vista trae los trabajos más nuevos primero). */
+export function renderEnCurso(trabajos: TrabajoV[]): TrabajoV | null {
+  return trabajos.find((t) => t.tipo === "render.entregar" && estaActivo(t)) ?? null;
+}
+
+/** UX-10: el paso del render en palabras de quien no sabe de video. */
+export function pasoRender(t: Pick<TrabajoV, "estado" | "etapa">): string {
+  if (t.estado === "pendiente") return "esperando su turno";
+  const e = (t.etapa ?? "").toLowerCase();
+  if (e.startsWith("esperando la gpu")) return "esperando su turno";
+  if (e.includes("mezclando")) return "juntando la voz y la música";
+  if (e.includes("compilando") || e.includes("color del canal")) return "preparando las escenas";
+  if (e.includes("hyperframes check")) return "revisando las escenas";
+  if (e.includes("renderizando")) return "armando el video cuadro por cuadro (es lo que más tarda)";
+  if (e.includes("sonoridad")) return "ajustando el volumen";
+  if (e.includes("máster")) return "guardando una copia de máxima calidad";
+  if (e.includes("control de calidad")) return "revisando que esté listo para publicar";
+  return t.etapa || "empezando";
+}
