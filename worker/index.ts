@@ -1,11 +1,11 @@
 /**
- * Worker de Geeper: un ejecutor por motor (mpt, voz, render, red), cada uno con concurrencia 1.
+ * Worker de Geeper: un ejecutor por motor (mpt, voz, render, red, tarjeta), cada uno con concurrencia 1.
  * Uso: pnpm run worker
  */
 import { appendFileSync } from "node:fs";
 import path from "node:path";
 import {
-  Espera, esperar, fallar, guardarLatidoWorker, latido, LATIDO_MS, marcarEtapa, MOTORES, nuevoWorkerId, reclamar,
+  CambiarDeFila, cambiarDeFila, Espera, esperar, fallar, guardarLatidoWorker, latido, LATIDO_MS, marcarEtapa, MOTORES, nuevoWorkerId, reclamar,
   recuperarAlArrancar, terminar, type Motor, type Payload, type TipoTrabajo,
 } from "@/lib/cola";
 import { db, prepararDb } from "@/lib/db";
@@ -15,6 +15,7 @@ import { tapar } from "@/lib/redes/secretos";
 import { respaldarSiToca } from "@/lib/respaldo";
 import { dirProyecto } from "@/lib/rutas";
 import { EJECUTORES, rutaLog } from "./ejecutores";
+import { conMedidas, medidasDeLinea, muestrearGpu, type MedidasGpu } from "./telemetria";
 import { barrerLeases, esperarVacio, REVISAR_CANCELADOS_MS, tomarCandadoWorker, TOPE_APAGAR_MS, yaNoSonNuestros } from "./sistema";
 
 const workerId = nuevoWorkerId();
@@ -57,7 +58,10 @@ async function correrUno(motor: Motor): Promise<boolean> {
   const t = await reclamar(motor, workerId);
   if (!t) return false;
   let logAbs: string | undefined;
+  // Medidas de la tarjeta que imprimen los scripts (cargado_s, vram_pico_gb…): van al resultado (GPU-10).
+  const medidas: MedidasGpu = {};
   const escribir = (linea: string) => {
+    medidasDeLinea(linea, medidas);
     if (!logAbs) return;
     try {
       // Ningún token llega al log (PUBLICAR.md §6).
@@ -71,6 +75,7 @@ async function correrUno(motor: Motor): Promise<boolean> {
   // Reclamado justo mientras se apagaba: se corta ya para que el apagado no lo espere entero.
   if (apagando) ctrl.abort();
   let pulso: ReturnType<typeof setInterval> | undefined;
+  let tele: ReturnType<typeof muestrearGpu> | undefined;
   let proyecto: Awaited<ReturnType<typeof db.proyecto.findUnique>> = null;
   try {
     const log = await rutaLog({ ...t, payload: t.payload as Payload });
@@ -91,9 +96,11 @@ async function correrUno(motor: Motor): Promise<boolean> {
       );
     }, LATIDO_MS);
     proyecto = t.proyectoId ? await db.proyecto.findUnique({ where: { id: t.proyectoId } }) : null;
+    // Todo trabajo de tarjeta: nvidia-smi cada 5 s en un CSV junto al registro y el pico en el resultado (GPU-10).
+    if (t.usaGpu) tele = muestrearGpu(path.join(path.dirname(logAbs), `${t.id}-telemetria.csv`));
     // Dentro de enTrabajo, cancelar llega a todo correr() del ejecutor, aunque no reciba la señal (WRK-05).
     const salida = await enTrabajo(ctrl.signal, () => EJECUTORES[t.tipo as TipoTrabajo](
-      { id: t.id, tipo: t.tipo, proyectoId: t.proyectoId, payload: t.payload as Payload },
+      { id: t.id, tipo: t.tipo, motor: t.motor, proyectoId: t.proyectoId, payload: t.payload as Payload },
       {
         dir: proyecto ? dirProyecto(proyecto.slug) : dirProyecto("sistema"),
         log: escribir,
@@ -105,7 +112,8 @@ async function correrUno(motor: Motor): Promise<boolean> {
         },
       },
     ));
-    await terminar(t.id, workerId, salida.resultado, salida.siguiente && { ...salida.siguiente, proyectoId: t.proyectoId });
+    const resultado = conMedidas(salida.resultado, { ...medidas, ...tele?.parar() });
+    await terminar(t.id, workerId, resultado, salida.siguiente && { ...salida.siguiente, proyectoId: t.proyectoId });
     escribir(`== hecho${salida.siguiente ? `; sigue ${salida.siguiente.tipo}` : ""}`);
     avisar(`${motor}: terminó ${t.tipo} ${t.id}`);
   } catch (e) {
@@ -114,6 +122,13 @@ async function correrUno(motor: Motor): Promise<boolean> {
       escribir(`.. ${e.etapa}; vuelve a la cola hasta ${e.hasta.toISOString()}`);
       await esperar(t.id, workerId, e.hasta, e.etapa);
       avisar(`${motor}: ${t.tipo} ${t.id} en espera: ${tapar(e.etapa)}`);
+      return true;
+    }
+    if (e instanceof CambiarDeFila && !apagando && !ctrl.signal.aborted) {
+      // Espera la tarjeta: sigue en otra fila para no frenar los trabajos de CPU de ésta (GPU-06).
+      escribir(`.. ${e.etapa}; pasa a la fila «${e.motor}»`);
+      await cambiarDeFila(t.id, workerId, e.motor, e.etapa);
+      avisar(`${motor}: ${t.tipo} ${t.id} pasa a la fila ${e.motor}`);
       return true;
     }
     const msg = e instanceof Error ? (e.stack ?? e.message) : String(e);
@@ -126,6 +141,7 @@ async function correrUno(motor: Motor): Promise<boolean> {
     }
     avisar(`${motor}: ${t.tipo} ${t.id} ${ctrl.signal.aborted ? "detenido" : "falló"}: ${e instanceof Error ? e.message.split("\n")[0] : e}`);
   } finally {
+    tele?.parar();
     clearInterval(pulso);
     enCurso.delete(t.id);
   }

@@ -1,10 +1,9 @@
 /** Ejecutores por tipo de trabajo. Cada uno devuelve su resultado y, si toca, el siguiente de la cadena. */
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { crearCarpetas, guardarProyecto, registrarAssetsEnDb } from "@/lib/almacen";
 import { generarPropuesta, retocarAvatar } from "@/lib/avatares";
-import { guardarPayload, type Payload, type TipoTrabajo } from "@/lib/cola";
+import { CambiarDeFila, guardarPayload, type Payload, type TipoTrabajo } from "@/lib/cola";
 import { db } from "@/lib/db";
 import { Formato } from "@/lib/esquema";
 import { tomarGpu } from "@/lib/gpu";
@@ -13,10 +12,9 @@ import { importarDemo } from "@/lib/importador-demo";
 import { buscarMomentos } from "@/lib/buscar-momentos";
 import { Campania } from "@/lib/clips";
 import { ENCUADRES, importarClip, type EncuadreClip } from "@/lib/importador-clip";
-import { apiViva, crearVideo, cuerpoVideo, estadoTarea, modeloImagen } from "@/lib/mpt";
+import { apiViva, crearVideo, cuerpoVideo, estadoTarea, modeloImagen, soltarCuandoTermine } from "@/lib/mpt";
 import type { Contexto } from "@/lib/pasos";
 import { obtenerPlantilla } from "@/lib/plantillas";
-import { correr } from "@/lib/proceso";
 import { generarPlanoEscena, type OpcionesPlano } from "@/lib/plano";
 import { generarPresentador, type OpcionesPresentador } from "@/lib/presentador";
 import { PedidoRehacer, rehacerEscena } from "@/lib/rehacer";
@@ -26,7 +24,7 @@ import { correrWorkflow, PedidoWorkflow } from "@/lib/workflows";
 import { regenerarVoz } from "@/lib/regenerar";
 import { IdiomaTraduccion, traducirProyecto } from "@/lib/traducir";
 import { disenarVoz } from "@/lib/voces";
-import { agregarEfecto, describirEnIngles, generarEfecto } from "@/lib/efectos-sonido";
+import { agregarEfecto, describirEnIngles, generarEfecto, generarEfectos, presetsQueFaltan } from "@/lib/efectos-sonido";
 import type { Avance } from "@/lib/wan2gp";
 import { reencuadrarEscena } from "@/lib/reencuadre";
 import { renderEntregar, versionDeProyecto } from "@/lib/render";
@@ -36,6 +34,8 @@ import { dirProyecto } from "@/lib/rutas";
 export interface Trabajo {
   id: string;
   tipo: string;
+  /** Fila en la que corre (cola.ts MOTORES); sin él, la de su tipo. */
+  motor?: string;
   proyectoId: string | null;
   payload: Payload;
 }
@@ -65,34 +65,11 @@ function siguienteDe(payload: Payload, extra: Payload = {}): Salida["siguiente"]
   return { tipo, payload: { ...extra, cadena: resto } };
 }
 
-/** Telemetría de la GPU cada 5 s en un CSV que sobrevive a un reinicio (fsync en cada línea). */
-function telemetria(ruta: string): () => void {
-  let activo = true;
-  const tick = async () => {
-    if (!activo) return;
-    try {
-      const r = await correr("nvidia-smi", ["--query-gpu=temperature.gpu,power.draw,memory.used,utilization.gpu", "--format=csv,noheader,nounits"], { permitirFallo: true });
-      const carga = os.loadavg()[0]!.toFixed(2); // 0 en Windows
-      const fh = await fs.open(ruta, "a");
-      await fh.write(`${new Date().toISOString()},${r.stdout.trim().replace(/\s/g, "")},${carga}\n`);
-      await fh.sync();
-      await fh.close();
-    } catch {
-      /* sin nvidia-smi */
-    }
-    if (activo) setTimeout(() => void tick(), 5000).unref();
-  };
-  void fs.writeFile(ruta, "tiempo,temp_c,potencia_w,vram_mib,uso_pct,carga1\n").then(tick);
-  return () => {
-    activo = false;
-  };
-}
-
 async function mptGenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
   const proyecto = await db.proyecto.findUniqueOrThrow({ where: { id: t.proyectoId! } });
-  const dir = await crearCarpetas(proyecto.slug);
+  await crearCarpetas(proyecto.slug);
   const plantilla = await obtenerPlantilla(proyecto.plantilla);
-  if (!(await apiViva())) throw new Error("La API de MPT (127.0.0.1:8080) no responde. Corre `pnpm run doctor` para ver qué falta.");
+  if (!(await apiViva())) throw new Error("El generador de videos está apagado. Abre Docker Desktop, espera un minuto y pulsa «Relanzar».");
   await db.proyecto.update({ where: { id: proyecto.id }, data: { estado: "generando" } });
 
   let taskId = typeof t.payload.mptTaskId === "string" ? t.payload.mptTaskId : undefined;
@@ -112,12 +89,15 @@ async function mptGenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
   const candado = await tomarGpu(`mpt ${proyecto.slug}`, {
     esperar: true,
     signal: h.signal,
+    // Cancelar no suelta la tarjeta: MPT sigue con la tarea 3–7 min más (GPU-03). La suelta el finally.
+    soltarAlCancelar: false,
     alEsperar: (quien) => {
       h.log(`GPU ocupada por: ${quien}. Esperando...`);
       void h.etapa(`Esperando la GPU (la tiene: ${quien.slice(0, 80)})`, 0.01);
     },
   });
-  const pararTelemetria = telemetria(path.join(dir, "logs", `${t.id}-telemetria.csv`));
+  // La telemetría de la tarjeta (CSV y pico en el resultado) la lleva el worker para todo trabajo de GPU (GPU-10).
+  let terminada = false;
   try {
     if (!taskId) {
       const guion = typeof t.payload.guion === "string" ? t.payload.guion : undefined;
@@ -131,14 +111,22 @@ async function mptGenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
     for (;;) {
       const e = await estadoTarea(taskId);
       if (e.estado === "completa") break;
-      if (e.estado === "fallida" || e.estado === "perdida") throw new Error(`MPT: tarea ${taskId} ${e.estado}. ${e.detalle ?? ""}`);
+      if (e.estado === "fallida" || e.estado === "perdida") {
+        terminada = true;
+        throw new Error(`MPT: tarea ${taskId} ${e.estado}. ${e.detalle ?? ""}`);
+      }
       await h.etapa(`MPT generando (${e.progreso} %, ${Math.round((Date.now() - t0) / 1000)} s)`, 0.02 + (e.progreso / 100) * 0.95);
       await dormir(5000, h.signal);
     }
+    terminada = true;
     h.log(`MPT terminó la tarea ${taskId} en ${((Date.now() - t0) / 1000).toFixed(0)} s`);
   } finally {
-    pararTelemetria();
-    candado?.liberar();
+    if (candado && taskId && !terminada && h.signal.aborted) {
+      // Cancelado con la tarea en marcha: la tarjeta sigue tomada hasta que MPT la suelte (tope 10 min).
+      // El trabajo siguiente lo muestra como «Esperando la GPU (la tiene: mpt …)».
+      h.log(`Cancelado: MPT sigue con la tarea ${taskId}; la tarjeta se suelta cuando la termine (como mucho 10 min)`);
+      void soltarCuandoTermine(taskId, candado, { log: h.log });
+    } else candado?.liberar();
   }
   return { resultado: { taskId }, siguiente: siguienteDe(t.payload, { taskId }) };
 }
@@ -240,8 +228,10 @@ async function visualReencuadrar(t: Trabajo, h: Herramientas): Promise<Salida> {
 
 async function vozRegenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
   const escena = typeof t.payload.escena === "string" ? t.payload.escena : null;
-  await h.etapa(escena ? `Voz nueva para ${escena} y subtítulos realineados` : "Voz nueva del guion completo y subtítulos realineados", 0.1);
   const { p } = await versionDeProyecto(t.proyectoId!);
+  // Una voz diseñada (VoxCPM2) espera la tarjeta: en la fila «voz» frenaría importar, clips y demos (GPU-06).
+  if (p.voz.motor === "voxcpm" && (t.motor ?? "voz") === "voz") throw new CambiarDeFila("tarjeta", "En cola: espera la tarjeta gráfica (voz diseñada)");
+  await h.etapa(escena ? `Voz nueva para ${escena} y subtítulos realineados` : "Voz nueva del guion completo y subtítulos realineados", 0.1);
   const r = await regenerarVoz(h, t.proyectoId!, p, escena);
   return { resultado: r, siguiente: siguienteDe(t.payload, { version: r.version }) };
 }
@@ -263,6 +253,18 @@ async function efectoGenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
   const version = await guardarProyecto(t.proyectoId!, nuevo, `Efecto de sonido «${e.nombre}» en ${inicio.toFixed(1)} s`);
   await registrarAssetsEnDb(t.proyectoId!, nuevo);
   return { resultado: { version, efecto: e.id } };
+}
+
+/** Los sonidos listos que faltan en la biblioteca, en un solo proceso de MOSS (una carga del modelo, GPU-05). */
+async function efectosPreparar(_t: Trabajo, h: Herramientas): Promise<Salida> {
+  const faltan = await presetsQueFaltan();
+  if (!faltan.length) {
+    h.log("Los sonidos listos ya están todos en la biblioteca: no se usa la tarjeta gráfica.");
+    return { resultado: { generados: 0, fallidos: [] } };
+  }
+  await h.etapa(`Creando ${faltan.length} sonidos listos (tarjeta gráfica; unos ${Math.ceil(1.5 + faltan.length / 6)} min)`, 0.1);
+  const r = await generarEfectos(h, faltan);
+  return { resultado: { generados: r.generados, fallidos: r.fallidos, medidas: r.medidas } };
 }
 
 async function vozDisenar(t: Trabajo, h: Herramientas): Promise<Salida> {
@@ -464,6 +466,7 @@ export const EJECUTORES: Record<TipoTrabajo, (t: Trabajo, h: Herramientas) => Pr
   "proyecto.traducir": proyectoTraducir,
   "voz.disenar": vozDisenar,
   "efecto.generar": efectoGenerar,
+  "efectos.preparar": efectosPreparar,
   "render.entregar": renderEntregarEj,
   "publicar.subir": publicarSubirEj,
 };

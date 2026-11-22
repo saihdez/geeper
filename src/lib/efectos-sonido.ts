@@ -6,7 +6,8 @@
  * Medido en la RTX 5080 (2026-11-20): carga 30–100 s; con la ventana de 10 s (py/efecto_sonido.py)
  * ~9 s por efecto de 2–8 s y pico de 14,5 GB de VRAM (con la de 30 s, ~40 s y 15,95 GB). Corre con `gpu-solo` (pausa Ollama y el servidor de imágenes de MPT mientras dura). El modelo
  * entiende inglés: una descripción propia se traduce antes con Gemma (que necesita Ollama encendido,
- * así que va primero).
+ * así que va primero). Varios sonidos van en un solo proceso (`generarEfectos`): el modelo se carga una vez
+ * (GPU-05).
  */
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -27,6 +28,11 @@ export const PYTHON_MOSS = process.env.GEEPER_MOSS_PYTHON ?? pythonDeVenv(path.j
 export const LICENCIA_MOSS = "Apache-2.0 (OpenMOSS-Team/MOSS-SoundEffect-v2.0)";
 export const PISTA_EFECTOS = "efectos";
 export const VOLUMEN_EFECTO = 0.6;
+/**
+ * Modelo para pasar la descripción al inglés: una frase corta no necesita el de 26b (3 min de carga en
+ * frío); el de 12b carga en ~10 s (GPU-05). Se cambia con GEEPER_LLM_EFECTOS.
+ */
+export const MODELO_DESCRIBIR = process.env.GEEPER_LLM_EFECTOS ?? "gemma4:12b";
 
 /** Sonidos listos para elegir: nombre para la persona y descripción en inglés para el modelo. */
 export const PRESETS = [
@@ -89,7 +95,7 @@ export async function describirEnIngles(descripcion: string, ctx: Contexto & { s
     `Description: ${descripcion}`,
     'Answer only JSON: {"prompt": "…"}',
   ].join("\n");
-  const salida = await preguntarLlm(prompt, "Describir el sonido", ctx);
+  const salida = await preguntarLlm(prompt, "Describir el sonido", ctx, { modelo: MODELO_DESCRIBIR });
   const m = salida.match(/\{[\s\S]*\}/);
   try {
     const p = (JSON.parse(m?.[0] ?? "{}") as { prompt?: unknown }).prompt;
@@ -100,44 +106,113 @@ export async function describirEnIngles(descripcion: string, ctx: Contexto & { s
   throw new Error("La IA no pudo describir el sonido en inglés: prueba con otras palabras.");
 }
 
-/** Genera (o reutiliza) un efecto de la biblioteca. */
-export async function generarEfecto(ctx: Contexto & { signal?: AbortSignal }, o: { nombre: string; prompt: string; segundos: number }): Promise<Efecto> {
-  const segundos = Math.min(30, Math.max(1, Math.round(o.segundos)));
-  const id = idEfecto(o.prompt, segundos);
-  const ya = (await listarEfectos()).find((e) => e.id === id);
-  if (ya) {
-    ctx.log(`Ese sonido ya estaba en la biblioteca (${ya.nombre}): no se usa la tarjeta gráfica.`);
-    return ya;
-  }
-  if (!efectosInstalados()) throw new Error("Los efectos de sonido no están instalados en esta computadora (falta MOSS-SoundEffect).");
-  await fs.mkdir(dirEfectos(), { recursive: true });
-  const salida = rutaEfecto(id);
-  const pedido = JSON.stringify([{ prompt: o.prompt, segundos, semilla: 0, salida: `${salida}.tmp.wav` }]);
+export interface PedidoEfecto {
+  nombre: string;
+  prompt: string;
+  segundos: number;
+}
+
+/** Lo que MOSS imprime al terminar (py/efecto_sonido.py): carga, pico de VRAM y total. */
+export interface MedidasMoss {
+  cargado_s?: number;
+  vram_pico_gb?: number;
+  total_s?: number;
+}
+
+/** Corre MOSS con el pedido (JSON por stdin). Las pruebas pasan uno falso. */
+export type CorrerMoss = (pedido: string, ctx: Contexto & { signal?: AbortSignal }) => Promise<{ codigo: number; stdout: string; stderr: string }>;
+
+const correrMoss: CorrerMoss = async (pedido, ctx) => {
   const script = path.join(RAIZ_REPO, "py", "efecto_sonido.py");
   const env = { TORCHDYNAMO_DISABLE: "1", PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True" };
-  ctx.log("Creando el sonido: cargar el modelo tarda 1–2 min y después ~10 s por efecto.");
-  let r;
   if (existsSync(GPU_SOLO_BIN)) {
     // gpu-solo toma el gpu-lock y pausa lo de MPT que ocupa VRAM: el modelo pide casi 16 GB.
-    r = await correr(GPU_SOLO_BIN, [PYTHON_MOSS, "-I", script], { entrada: pedido, timeout: 1_800_000, signal: ctx.signal, permitirFallo: true, env });
-  } else {
-    const candado = await tomarGpu("efecto de sonido", { esperar: true, signal: ctx.signal });
+    return correr(GPU_SOLO_BIN, [PYTHON_MOSS, "-I", script], { entrada: pedido, timeout: 1_800_000, signal: ctx.signal, permitirFallo: true, env });
+  }
+  const candado = await tomarGpu("efecto de sonido", { esperar: true, signal: ctx.signal });
+  try {
+    return await correr(PYTHON_MOSS, ["-I", script], { entrada: pedido, timeout: 1_800_000, signal: ctx.signal, permitirFallo: true, env });
+  } finally {
+    candado?.liberar();
+  }
+};
+
+/** Las líneas JSON de MOSS con medidas, juntas (función pura). */
+export function medidasMoss(stdout: string): MedidasMoss {
+  const m: MedidasMoss = {};
+  for (const l of stdout.split("\n")) {
+    if (!l.startsWith("{")) continue;
     try {
-      r = await correr(PYTHON_MOSS, ["-I", script], { entrada: pedido, timeout: 1_800_000, signal: ctx.signal, permitirFallo: true, env });
-    } finally {
-      candado?.liberar();
+      const d = JSON.parse(l) as Record<string, unknown>;
+      for (const k of ["cargado_s", "vram_pico_gb", "total_s"] as const) if (typeof d[k] === "number") m[k] = d[k];
+    } catch {
+      /* no era JSON */
     }
   }
+  return m;
+}
+
+/**
+ * Genera (o reutiliza) varios efectos de la biblioteca con **una sola carga** del modelo (GPU-05): lo que ya
+ * está no usa la tarjeta, y lo que falta va todo junto a un proceso de MOSS. Si alguno sale y otro no, se
+ * guardan los que salieron y los demás quedan en `fallidos`; si no sale ninguno, lanza el error.
+ */
+export async function generarEfectos(
+  ctx: Contexto & { signal?: AbortSignal },
+  lista: readonly PedidoEfecto[],
+  op: { correr?: CorrerMoss } = {},
+): Promise<{ efectos: Efecto[]; generados: number; fallidos: string[]; medidas: MedidasMoss }> {
+  const biblioteca = await listarEfectos();
+  const efectos: Efecto[] = [];
+  const pendientes: (PedidoEfecto & { id: string; tmp: string })[] = [];
+  for (const o of lista) {
+    const segundos = Math.min(30, Math.max(1, Math.round(o.segundos)));
+    const id = idEfecto(o.prompt, segundos);
+    const ya = biblioteca.find((e) => e.id === id);
+    if (ya) {
+      ctx.log(`Ese sonido ya estaba en la biblioteca (${ya.nombre}): no se usa la tarjeta gráfica.`);
+      efectos.push(ya);
+    } else if (!pendientes.some((p) => p.id === id)) pendientes.push({ ...o, segundos, id, tmp: `${rutaEfecto(id)}.tmp.wav` });
+  }
+  if (!pendientes.length) return { efectos, generados: 0, fallidos: [], medidas: {} };
+  if (!efectosInstalados()) throw new Error("Los efectos de sonido no están instalados en esta computadora (falta MOSS-SoundEffect).");
+  await fs.mkdir(dirEfectos(), { recursive: true });
+  const pedido = JSON.stringify(pendientes.map((p) => ({ prompt: p.prompt, segundos: p.segundos, semilla: 0, salida: p.tmp })));
+  ctx.log(`Creando ${pendientes.length === 1 ? "el sonido" : `${pendientes.length} sonidos`}: cargar el modelo tarda 1–2 min y después ~10 s por efecto.`);
+  const r = await (op.correr ?? correrMoss)(pedido, ctx);
   for (const l of r.stdout.split("\n")) if (l.startsWith("{")) ctx.log(l);
-  if (r.codigo !== 0 || !existsSync(`${salida}.tmp.wav`)) {
+  const fallidos: string[] = [];
+  let generados = 0;
+  for (const p of pendientes) {
+    if (!existsSync(p.tmp)) {
+      fallidos.push(p.nombre);
+      continue;
+    }
+    await fs.rename(p.tmp, rutaEfecto(p.id));
+    const e: Efecto = { id: p.id, nombre: p.nombre.slice(0, 80), prompt: p.prompt, segundos: p.segundos, creado: new Date().toISOString(), licencia: LICENCIA_MOSS };
+    await anotar(e);
+    efectos.push(e);
+    generados++;
+  }
+  if (!generados) {
     ctx.log(`Detalle del error: ${r.stderr.trim().split("\n").slice(-6).join(" | ").slice(0, 1200)}`);
     if (r.stderr.toLowerCase().includes("out of memory")) throw new Error("La tarjeta gráfica se quedó sin memoria: cierra juegos o programas que la usen y vuelve a intentar.");
     throw new Error(`No se pudo crear el sonido: ${r.stderr.trim().split("\n").slice(-3).join(" ").slice(0, 400)}`);
   }
-  await fs.rename(`${salida}.tmp.wav`, salida);
-  const e: Efecto = { id, nombre: o.nombre.slice(0, 80), prompt: o.prompt, segundos, creado: new Date().toISOString(), licencia: LICENCIA_MOSS };
-  await anotar(e);
-  return e;
+  if (fallidos.length) ctx.log(`No salieron: ${fallidos.join(", ")} (los demás quedaron en la biblioteca).`);
+  return { efectos, generados, fallidos, medidas: medidasMoss(r.stdout) };
+}
+
+/** Genera (o reutiliza) un efecto de la biblioteca. */
+export async function generarEfecto(ctx: Contexto & { signal?: AbortSignal }, o: PedidoEfecto, op: { correr?: CorrerMoss } = {}): Promise<Efecto> {
+  const r = await generarEfectos(ctx, [o], op);
+  return r.efectos[0]!;
+}
+
+/** Los sonidos listos que todavía no están en la biblioteca (para prepararlos de una vez). */
+export async function presetsQueFaltan(): Promise<PedidoEfecto[]> {
+  const ids = new Set((await listarEfectos()).map((e) => e.id));
+  return PRESETS.filter((p) => !ids.has(idEfecto(p.prompt, p.segundos))).map(({ nombre, prompt, segundos }) => ({ nombre, prompt, segundos }));
 }
 
 /** Copia el efecto al proyecto y lo pone en la pista «efectos» en `inicio` (no guarda). */
