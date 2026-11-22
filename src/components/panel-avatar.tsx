@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useState } from "react";
 import type { AvatarV } from "./avatares";
 import { Aviso, Barra, pedir, postJson, useSondeo } from "./comun";
+import { enlaceAvatares } from "@/lib/asistente-avatar";
 
 interface Datos {
   wan2gp: { listo: boolean; falta: string | null };
@@ -22,8 +23,8 @@ const DESCRIPCION_ENCUADRE: Record<Encuadre, string> = {
 };
 
 /** Las tarjetas para elegir avatar (o el aviso para crear uno). */
-function ElegirAvatar({ avatares, elegido, elegir }: { avatares: AvatarV[]; elegido: string | null; elegir: (id: string) => void }) {
-  if (!avatares.length) return <p className="text-xs">Todavía no tienes avatares. <Link className="text-acento underline" href="/avatares">Crea uno</Link> y vuelve aquí.</p>;
+function ElegirAvatar({ avatares, elegido, elegir, proyectoId }: { avatares: AvatarV[]; elegido: string | null; elegir: (id: string) => void; proyectoId: string }) {
+  if (!avatares.length) return <p className="text-xs">Primero crea un avatar (3 pasos, unos minutos). Después vuelves aquí y lo eliges. <Link className="text-acento underline" href={enlaceAvatares(proyectoId)}>Crear un avatar</Link></p>;
   return (
     <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
       {avatares.map((a) => (
@@ -137,7 +138,7 @@ export function PanelAvatarVideo({ proyectoId, ocupado }: { proyectoId: string; 
       ))}
       <fieldset className="space-y-2">
         <legend className="font-medium">1. ¿Quién?</legend>
-        <ElegirAvatar avatares={datos.avatares} elegido={elegido} elegir={setAvatar} />
+        <ElegirAvatar avatares={datos.avatares} elegido={elegido} elegir={setAvatar} proyectoId={proyectoId} />
       </fieldset>
       {elegido && (
         <>
@@ -248,7 +249,7 @@ function FormAvatarEscena({ proyectoId, escena, numero, ocupado }: { proyectoId:
         <>
           <fieldset className="space-y-2">
             <legend className="font-medium">1. ¿Quién?</legend>
-            <ElegirAvatar avatares={datos.avatares} elegido={elegido} elegir={setAvatar} />
+            <ElegirAvatar avatares={datos.avatares} elegido={elegido} elegir={setAvatar} proyectoId={proyectoId} />
           </fieldset>
           {elegido && (
             <>

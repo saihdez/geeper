@@ -8,8 +8,9 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), "geeper-wf-flujo-"));
 process.env.GEEPER_DATA = dir;
 
 const encolados: { tipo: string; payload: { corrida: string; pedido: { archivos: unknown[]; textos: unknown[] } } }[] = [];
-const WF = { id: "reshoot", titulo: "Rehacer la toma", local: true, complementos: [] as string[], entradas: [{ nodo: 3, medio: "image" }, { nodo: 9, medio: "video" }], miniaturas: [] };
-vi.mock("@/lib/comfyui", async (original) => ({ ...(await original<typeof import("@/lib/comfyui")>()), leerCatalogo: async () => ({ workflows: [WF] }) }));
+// La entrada 9 trae su ejemplo en el catálogo; la 3 no (hay que subirla: UX-04).
+const WF = { id: "reshoot", titulo: "Rehacer la toma", local: true, modelos: [] as string[], complementos: [] as string[], entradas: [{ nodo: 3, medio: "image", archivo: "no-viene.png" }, { nodo: 9, medio: "video", archivo: "ejemplo.mp4" }], miniaturas: [] };
+vi.mock("@/lib/comfyui", async (original) => ({ ...(await original<typeof import("@/lib/comfyui")>()), leerCatalogo: async () => ({ workflows: [WF], archivos: { "ejemplo.mp4": "input/ejemplo.mp4" } }) }));
 vi.mock("@/lib/instalar-comfyui", () => ({ revisarComfyui: () => ({ falta: false }) }));
 vi.mock("@/lib/nodos-comfy", () => ({ infoNodos: async () => [], permitirNodos: async () => {} }));
 vi.mock("@/lib/cola", () => ({ encolar: async (_p: null, tipo: string, payload: never) => (encolados.push({ tipo, payload }), { id: "t1" }) }));
@@ -47,6 +48,38 @@ describe("POST /api/workflows/[id] en flujo (SRV-01)", () => {
     expect((await r.json()).error).toBe("Ese archivo no sirve aquí: hace falta un video.");
     expect(todas(dir).length).toBe(antes);
     expect(encolados).toEqual([]);
+  });
+});
+
+describe("entradas sin ejemplo (UX-04)", () => {
+  it("sin subir la imagen que la receta no trae: error claro antes de encolar y sin carpeta a medias", async () => {
+    const { POST } = await import("@/app/api/workflows/[id]/route");
+    const antes = todas(dir).length;
+    const fd = new FormData();
+    fd.set("textos", "[]");
+    const r = await POST(new Request("http://x", { method: "POST", body: fd }), ctx);
+    expect(r.status).toBe(400);
+    expect((await r.json()).error).toBe("Falta subir tu imagen. Esta receta no trae un ejemplo y lo necesita para empezar.");
+    expect(encolados).toEqual([]);
+    expect(todas(dir).length).toBe(antes);
+  });
+
+  it("el detalle sólo ofrece el ejemplo que existe", async () => {
+    vi.doMock("@/lib/comfyui", async (original) => ({
+      ...(await original<typeof import("@/lib/comfyui")>()),
+      leerCatalogo: async () => ({ workflows: [WF], archivos: { "ejemplo.mp4": "input/ejemplo.mp4" } }),
+      leerWorkflowJson: async () => ({ nodes: [] }),
+      estadoModelos: () => [],
+      modelosDeWorkflow: () => [],
+      textosDeWorkflow: () => [],
+      notasDeWorkflow: () => [],
+    }));
+    vi.resetModules();
+    const { GET } = await import("@/app/api/workflows/[id]/route");
+    const r = await GET(new Request("http://x"), ctx);
+    expect(r.status).toBe(200);
+    const { entradas } = (await r.json()) as { entradas: { nodo: number; ejemplo: string | null }[] };
+    expect(entradas).toEqual([expect.objectContaining({ nodo: 3, ejemplo: null }), expect.objectContaining({ nodo: 9, ejemplo: "/api/workflows/archivo/ejemplo.mp4" })]);
   });
 });
 

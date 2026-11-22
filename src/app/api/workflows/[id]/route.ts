@@ -1,13 +1,14 @@
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { encolar } from "@/lib/cola";
-import { estadoModelos, leerCatalogo, leerWorkflowJson, modelosDeWorkflow, notasDeWorkflow, textosDeWorkflow } from "@/lib/comfyui";
+import { COMFYUI_DIR, estadoModelos, leerCatalogo, leerWorkflowJson, modelosDeWorkflow, notasDeWorkflow, textosDeWorkflow } from "@/lib/comfyui";
 import { json, manejar } from "@/lib/http";
 import { borrarRecibidos, recibirMultipart } from "@/lib/multipart-flujo";
 import { revisarComfyui } from "@/lib/instalar-comfyui";
 import { infoNodos, permitirNodos } from "@/lib/nodos-comfy";
-import { aviso, bloqueo, dirCorrida, escribirCorrida, nuevaCorrida, PedidoWorkflow } from "@/lib/workflows";
+import { aviso, bloqueo, dirCorrida, entradasSinArchivo, escribirCorrida, hayEjemplo, nuevaCorrida, PedidoWorkflow, textoFaltaArchivo } from "@/lib/workflows";
 
 export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ id: string }> };
@@ -18,10 +19,12 @@ const MARGEN = 1024 ** 2;
 const EXT: Record<string, string[]> = { image: [".png", ".jpg", ".jpeg", ".webp"], video: [".mp4", ".mov", ".webm"], audio: [".wav", ".mp3", ".flac", ".m4a", ".ogg"] };
 
 async function buscar(id: string) {
-  const { workflows } = await leerCatalogo();
+  const { workflows, archivos } = await leerCatalogo();
   const w = workflows.find((x) => x.id === id);
   if (!w) throw new Error("Ese workflow no está en esta versión de ComfyUI.");
-  return w;
+  // El ejemplo sólo cuenta si existe de verdad (UX-04): si no, hay que subir el archivo antes de crear.
+  const conEjemplo = (archivo: string | null) => hayEjemplo(archivo, archivos ?? {}, (n) => existsSync(path.join(COMFYUI_DIR, "input", n)));
+  return { w, conEjemplo };
 }
 
 /** Lo que pide el workflow: archivos, textos, modelos (y cuáles faltan) y notas del autor. */
@@ -29,7 +32,7 @@ export async function GET(_: Request, ctx: Ctx) {
   return manejar(async () => {
     const { id } = await ctx.params;
     if (revisarComfyui().falta) throw new Error("ComfyUI no está instalado");
-    const w = await buscar(id);
+    const { w, conEjemplo } = await buscar(id);
     const grafo = await leerWorkflowJson(w.id);
     const modelos = estadoModelos(modelosDeWorkflow(grafo));
     return json({
@@ -50,7 +53,7 @@ export async function GET(_: Request, ctx: Ctx) {
         instalado: n.instalado,
         permitido: n.permitido,
       })),
-      entradas: w.entradas.map((e) => ({ ...e, ejemplo: e.archivo ? `/api/workflows/archivo/${encodeURIComponent(e.archivo)}` : null })),
+      entradas: w.entradas.map((e) => ({ ...e, ejemplo: conEjemplo(e.archivo) ? `/api/workflows/archivo/${encodeURIComponent(e.archivo!)}` : null })),
     });
   });
 }
@@ -63,7 +66,7 @@ export async function POST(req: Request, ctx: Ctx) {
   return manejar(async () => {
     const { id } = await ctx.params;
     if (revisarComfyui().falta) throw new Error("ComfyUI no está instalado");
-    const w = await buscar(id);
+    const { w, conEjemplo } = await buscar(id);
     const motivo = bloqueo(w);
     if (motivo) throw new Error(motivo);
     if (Number(req.headers.get("content-length") ?? 0) > MAX_ARCHIVO * Math.max(1, w.entradas.length) + MARGEN) throw new Error("El archivo pasa de 500 MB");
@@ -92,11 +95,14 @@ export async function POST(req: Request, ctx: Ctx) {
         const usados: { nodo: number; nombre: string }[] = [];
         for (const e of w.entradas) {
           const f = archivos.find((a) => a.campo === `archivo-${e.nodo}`);
-          if (!f || !f.bytes) continue; // sin archivo: queda el ejemplo de la plantilla
+          if (!f || !f.bytes) continue; // sin archivo: queda el ejemplo de la plantilla (si lo trae)
           const nombre = `entrada-${e.nodo}${path.extname(f.nombre).toLowerCase()}`;
           await fs.rename(f.ruta, path.join(entradas, nombre));
           usados.push({ nodo: e.nodo, nombre });
         }
+        // Sin ejemplo, ComfyUI rechazaría el pedido recién después de bajar los modelos (UX-04): se avisa ya.
+        const faltan = entradasSinArchivo(w.entradas, usados.map((u) => u.nodo), (e) => conEjemplo(e.archivo));
+        if (faltan.length) throw new Error(`${textoFaltaArchivo(faltan.map((e) => e.medio))} Esta receta no trae un ejemplo y lo necesita para empezar.`);
         const pedido = PedidoWorkflow.parse({ workflow: w.id, textos, archivos: usados });
         await escribirCorrida({ id: corrida, workflow: w.id, titulo: w.titulo, creada: new Date().toISOString(), estado: "preparada", salidas: [] });
         creada = true;
