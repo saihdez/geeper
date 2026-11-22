@@ -2,21 +2,13 @@
  * Encuentra qué elementos se salen del ancho de la página (desborde horizontal) en una ruta.
  * Uso: GEEPER_URL=http://localhost:3300 pnpm tsx scripts/ui/desborde.ts /proyectos/<id> [ancho=390]
  */
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { rutaChrome } from "../../src/lib/navegador";
 import { chromium } from "playwright-core";
-
-function chrome(): string {
-  const raiz = path.join(os.homedir(), ".cache", "hyperframes", "chrome", "chrome-headless-shell");
-  const v = fs.readdirSync(raiz).sort().pop()!;
-  return path.join(raiz, v, "chrome-headless-shell-linux64", "chrome-headless-shell");
-}
 
 async function main() {
   const [ruta = "/", ancho = "390"] = process.argv.slice(2);
   const base = process.env.GEEPER_URL ?? "http://localhost:3300";
-  const navegador = await chromium.launch({ executablePath: chrome() });
+  const navegador = await chromium.launch({ executablePath: rutaChrome() });
   const pagina = await navegador.newPage({ viewport: { width: Number(ancho), height: 844 } });
   await pagina.goto(base + ruta, { waitUntil: "networkidle" });
   await pagina.waitForTimeout(1500);

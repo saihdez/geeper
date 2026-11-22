@@ -3,22 +3,16 @@
  * falla si hay errores en la consola. Uso: pnpm tsx scripts/ui/capturas.ts <dir-salida> [proyectoId]
  */
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
+import { rutaChrome } from "../../src/lib/navegador";
 import { chromium } from "playwright-core";
 
 const BASE = process.env.GEEPER_URL ?? "http://localhost:3300";
 
-function chrome(): string {
-  const raiz = path.join(os.homedir(), ".cache", "hyperframes", "chrome", "chrome-headless-shell");
-  const v = fs.readdirSync(raiz).sort().pop()!;
-  return path.join(raiz, v, "chrome-headless-shell-linux64", "chrome-headless-shell");
-}
-
 async function main() {
   const [salida = "capturas", proyecto] = process.argv.slice(2);
   fs.mkdirSync(salida, { recursive: true });
-  const navegador = await chromium.launch({ executablePath: chrome() });
+  const navegador = await chromium.launch({ executablePath: rutaChrome() });
   const errores: string[] = [];
   const rutas = ["/", "/nuevo", "/clips", "/anuncios", "/trabajos", "/plantillas", "/cuentas", "/sistema", ...(proyecto ? [`/proyectos/${proyecto}`] : [])];
   for (const [ancho, alto, nombre] of [[1440, 1000, "escritorio"], [390, 844, "telefono"]] as const) {

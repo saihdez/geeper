@@ -2,9 +2,7 @@
  * Toma y render de la demo de producto (ver demo-web.ts). Lo usan `scripts/demo-web.ts` y el trabajo
  * «demo.crear» del worker. Chromium headless + screencast de CDP; el tratamiento es Hyperframes.
  */
-import fs from "node:fs";
 import fsp from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import {
   acentoDe,
@@ -24,7 +22,7 @@ import {
 import { correrHf } from "./hyperframes";
 import { ffmpeg, fotograma, probar } from "./media";
 import type { Registro } from "./proceso";
-import { CACHE_HF } from "./rutas";
+import { abrirNavegador, rutaChrome } from "./navegador";
 
 const espera = (ms: number, signal?: AbortSignal) =>
   new Promise<void>((ok, mal) => {
@@ -35,25 +33,6 @@ const espera = (ms: number, signal?: AbortSignal) =>
       mal(new Error("Cancelado"));
     }, { once: true });
   });
-
-/** El Chrome headless que ya baja Hyperframes (en desarrollo o en la app de escritorio); si no, el de Playwright. */
-function chrome(): string | undefined {
-  for (const base of [path.join(os.homedir(), ".cache", "hyperframes"), CACHE_HF]) {
-    try {
-      const raiz = path.join(base, "chrome", "chrome-headless-shell");
-      const v = fs.readdirSync(raiz).sort().pop()!;
-      for (const sub of ["chrome-headless-shell-linux64", "chrome-headless-shell-win64", "chrome-headless-shell-mac-arm64", "chrome-headless-shell-mac-x64"]) {
-        for (const exe of ["chrome-headless-shell", "chrome-headless-shell.exe"]) {
-          const ruta = path.join(raiz, v, sub, exe);
-          if (fs.existsSync(ruta)) return ruta;
-        }
-      }
-    } catch {
-      /* no está en esta carpeta */
-    }
-  }
-  return undefined;
-}
 
 export interface OpcionesToma {
   formato: FormatoDemo;
@@ -83,7 +62,7 @@ export async function tomarDemo(url: string, dir: string, op: OpcionesToma): Pro
   await fsp.mkdir(dirCuadros, { recursive: true });
   // Sin la bandera, el screencast del Chrome headless sale en píxeles CSS (1280 de ancho) y la tarjeta
   // se reescala borrosa; con ella, a la escala pedida (medido: 1280 → 1920).
-  const nav = await pw.chromium.launch({ executablePath: chrome(), args: [`--force-device-scale-factor=${escala}`] });
+  const nav = await abrirNavegador(() => pw.chromium.launch({ executablePath: rutaChrome(), args: [`--force-device-scale-factor=${escala}`] }));
   const cerrar = () => void nav.close().catch(() => {});
   signal?.addEventListener("abort", cerrar, { once: true });
   try {

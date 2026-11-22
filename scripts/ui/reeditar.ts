@@ -3,17 +3,11 @@
  * escena, cambia a 16:9 y pide el render. Uso: pnpm tsx scripts/ui/reeditar.ts <proyectoId> <dir-capturas>
  */
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
+import { rutaChrome } from "../../src/lib/navegador";
 import { chromium, type Page } from "playwright-core";
 
 const BASE = process.env.GEEPER_URL ?? "http://localhost:3300";
-
-function chrome(): string {
-  const raiz = path.join(os.homedir(), ".cache", "hyperframes", "chrome", "chrome-headless-shell");
-  const v = fs.readdirSync(raiz).sort().pop()!;
-  return path.join(raiz, v, "chrome-headless-shell-linux64", "chrome-headless-shell");
-}
 
 async function esperarGuardado(p: Page) {
   await p.getByText("Guardado como versión nueva").first().waitFor({ timeout: 20_000 });
@@ -22,7 +16,7 @@ async function esperarGuardado(p: Page) {
 async function main() {
   const [id, salida = "capturas"] = process.argv.slice(2);
   fs.mkdirSync(salida, { recursive: true });
-  const b = await chromium.launch({ executablePath: chrome() });
+  const b = await chromium.launch({ executablePath: rutaChrome() });
   const p = await b.newPage({ viewport: { width: 1440, height: 1000 } });
   p.on("dialog", (d) => void d.accept());
   await p.goto(`${BASE}/proyectos/${id}`, { waitUntil: "domcontentloaded" });

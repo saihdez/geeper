@@ -12,9 +12,8 @@
  *    (`app.graphToPrompt()`); el resultado va a `/prompt` y se espera en `/history`.
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { argsAtencionComfyui, atencionInstalada, elegirAtencion } from "./atencion";
 import { comandoGpuSolo } from "./gpu-solo";
@@ -22,7 +21,8 @@ import { bajarHub, dirHub, HUB_COMMIT, resolverArchivo, unirHub } from "./hub-co
 import { pythonDeVenv } from "./plataforma";
 import { correr, matarArbol, patronComando } from "./proceso";
 import { anotarProceso } from "./procesos-largos";
-import { CACHE_HF, dirDatos, ESTUDIO, GPU_SOLO_BIN, RAIZ_REPO } from "./rutas";
+import { abrirNavegador, rutaChrome } from "./navegador";
+import { dirDatos, ESTUDIO, GPU_SOLO_BIN, RAIZ_REPO } from "./rutas";
 
 export const COMFYUI_DIR = process.env.GEEPER_COMFYUI ?? path.join(ESTUDIO, "ComfyUI");
 export const COMFYUI_PYTHON = process.env.GEEPER_COMFYUI_PYTHON ?? pythonDeVenv(path.join(COMFYUI_DIR, "venv"));
@@ -381,32 +381,13 @@ export async function arrancarComfyui(op: { puerto: number; gpuSolo?: boolean; a
   throw new Error(`ComfyUI no respondió en 5 minutos.\n\n${salida.split("\n").slice(-12).join("\n")}`);
 }
 
-/** El Chrome sin ventana que ya baja Hyperframes. */
-function chrome(): string | undefined {
-  for (const base of [path.join(os.homedir(), ".cache", "hyperframes"), CACHE_HF]) {
-    try {
-      const raiz = path.join(base, "chrome", "chrome-headless-shell");
-      const v = readdirSync(raiz).sort().pop()!;
-      for (const sub of ["chrome-headless-shell-linux64", "chrome-headless-shell-win64", "chrome-headless-shell-mac-arm64", "chrome-headless-shell-mac-x64"]) {
-        for (const exe of ["chrome-headless-shell", "chrome-headless-shell.exe"]) {
-          const ruta = path.join(raiz, v, sub, exe);
-          if (existsSync(ruta)) return ruta;
-        }
-      }
-    } catch {
-      /* no está en esta carpeta */
-    }
-  }
-  return undefined;
-}
-
 /**
  * Convierte el workflow del editor al formato de la API con el propio editor de ComfyUI (subgrafos, nodos
  * salteados, reroutes y widgets quedan como los resuelve ComfyUI). Necesita el servidor andando.
  */
 export async function aFormatoApi(url: string, w: GrafoUi): Promise<Record<string, unknown>> {
   const pw = await import("playwright-core");
-  const nav = await pw.chromium.launch({ executablePath: chrome() });
+  const nav = await abrirNavegador(() => pw.chromium.launch({ executablePath: rutaChrome() }));
   try {
     const ctx = await nav.newContext();
     await ctx.addInitScript({ content: "window.__name = (f) => f;" });
