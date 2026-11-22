@@ -144,3 +144,38 @@ export function mensajeSinCambios(ediciones: { tipo?: unknown }[], r: unknown): 
   if (tipos.length === 1 && tipos[0] === "quitarSilencios") return "No hay pausas largas que acortar.";
   return "No había nada que cambiar: el video sigue igual.";
 }
+
+interface VersionV { numero: number; nota: string; hash?: string | null }
+
+const RE_VUELTA = /^Vuelta a la versión (\d+)$/;
+
+/**
+ * UX-38: a qué versión lleva «Deshacer». «Volver a la anterior» dos veces seguidas rehacía (la anterior
+ * de una vuelta atrás es la versión que se acaba de deshacer): se sigue la cadena de vueltas hasta el
+ * cambio real y se salta lo que tenga el mismo contenido que hoy.
+ */
+export function versionParaDeshacer(versiones: VersionV[], actual: number): VersionV | null {
+  const por = new Map(versiones.map((x) => [x.numero, x]));
+  const hoy = por.get(actual);
+  let cur = actual;
+  const vistos = new Set<number>();
+  for (;;) {
+    const m = RE_VUELTA.exec(por.get(cur)?.nota ?? "");
+    if (!m || vistos.has(cur)) break;
+    vistos.add(cur);
+    cur = Number(m[1]);
+  }
+  const antes = versiones.filter((x) => x.numero < cur).sort((a, b) => b.numero - a.numero);
+  return antes.find((x) => !hoy?.hash || !x.hash || x.hash !== hoy.hash) ?? null;
+}
+
+/** UX-38: «hace un momento», «hace 5 min», «hace 2 h», «ayer» o la fecha. */
+export function haceCuanto(fecha: string | Date, ahora: number = Date.now()): string {
+  const t = new Date(fecha).getTime();
+  const s = Math.max(0, (ahora - t) / 1000);
+  if (s < 60) return "hace un momento";
+  if (s < 3600) return `hace ${Math.floor(s / 60)} min`;
+  if (s < 86_400) return `hace ${Math.floor(s / 3600)} h`;
+  if (s < 2 * 86_400) return "ayer";
+  return new Date(t).toLocaleDateString("es-MX", { day: "numeric", month: "short" });
+}

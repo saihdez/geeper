@@ -18,7 +18,7 @@ import { SelectorEncuadre, type EncuadreV } from "./selector-encuadre";
 import { PanelOtroEditor } from "./panel-otro-editor";
 import { useAccionesProyecto } from "./acciones-proyecto";
 import { FranjaAviso, type MensajeEditor } from "./franja-aviso";
-import { avisoRitmo, correccionesVacias, enLista, mensajeSinCambios, opcionesRitmo, errorSubtitulo, escenasConOtraVoz, estaActivo, estadoCreacion, mismoContenido, pasoRender, preguntaVozEscena, renderEnCurso, verTrabajos, type TrabajoV, type VocesV } from "./editor-estado";
+import { avisoRitmo, correccionesVacias, enLista, haceCuanto, mensajeSinCambios, opcionesRitmo, versionParaDeshacer, errorSubtitulo, escenasConOtraVoz, estaActivo, estadoCreacion, mismoContenido, pasoRender, preguntaVozEscena, renderEnCurso, verTrabajos, type TrabajoV, type VocesV } from "./editor-estado";
 import { Plegable } from "./plegable";
 import { EdicionPorTexto, EfectosEscena, PanelAvanzado, PanelEstilo, type EfectosV, type EstiloV, type ExtrasV, type PalabraV } from "./edicion-avanzada";
 
@@ -423,7 +423,7 @@ export function EditorProyecto({ id }: { id: string }) {
     id, slug: v.fila.slug, formato: v.p.formato, plantilla: v.p.plantilla, plantillas: pl?.plantillas ?? [],
     renderAprobado: v.fila.renders[0]?.estado === "aprobado" ? v.fila.renders[0].ruta : null,
     hayMusica: !!v.extras?.musica, dudosas: v.extras?.confianza.dudosas ?? 0,
-    versionAnterior: v.fila.versiones.find((x) => x.numero < v.fila.versionActual)?.numero ?? null,
+    versionAnterior: versionParaDeshacer(v.fila.versiones, v.fila.versionActual)?.numero ?? null,
     ocupado, editar, renderizar, alinearMusica, regenerarVoz,
     volverA: (numero) => hacer(() => postJson(`/api/proyectos/${id}/version`, { numero }), `Volviste a la versión ${numero} (guardada como versión nueva).`),
   } : null);
@@ -441,6 +441,11 @@ export function EditorProyecto({ id }: { id: string }) {
   const enCurso = renderEnCurso(fila.trabajos);
   /** Otro trabajo en marcha que no es el render (ése ya tiene su franja). */
   const otroActivo = activos.find((t) => t !== enCurso) ?? null;
+  const deshacer = versionParaDeshacer(fila.versiones, fila.versionActual);
+  const notaActual = fila.versiones.find((x) => x.numero === fila.versionActual)?.nota ?? "el último cambio";
+  const volverA = (numero: number, pregunta: string) => {
+    if (confirm(pregunta)) void hacer(() => postJson(`/api/proyectos/${id}/version`, { numero }), `Volviste a la versión ${numero} (guardada como versión nueva).`);
+  };
   const otraVoz = v.extras?.clip ? [] : escenasConOtraVoz(escenas, v.voces?.elegida ?? null);
   const qc = render?.informeQc ? resumirQc(render.informeQc.reglas) : null;
   const avisoRapidos = avisoSubtitulosRapidos(v.subtitulosRapidos);
@@ -462,6 +467,13 @@ export function EditorProyecto({ id }: { id: string }) {
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {/* UX-38: deshacer a la vista, sin bajar al historial. Con un trabajo en marcha podría pisar su resultado. */}
+          {deshacer && (
+            <button type="button" className="boton" disabled={ocupado || activos.length > 0}
+              title={activos.length > 0 ? "Espera a que termine lo que está en marcha" : `Vuelve a como estaba antes de «${notaActual}»`}
+              onClick={() => volverA(deshacer.numero, `¿Deshacer el último cambio («${notaActual}»)? Vuelve a la versión ${deshacer.numero}; se guarda como versión nueva y no se pierde nada.`)}>↶ Deshacer</button>
+          )}
+          <a className="boton" href="#historial">Historial</a>
           {fila.estado === "entregado" && render && !renderAlDia
             ? <span className="inline-block rounded-full bg-amber-800 px-2 py-0.5 text-xs font-medium text-amber-100">Con cambios sin exportar</span>
             : <Estado valor={fila.estado} />}
@@ -699,17 +711,17 @@ export function EditorProyecto({ id }: { id: string }) {
       )}
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <div className="tarjeta p-4">
+        <div id="historial" className="tarjeta scroll-mt-4 p-4">
           <h2 className="mb-2 font-medium">Historial</h2>
           <ul className="max-h-80 space-y-1 overflow-auto text-sm">
             {fila.versiones.map((x) => (
               <li key={x.numero} className="flex items-center gap-2">
                 <span className="w-10 font-mono text-tenue">v{x.numero}</span>
                 <span className="flex-1">{x.nota}</span>
-                <span className="text-xs text-tenue">{new Date(x.creado).toLocaleString("es-MX")}</span>
+                <span className="text-xs text-tenue" title={new Date(x.creado).toLocaleString("es-MX")}>{haceCuanto(x.creado)}</span>
                 {x.numero !== fila.versionActual && (
                   <button type="button" className="boton py-0.5 text-xs" disabled={ocupado}
-                    onClick={() => void hacer(() => postJson(`/api/proyectos/${id}/version`, { numero: x.numero }), `Volviste a la versión ${x.numero} (guardada como versión nueva).`)}>Volver a esta</button>
+                    onClick={() => volverA(x.numero, `¿Volver a la versión ${x.numero} («${x.nota}»)? Se guarda como versión nueva: no se pierde nada.`)}>Volver a esta</button>
                 )}
               </li>
             ))}
