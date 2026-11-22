@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { Aviso, Barra, archivo, numero, pedir, postJson, segundos, useSondeo } from "./comun";
 import { SugerenciasBusqueda } from "./sugerencias-busqueda";
 import { sugerirGlosario, sumarAlGlosario } from "@/lib/glosario";
+import { explicarError, ERROR_GENERICO } from "@/lib/textos";
 
 interface Vista { video: string; poster: string; desde: number; hasta: number }
 interface Candidato { n: number; inicio: number; fin: number; puntaje: number; motivos: string[]; texto?: string; vista?: Vista }
@@ -17,7 +18,10 @@ interface Fuente {
   candidatos: Candidato[] | null;
   idioma: string | null;
 }
-interface TrabajoM { id: string; estado: string; etapa: string; progreso: number; error: string | null; payload: { src?: string }; resultado: { fuente?: string } | null }
+interface TrabajoM {
+  id: string; estado: string; etapa: string; progreso: number; error: string | null;
+  payload: { src?: string; idioma?: string; min?: number; max?: number; maxMinutos?: number }; resultado: { fuente?: string } | null;
+}
 interface Datos { fuentes: Fuente[]; trabajos: TrabajoM[]; workerVivo: boolean }
 interface Tendencia { url: string; titulo: string; canal: string; vistas: number; horas: number; vistasPorHora: number; minutos: number; loMasVisto: boolean; fueDirecto: boolean }
 
@@ -112,6 +116,8 @@ function Paso1({ datos, recargar, elegir }: { datos: Datos; recargar: () => Prom
   const entrada = useRef<HTMLInputElement>(null);
 
   const trabajo = datos.trabajos.find((t) => t.id === esperando);
+  // UX-03: si el análisis falla o se cancela, los botones vuelven a funcionar sin recargar.
+  const ocupado = Boolean(esperando) && (!trabajo || trabajo.estado === "pendiente" || trabajo.estado === "corriendo");
   useEffect(() => {
     // Al pasar al paso 2 este componente se desmonta: basta con navegar.
     if (trabajo?.estado === "hecho" && trabajo.resultado?.fuente) elegir(trabajo.resultado.fuente);
@@ -121,9 +127,24 @@ function Paso1({ datos, recargar, elegir }: { datos: Datos; recargar: () => Prom
     e?.preventDefault();
     setError(null);
     try {
-      const r = await postJson<{ trabajo: string }>("/api/clips/momentos", { src: (u ?? url).trim(), idioma, min, max });
-      setEsperando(r.trabajo);
-      void recargar();
+      await analizar({ src: (u ?? url).trim(), idioma, min, max });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function analizar(pedido: { src: string; idioma?: string; min?: number; max?: number; maxMinutos?: number }) {
+    const r = await postJson<{ trabajo: string }>("/api/clips/momentos", pedido);
+    setEsperando(r.trabajo);
+    void recargar();
+  }
+
+  /** «Volver a intentar» con lo mismo que se pidió (sirve también para un archivo ya subido). */
+  async function reintentar(t: TrabajoM) {
+    setError(null);
+    try {
+      if (!t.payload.src) throw new Error("No sé qué video era: pega el enlace o súbelo otra vez.");
+      await analizar({ src: t.payload.src, idioma: t.payload.idioma, min: t.payload.min, max: t.payload.max, maxMinutos: t.payload.maxMinutos });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -139,13 +160,13 @@ function Paso1({ datos, recargar, elegir }: { datos: Datos; recargar: () => Prom
       setSubida(null);
       try {
         const r = JSON.parse(x.responseText) as { trabajo?: string; error?: string };
-        if (x.status >= 400 || !r.trabajo) setError(r.error ?? `Error ${x.status}`);
+        if (x.status >= 400 || !r.trabajo) setError(r.error ?? "No pude recibir el video. Vuelve a intentar; si sigue fallando, pide ayuda.");
         else {
           setEsperando(r.trabajo);
           void recargar();
         }
       } catch {
-        setError(`Error ${x.status}`);
+        setError(x.status === 413 ? "Ese video es demasiado grande para subirlo." : "No pude recibir el video. Vuelve a intentar; si sigue fallando, pide ayuda.");
       }
     };
     x.onerror = () => {
@@ -156,7 +177,7 @@ function Paso1({ datos, recargar, elegir }: { datos: Datos; recargar: () => Prom
   }
 
   const enCurso = datos.trabajos.filter((t) => t.estado === "pendiente" || t.estado === "corriendo");
-  const fallo = datos.trabajos.find((t) => t.id === esperando && t.estado === "fallido");
+  const fallo = trabajo && ["fallido", "interrumpido", "cancelado"].includes(trabajo.estado) ? trabajo : null;
   const conMomentos = datos.fuentes.filter((f) => f.candidatos?.length);
 
   return (
@@ -174,7 +195,7 @@ function Paso1({ datos, recargar, elegir }: { datos: Datos; recargar: () => Prom
             <label className="etiqueta" htmlFor="url">Enlace del video (YouTube, Twitch, Kick…)</label>
             <input id="url" className="campo" type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=…" required />
             <p className="text-xs text-tenue">Tiene que ser un video ya publicado. Si es un directo, espera a que termine y usa la grabación.</p>
-            <button className="boton boton-primario" disabled={!url.trim() || Boolean(esperando)}>Buscar los mejores momentos</button>
+            <button className="boton boton-primario" disabled={!url.trim() || ocupado}>Buscar los mejores momentos</button>
           </form>
         ) : (
           <div
@@ -184,7 +205,7 @@ function Paso1({ datos, recargar, elegir }: { datos: Datos; recargar: () => Prom
             className={`grid place-items-center gap-2 rounded-xl border-2 border-dashed p-8 text-center ${arrastrando ? "border-cyan-500 bg-cyan-950/30" : "border-borde"}`}>
             <p className="text-base">Arrastra tu video aquí</p>
             <p className="text-sm text-tenue">o</p>
-            <button type="button" className="boton boton-primario" disabled={subida !== null || Boolean(esperando)} onClick={() => entrada.current?.click()}>Elegir un archivo</button>
+            <button type="button" className="boton boton-primario" disabled={subida !== null || ocupado} onClick={() => entrada.current?.click()}>Elegir un archivo</button>
             <input ref={entrada} type="file" accept="video/*" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) subir(f); e.target.value = ""; }} />
             <p className="text-xs text-tenue">Una grabación tuya, de un directo o de una partida. MP4, MOV, MKV…</p>
           </div>
@@ -208,7 +229,7 @@ function Paso1({ datos, recargar, elegir }: { datos: Datos; recargar: () => Prom
           <div className="space-y-1 text-sm"><p>Subiendo el video… {Math.round(subida * 100)} %</p><Barra valor={subida} /></div>
         )}
         {error && <Aviso tipo="error">{error}</Aviso>}
-        {fallo && <Aviso tipo="error">No pude analizar ese video: {fallo.error}</Aviso>}
+        {fallo && <FalloAnalisis t={fallo} reintentar={() => void reintentar(fallo)} ocupado={ocupado} />}
       </section>
 
       {enCurso.map((t) => (
@@ -247,6 +268,28 @@ function Paso1({ datos, recargar, elegir }: { datos: Datos; recargar: () => Prom
 
       <Radar alElegir={(u) => { setModo("enlace"); setUrl(u); void buscarEnlace(undefined, u); }} />
     </div>
+  );
+}
+
+/** UX-03: por qué no se pudo, en palabras simples, con «Volver a intentar» y el detalle plegado. */
+export function FalloAnalisis({ t, reintentar, ocupado = false }: { t: Pick<TrabajoM, "estado" | "error">; reintentar: () => void; ocupado?: boolean }) {
+  const { simple, detalle } = explicarError(t.error);
+  const texto = t.estado === "cancelado"
+    ? "Se canceló el análisis de este video."
+    : t.estado === "interrumpido"
+      ? "El análisis se cortó (Geeper se cerró o se reinició a la mitad)."
+      : simple === ERROR_GENERICO ? "No pude abrir ese video. Revisa que el enlace esté completo y que el video sea público." : simple;
+  return (
+    <Aviso tipo="error">
+      <p>{texto}</p>
+      <button type="button" className="boton mt-2" disabled={ocupado} onClick={reintentar}>Volver a intentar</button>
+      {detalle && (
+        <details className="mt-2 text-xs">
+          <summary className="cursor-pointer text-tenue">Ver detalle técnico</summary>
+          <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-all">{detalle}</pre>
+        </details>
+      )}
+    </Aviso>
   );
 }
 
