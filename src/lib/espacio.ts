@@ -1,12 +1,17 @@
 /**
- * Espacio libre en disco (DSC-05): cuánto queda donde se va a escribir y el aviso antes de bajar,
+ * Espacio libre en disco (DSC-05, DSC-06): cuánto queda donde se va a escribir y el aviso antes de bajar,
  * subir o renderizar algo grande.
  *
- * Las rutas de `/mnt/<letra>/` y `C:\\…` se nombran por su letra de disco.
+ * En WSL, `df /` engaña: el disco de Linux es un archivo (ext4.vhdx) que vive en C: y sólo crece mientras
+ * quede lugar ahí. Lo que vale es el menor entre lo que dice Linux y lo libre en C: (`/mnt/c`, o
+ * `GEEPER_DISCO_WINDOWS` si el disco de WSL se movió a otra unidad). Queda corto por lo que el .vhdx ya
+ * tiene reservado y sin usar (unos 14 GiB medidos), que es el lado seguro. Las rutas de `/mnt/<letra>/`
+ * son discos de Windows y se miden tal cual.
  */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { faltaParaUsar, MARGEN_DISCO, textoSinEspacio, type MedidaDisco } from "./espacio-texto";
+import { esWsl } from "./plataforma";
 
 export type { MedidaDisco } from "./espacio-texto";
 
@@ -15,6 +20,10 @@ type StatFs = (ruta: string) => Promise<{ bavail: number | bigint; bsize: number
 export interface OpcionesEspacio {
   /** Para las pruebas: cómo leer un disco. */
   statfs?: StatFs;
+  /** Para las pruebas: si corre en WSL. */
+  wsl?: boolean;
+  /** Dónde está montado el disco de Windows que guarda el de Linux (por omisión /mnt/c). */
+  montajeWindows?: string;
 }
 
 const statfsNode: StatFs = (r) => fs.statfs(r);
@@ -49,6 +58,12 @@ export async function espacioLibre(ruta: string, o: OpcionesEspacio = {}): Promi
   const donde = await existente(ruta);
   const propio = await medir(statfs, donde);
   const letra = letraDe(donde);
+  const wsl = o.wsl ?? esWsl();
+  if (wsl && !letra) {
+    const montaje = o.montajeWindows ?? process.env.GEEPER_DISCO_WINDOWS ?? "/mnt/c";
+    const windows = await medir(statfs, montaje).catch(() => null);
+    if (windows && windows.libre < propio.libre) return { libre: windows.libre, total: propio.total, disco: letraDe(montaje) ?? "el disco", enWindows: true };
+  }
   return { ...propio, disco: letra ?? "el disco", enWindows: false };
 }
 
