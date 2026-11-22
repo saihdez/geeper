@@ -92,7 +92,7 @@ async function mptGenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
   const proyecto = await db.proyecto.findUniqueOrThrow({ where: { id: t.proyectoId! } });
   const dir = await crearCarpetas(proyecto.slug);
   const plantilla = await obtenerPlantilla(proyecto.plantilla);
-  if (!(await apiViva())) throw new Error("La API de MPT (127.0.0.1:8080) no responde. Corre `pnpm run doctor` para ver qué falta.");
+  if (!(await apiViva())) throw new Error("El generador de videos está apagado. Abre Docker Desktop, espera un minuto y pulsa «Relanzar».");
   await db.proyecto.update({ where: { id: proyecto.id }, data: { estado: "generando" } });
 
   let taskId = typeof t.payload.mptTaskId === "string" ? t.payload.mptTaskId : undefined;

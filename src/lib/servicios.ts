@@ -7,6 +7,15 @@ import { crearCarpetas } from "./almacen";
 import { encolar, type TipoTrabajo } from "./cola";
 import { db } from "./db";
 import type { Formato } from "./esquema";
+import { apiViva } from "./mpt";
+
+/** Lo que ve la persona si el generador de videos (MPT, en Docker) está apagado (UX-07). */
+export const GENERADOR_APAGADO = "El generador de videos está apagado. Abre Docker Desktop, espera un minuto y vuelve a intentar.";
+
+/** Antes de crear nada: con el generador apagado cada tema dejaría un proyecto fallido (UX-07). */
+export async function exigirGenerador(): Promise<void> {
+  if (!(await apiViva())) throw new Error(GENERADOR_APAGADO);
+}
 
 export function slugDe(texto: string): string {
   const base = texto
@@ -59,7 +68,8 @@ const CADENA_FABRICA: TipoTrabajo[] = ["proyecto.importar", "render.entregar"];
 const CADENA_CON_AVATAR: TipoTrabajo[] = ["proyecto.importar", "avatar.escenas", "render.entregar"];
 
 /** Fábrica: MPT genera → se importa a geeper.json → render con la plantilla → QC. */
-export async function crearProyecto(n: NuevoProyecto) {
+export async function crearProyecto(n: NuevoProyecto, op: { yaComprobado?: boolean } = {}) {
+  if (!op.yaComprobado) await exigirGenerador();
   const p = await crearFila(n);
   const base = n.avatar ? CADENA_CON_AVATAR : CADENA_FABRICA;
   // Con un estilo que anima, las escenas pasan a video antes del render (después del avatar).
@@ -75,11 +85,12 @@ export async function crearProyecto(n: NuevoProyecto) {
 export async function crearLote(temas: string[], formato: Formato, plantilla: string, nombre?: string, avatar?: string, estilo?: EstiloGeneracion) {
   const limpios = temas.map((t) => t.trim()).filter(Boolean);
   if (!limpios.length) throw new Error("El lote no tiene temas");
+  await exigirGenerador();
   const lote = await db.lote.create({
     data: { nombre: nombre ?? `Lote de ${limpios.length} temas`, formato, plantilla, temas: limpios },
   });
   const proyectos = [];
-  for (const [i, tema] of limpios.entries()) proyectos.push(await crearProyecto({ tema, formato, plantilla, loteId: lote.id, orden: i, avatar, estilo }));
+  for (const [i, tema] of limpios.entries()) proyectos.push(await crearProyecto({ tema, formato, plantilla, loteId: lote.id, orden: i, avatar, estilo }, { yaComprobado: true }));
   return { lote, proyectos };
 }
 
