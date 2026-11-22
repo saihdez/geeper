@@ -3,7 +3,7 @@
  * Edición avanzada (esquema v2): edición por texto, efectos del plano de cada escena, destino del video,
  * música al ritmo, textos superpuestos y pistas libres. Todo son ediciones de geeper.json (sin GPU).
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ACCEPT_IMAGEN } from "@/lib/formatos-vector";
 import type { Fusion } from "@/lib/efectos-esquema";
 import { segundos } from "./comun";
@@ -302,9 +302,76 @@ const COLORES: Record<string, EfectosV["color"]> = {
 };
 const clave = <T,>(tabla: Record<string, T>, v: T) => Object.entries(tabla).find(([, x]) => JSON.stringify(x) === JSON.stringify(v))?.[0] ?? "personalizado";
 
-const NOMBRES_MOV: Record<string, string> = {
-  acercar: "acercar", alejar: "alejar", "izquierda-derecha": "paneo a la derecha", "derecha-izquierda": "paneo a la izquierda", personalizado: "personalizada",
-};
+/**
+ * Movimientos de cámara con los mismos nombres que «Animar esta escena» (UX-35). Cada tarjeta se mueve
+ * como el movimiento: la elegida siempre; las demás al pasar el cursor o con el foco.
+ */
+export const OPCIONES_MOV = [
+  { clave: "ninguno", nombre: "Quieta", ayuda: "La imagen queda quieta.", reposo: "none", anim: null },
+  { clave: "acercar", nombre: "Acercarse", ayuda: "La cámara se acerca despacio.", reposo: "scale(1.07)", anim: "gm-acercar" },
+  { clave: "alejar", nombre: "Alejarse", ayuda: "La cámara se aleja despacio.", reposo: "scale(1.07)", anim: "gm-alejar" },
+  { clave: "izquierda-derecha", nombre: "Hacia la derecha", ayuda: "La cámara se corre despacio hacia la derecha.", reposo: "scale(1.15)", anim: "gm-derecha" },
+  { clave: "derecha-izquierda", nombre: "Hacia la izquierda", ayuda: "La cámara se corre despacio hacia la izquierda.", reposo: "scale(1.15)", anim: "gm-izquierda" },
+] as const;
+
+const NOMBRES_MOV: Record<string, string> = { ...Object.fromEntries(OPCIONES_MOV.map((o) => [o.clave, o.nombre.toLowerCase()])), personalizado: "personalizada" };
+
+const tamMini = (formato: string) => (formato === "16:9" ? { w: 112, h: 63 } : formato === "1:1" ? { w: 80, h: 80 } : { w: 63, h: 112 });
+
+function EstilosMovimiento() {
+  return (
+    <style>{`
+      @keyframes gm-acercar { from { transform: scale(1); } to { transform: scale(1.15); } }
+      @keyframes gm-alejar { from { transform: scale(1.15); } to { transform: scale(1); } }
+      @keyframes gm-derecha { from { transform: scale(1.15) translateX(6%); } to { transform: scale(1.15) translateX(-6%); } }
+      @keyframes gm-izquierda { from { transform: scale(1.15) translateX(-6%); } to { transform: scale(1.15) translateX(6%); } }
+      .gm-tarjeta:hover .gm-img, .gm-tarjeta:focus-visible .gm-img, .gm-tarjeta[aria-checked="true"] .gm-img {
+        animation-name: var(--gm-anim); animation-duration: 2.4s; animation-iteration-count: infinite;
+        animation-direction: alternate; animation-timing-function: ease-in-out;
+      }
+      @media (prefers-reduced-motion: reduce) { .gm-img { animation: none !important; } }
+    `}</style>
+  );
+}
+
+/** «Movimiento de cámara» de una escena en tarjetas que se mueven (antes, una lista de nombres). */
+function GaleriaMovimiento({ valor, formato, img, deshabilitado, onElegir }: {
+  valor: string; formato: string; img?: string; deshabilitado: boolean; onElegir: (clave: string) => void;
+}) {
+  const id = useId();
+  const { w, h } = tamMini(formato);
+  const elegida = OPCIONES_MOV.find((o) => o.clave === valor);
+  return (
+    <div className="space-y-2">
+      <EstilosMovimiento />
+      <span id={id} className="etiqueta">Movimiento de cámara</span>
+      <div role="radiogroup" aria-labelledby={id} className="flex gap-2 overflow-x-auto pb-1">
+        {OPCIONES_MOV.map((o) => (
+          <button key={o.clave} type="button" role="radio" aria-checked={valor === o.clave} disabled={deshabilitado} title={o.ayuda}
+            onClick={() => onElegir(o.clave)}
+            className={`gm-tarjeta flex w-[92px] shrink-0 flex-col items-center gap-1 rounded-lg border p-1.5 text-center text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+              valor === o.clave ? "border-acento bg-acento/10" : "border-borde hover:border-white/30 hover:bg-white/5"}`}>
+            <span className="relative block overflow-hidden rounded bg-black" style={{ width: w, height: h }} aria-hidden>
+              <span className="gm-img absolute inset-0" style={{ transform: o.reposo, ...(o.anim ? { ["--gm-anim" as string]: o.anim } : {}) } as React.CSSProperties}>
+                {img
+                  // eslint-disable-next-line @next/next/no-img-element
+                  ? <img src={img} alt="" className="h-full w-full object-cover" draggable={false} />
+                  : <span className="block h-full w-full" style={{ background: "linear-gradient(160deg,#f59e0b,#be185d)" }} />}
+              </span>
+            </span>
+            <span className={`leading-tight ${valor === o.clave ? "font-medium text-white" : ""}`}>{o.nombre}</span>
+          </button>
+        ))}
+        {valor === "personalizado" && (
+          <span role="radio" aria-checked aria-disabled className="flex w-[92px] shrink-0 items-center justify-center rounded-lg border border-acento bg-acento/10 p-1.5 text-center text-xs">
+            Personalizado (puesto a mano o por Claude)
+          </span>
+        )}
+      </div>
+      {elegida && <p className="text-xs text-tenue"><strong className="text-white/90">{elegida.nombre}:</strong> {elegida.ayuda}</p>}
+    </div>
+  );
+}
 
 const VELOCIDADES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const coma = (x: number) => String(Math.round(x * 100) / 100).replace(".", ",");
@@ -365,21 +432,12 @@ export function EfectosEscena({ escena, indice, efectos, estilo, formato, imgA, 
           // «Natural» sin estilo que heredar no es una excepción: se guarda como «sin valor propio».
           onElegir={(e) => void ed({ efectos: e.length === 0 && !estilo?.efectos?.length ? null : e })}
           onVolver={() => void ed({ efectos: null })} />
-        <div className="grid gap-2 sm:grid-cols-3">
-          <label className="etiqueta">Movimiento de cámara
-            <select className="campo py-1" disabled={ocupado} value={mov}
-              onChange={(ev) => {
-                const m = MOVIMIENTOS[ev.target.value];
-                void ed({ movimiento: m ? { ...m, ...(curva ? { curva } : {}) } : null });
-              }}>
-              <option value="ninguno">Ninguno (imagen quieta)</option>
-              <option value="acercar">Acercar despacio</option>
-              <option value="alejar">Alejar despacio</option>
-              <option value="izquierda-derecha">Paneo a la derecha</option>
-              <option value="derecha-izquierda">Paneo a la izquierda</option>
-              {mov === "personalizado" && <option value="personalizado" disabled>Personalizado</option>}
-            </select>
-          </label>
+        <GaleriaMovimiento valor={mov} formato={formato} img={imgB} deshabilitado={ocupado}
+          onElegir={(k) => {
+            const m = MOVIMIENTOS[k];
+            void ed({ movimiento: m ? { ...m, ...(curva ? { curva } : {}) } : null });
+          }} />
+        <div className="grid gap-2 sm:grid-cols-2">
           <label className="etiqueta">Velocidad del video de la escena
             <select className="campo py-1" disabled={ocupado} value={String(efectos.velocidad)}
               onChange={(ev) => void ed({ velocidad: Number(ev.target.value) })}>
@@ -393,7 +451,8 @@ export function EfectosEscena({ escena, indice, efectos, estilo, formato, imgA, 
               <option value="vivo">Más vivo</option>
               <option value="claro">Más claro</option>
               <option value="apagado">Apagado</option>
-              <option value="blanco-negro">Blanco y negro</option>
+              {/* Blanco y negro está en «Aspecto»: aquí sólo se muestra si la escena ya lo tiene. */}
+              {col === "blanco-negro" && <option value="blanco-negro">Blanco y negro</option>}
               {col === "personalizado" && <option value="personalizado" disabled>Personalizado</option>}
             </select>
           </label>
@@ -425,7 +484,7 @@ export function PanelEstilo({ estilo, escenas, formato, imgs, editar, editarVari
         <h2 className="font-medium">Estilo del video</h2>
         <p className="text-xs text-tenue">
           Se aplica a todas las escenas de una vez. Si una escena necesita algo distinto, cámbialo en sus «Efectos del plano»;
-          el resto sigue este estilo. Pasa el cursor sobre cada opción para verla en movimiento.
+          el resto sigue este estilo. La opción elegida se ve en movimiento; en la computadora, pasa el cursor sobre las otras para verlas.
         </p>
       </div>
       <GaleriaAspectos titulo="Aspecto" valor={(estilo.efectos ?? []) as EfectoUI[]} formato={formato} img={imgs[0]} deshabilitado={ocupado}
@@ -477,11 +536,40 @@ function AjustesSuperposicion({ clip, formato, img, editar, ocupado }: {
   );
 }
 
+/** Escena tal como la necesita «Textos en pantalla»: dónde empieza en el video y cuánto dura (s). */
+export interface EscenaT {
+  numero: number;
+  inicio: number;
+  duracion: number;
+}
+
+const coma1 = (x: number) => x.toFixed(1).replace(".", ",");
+const ESTILOS_TEXTO: Record<string, string> = { rotulo: "Rótulo", titulo: "Título", cita: "Cita" };
+const POSICIONES_TEXTO: Record<string, string> = { arriba: "arriba", centro: "al centro", abajo: "sobre los subtítulos" };
+
+/** Cuándo aparece un texto, dicho por escenas (UX-35): «Al empezar la escena 2» o «En la escena 2, a los 1,5 s». */
+export function cuandoAparece(inicio: number, escenas: EscenaT[]): string {
+  const e = [...escenas].reverse().find((x) => inicio >= x.inicio - 0.05);
+  if (!e) return `Al empezar el video, a los ${coma1(inicio)} s`;
+  const dentro = inicio - e.inicio;
+  return dentro < 0.05 ? `Al empezar la escena ${e.numero}` : `En la escena ${e.numero}, a los ${coma1(dentro)} s`;
+}
+
+/** Inicio y duración (s) de un texto nuevo a partir de lo elegido en «¿Cuándo aparece?» y «¿Cuánto dura?». */
+export function tiempoDelTexto(cuando: string, segundo: string, dura: string, escenas: EscenaT[]): { inicio: number; duracion: number } {
+  const e = cuando.startsWith("escena:") ? escenas.find((x) => x.numero === Number(cuando.slice(7))) : undefined;
+  const inicio = e ? e.inicio : Math.max(0, Number(segundo) || 0);
+  const duracion = dura === "escena" ? (e ? e.duracion : 3) : Number(dura) || 3;
+  return { inicio: Math.round(inicio * 100) / 100, duracion: Math.min(60, Math.max(0.3, Math.round(duracion * 100) / 100)) };
+}
+
 const PLATAFORMAS = [["youtube", "YouTube Shorts"], ["tiktok", "TikTok"], ["instagram", "Instagram Reels"], ["facebook", "Facebook Reels"]] as const;
 
 /** Destino, edición por texto global, música, textos superpuestos y pistas libres del proyecto. */
-export function PanelAvanzado({ extras, formato, total, editar, alinearMusica, subirLibre, ocupado, slug }: {
+export function PanelAvanzado({ extras, formato, total, editar, alinearMusica, subirLibre, ocupado, slug, escenas = [] }: {
   extras: ExtrasV; formato: string; total: number; ocupado: boolean;
+  /** Escenas del video, para poner un texto «al empezar la escena N» sin calcular segundos. */
+  escenas?: EscenaT[];
   /** Para las miniaturas de las superposiciones. */
   slug?: string;
   editar: Editar;
@@ -489,7 +577,7 @@ export function PanelAvanzado({ extras, formato, total, editar, alinearMusica, s
   subirLibre: (f: File, pista: string, inicio: number, licencia: string) => Promise<void>;
 }) {
   const d = extras.destino;
-  const [texto, setTexto] = useState({ texto: "", inicio: "0", duracion: "3", estilo: "rotulo", posicion: "arriba" });
+  const [texto, setTexto] = useState({ texto: "", cuando: escenas.length ? "escena:1" : "segundo", inicio: "0", duracion: "3", estilo: "rotulo", posicion: "arriba" });
   const [libre, setLibre] = useState({ inicio: "0", licencia: "" });
   const conPlataformas = (pl: string, on: boolean) => editar({ tipo: "cambiarDestino", plataformas: on ? [...d.plataformas, pl] : d.plataformas.filter((x) => x !== pl) });
   return (
@@ -543,8 +631,12 @@ export function PanelAvanzado({ extras, formato, total, editar, alinearMusica, s
           <ul className="space-y-1 text-sm">
             {extras.textos.map((t) => (
               <li key={t.id} className="flex items-center gap-2">
-                <span className="w-24 shrink-0 font-mono text-xs text-tenue">{t.inicio.toFixed(1)}–{(t.inicio + t.duracion).toFixed(1)} s</span>
-                <span className="min-w-0 flex-1 truncate">«{t.texto}» <span className="text-xs text-tenue">({t.estilo}, {t.posicion})</span></span>
+                <span className="min-w-0 flex-1 truncate">
+                  «{t.texto}»{" "}
+                  <span className="text-xs text-tenue">
+                    ({escenas.length ? cuandoAparece(t.inicio, escenas) : `a los ${coma1(t.inicio)} s`}, {coma1(t.duracion)} s · {ESTILOS_TEXTO[t.estilo] ?? t.estilo}, {POSICIONES_TEXTO[t.posicion] ?? t.posicion})
+                  </span>
+                </span>
                 <button type="button" className="boton py-0.5 text-xs" disabled={ocupado} onClick={() => void editar({ tipo: "quitarTexto", id: t.id })}>Quitar</button>
               </li>
             ))}
@@ -552,14 +644,28 @@ export function PanelAvanzado({ extras, formato, total, editar, alinearMusica, s
         )}
         <form className="grid gap-2 sm:grid-cols-6" onSubmit={(ev) => {
           ev.preventDefault();
-          void editar({ tipo: "agregarTexto", texto: { texto: texto.texto.trim(), inicio: Number(texto.inicio), duracion: Number(texto.duracion), estilo: texto.estilo, posicion: texto.posicion } })
+          const t = tiempoDelTexto(texto.cuando, texto.inicio, texto.duracion, escenas);
+          void editar({ tipo: "agregarTexto", texto: { texto: texto.texto.trim(), ...t, estilo: texto.estilo, posicion: texto.posicion } })
             .then(() => setTexto({ ...texto, texto: "" }));
         }}>
           <input aria-label="Texto" className="campo sm:col-span-6" placeholder="Título, dato o rótulo" maxLength={160} value={texto.texto} onChange={(e) => setTexto({ ...texto, texto: e.target.value })} />
-          <label className="etiqueta sm:col-span-1">Desde (s)<input className="campo py-1" type="number" min={0} max={total} step={0.1} value={texto.inicio} onChange={(e) => setTexto({ ...texto, inicio: e.target.value })} /></label>
-          <label className="etiqueta sm:col-span-1">Dura (s)<input className="campo py-1" type="number" min={0.3} max={60} step={0.1} value={texto.duracion} onChange={(e) => setTexto({ ...texto, duracion: e.target.value })} /></label>
-          <label className="etiqueta sm:col-span-2">Estilo<select className="campo py-1" value={texto.estilo} onChange={(e) => setTexto({ ...texto, estilo: e.target.value })}><option value="rotulo">Rótulo</option><option value="titulo">Título</option><option value="cita">Cita</option></select></label>
-          <label className="etiqueta sm:col-span-2">Dónde<select className="campo py-1" value={texto.posicion} onChange={(e) => setTexto({ ...texto, posicion: e.target.value })}><option value="arriba">Arriba</option><option value="centro">Centro</option><option value="abajo">Sobre los subtítulos</option></select></label>
+          <label className="etiqueta sm:col-span-2">¿Cuándo aparece?
+            <select className="campo py-1" value={texto.cuando} onChange={(e) => setTexto({ ...texto, cuando: e.target.value, duracion: e.target.value === "segundo" && texto.duracion === "escena" ? "3" : texto.duracion })}>
+              {escenas.map((e) => <option key={e.numero} value={`escena:${e.numero}`}>Al empezar la escena {e.numero}</option>)}
+              <option value="segundo">En un segundo exacto…</option>
+            </select>
+          </label>
+          {texto.cuando === "segundo" && (
+            <label className="etiqueta sm:col-span-1">Segundo<input className="campo py-1" type="number" min={0} max={total} step={0.1} value={texto.inicio} onChange={(e) => setTexto({ ...texto, inicio: e.target.value })} /></label>
+          )}
+          <label className={`etiqueta ${texto.cuando === "segundo" ? "sm:col-span-3" : "sm:col-span-4"}`}>¿Cuánto dura?
+            <select className="campo py-1" value={texto.duracion} onChange={(e) => setTexto({ ...texto, duracion: e.target.value })}>
+              {["2", "3", "5", "8"].map((x) => <option key={x} value={x}>{x} segundos</option>)}
+              {texto.cuando !== "segundo" && <option value="escena">Toda la escena</option>}
+            </select>
+          </label>
+          <label className="etiqueta sm:col-span-3">Estilo<select className="campo py-1" value={texto.estilo} onChange={(e) => setTexto({ ...texto, estilo: e.target.value })}><option value="rotulo">Rótulo</option><option value="titulo">Título</option><option value="cita">Cita</option></select></label>
+          <label className="etiqueta sm:col-span-3">Dónde<select className="campo py-1" value={texto.posicion} onChange={(e) => setTexto({ ...texto, posicion: e.target.value })}><option value="arriba">Arriba</option><option value="centro">Centro</option><option value="abajo">Sobre los subtítulos</option></select></label>
           <button type="submit" className="boton sm:col-span-6" disabled={ocupado || !texto.texto.trim()}>Agregar texto</button>
         </form>
       </div>
