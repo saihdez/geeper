@@ -15,7 +15,7 @@ import { correr } from "./proceso";
 import { HYPERFRAMES_VERSION, MPT_CONTENEDOR, MPT_TAREAS } from "./rutas";
 import { huellaPesos } from "./modelos";
 import { LICENCIA_VOXCPM, sintetizarVoxcpm } from "./voces";
-import { alinearVozNueva, MODELO_WHISPER, NO_SE_ACOMODA, sintetizar } from "./voz";
+import { alinearVozNueva, MODELO_WHISPER, noSeAcomoda, sintetizar, type ProblemaVoz } from "./voz";
 
 const tokens = (s: string) => s.split(/\s+/).filter(Boolean);
 
@@ -24,7 +24,7 @@ export async function sintetizarAsset(
   ctx: Contexto & { signal?: AbortSignal },
   p: Pick<Proyecto, "voz">,
   texto: string,
-  revisar?: (palabras: Palabra[], dur: number) => string | null,
+  o: { revisar?: (palabras: Palabra[], dur: number) => ProblemaVoz | null; escena?: number } = {},
 ) {
   const { motor, voz, velocidad, idioma } = p.voz;
   const clave = sha256Texto(JSON.stringify({ texto, motor, voz, velocidad })).slice(0, 12);
@@ -65,7 +65,7 @@ export async function sintetizarAsset(
       alineacion: { modelo: `whisper-${MODELO_WHISPER}`, pesos: await huellaPesos(`whisper-${MODELO_WHISPER}`) },
     },
   });
-  const palabras = await alinearVozNueva(ctx, path.join(ctx.dir, ruta), texto, p.voz.idioma, revisar);
+  const palabras = await alinearVozNueva(ctx, path.join(ctx.dir, ruta), texto, p.voz.idioma, o);
   return { asset, palabras };
 }
 
@@ -167,7 +167,8 @@ export function ponerVozGuion(base: Proyecto, dichos: Dicho[], asset: Asset, pal
   const voz = pista(p, "voz").clips;
   const visual = pista(p, "visual").clips;
   const { limites, tramos } = repartirGuion(palabras, cuentas, asset.duracion!);
-  if (escenaMuyCorta(limites) !== null) throw new Error(NO_SE_ACOMODA);
+  const corta = escenaMuyCorta(limites);
+  if (corta !== null) throw new Error(noSeAcomoda(corta));
   orden.forEach((x, j) => {
     const ini = limites[j]!;
     const fin = Math.max(ini + 0.05, limites[j + 1]!);
@@ -208,7 +209,8 @@ export async function regenerarVoz(
     if (!e) throw new Error(`No existe la escena ${escenaId}`);
     const dicho = { escena: escenaId, palabras: tokens(textoADecir(e)) };
     if (!dicho.palabras.length) throw new Error("La escena no tiene texto para decir");
-    const { asset, palabras } = await sintetizarAsset(ctx, p, dicho.palabras.join(" "));
+    const numero = escenasEnLinea(p).findIndex((x) => x.escena.id === escenaId) + 1;
+    const { asset, palabras } = await sintetizarAsset(ctx, p, dicho.palabras.join(" "), { escena: numero || undefined });
     aplicar = (base) => ponerVozEscena(base, dicho, asset, palabras);
   } else {
     // Guion completo: el texto de las escenas actuales (sin lo recortado), en orden. Cada escena
@@ -217,9 +219,9 @@ export async function regenerarVoz(
     const cuentas = dichos.map((d) => d.palabras.length);
     const revisar = (palabras: Palabra[], dur: number) => {
       const n = palabras.length === cuentas.reduce((a, b) => a + b, 0) ? escenaMuyCorta(repartirGuion(palabras, cuentas, dur).limites) : null;
-      return n === null ? null : `la escena ${n} quedaría de menos de ${MIN_ESCENA} s`;
+      return n === null ? null : { problema: `la escena ${n} quedaría de menos de ${MIN_ESCENA} s`, escena: n };
     };
-    const { asset, palabras } = await sintetizarAsset(ctx, p, dichos.map((d) => d.palabras.join(" ")).join(" "), revisar);
+    const { asset, palabras } = await sintetizarAsset(ctx, p, dichos.map((d) => d.palabras.join(" ")).join(" "), { revisar });
     aplicar = (base) => ponerVozGuion(base, dichos, asset, palabras);
   }
   // Antes de guardar, sobre la copia del trabajo: un error propio (p. ej. la alineación) sale tal cual.
