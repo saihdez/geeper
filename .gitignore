@@ -21,3 +21,7 @@ escritorio-app/
 dist-escritorio/
 escritorio/dist/
 .next-escritorio/
+
+# Python: los compila solo al importar (py/reencuadre.py, py/geeper_py.py)
+__pycache__/
+*.pyc
