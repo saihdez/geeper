@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Aviso, Estado, archivo, pedir, postJson, segundos, useSondeo } from "./comun";
 import { ACCEPT_IMAGEN, esVector } from "@/lib/formatos-vector";
 import { explicar, resumirQc } from "@/lib/qc-explicado";
@@ -17,6 +17,7 @@ import { PanelAvatarEscena, PanelAvatarVideo } from "./panel-avatar";
 import { SelectorEncuadre, type EncuadreV } from "./selector-encuadre";
 import { PanelOtroEditor } from "./panel-otro-editor";
 import { useAccionesProyecto } from "./acciones-proyecto";
+import { FranjaAviso, type MensajeEditor } from "./franja-aviso";
 import { EdicionPorTexto, EfectosEscena, PanelAvanzado, PanelEstilo, type EfectosV, type EstiloV, type ExtrasV, type PalabraV } from "./edicion-avanzada";
 
 /** Miniatura de una escena (la misma que su tarjeta). */
@@ -248,7 +249,8 @@ function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, 
 export function EditorProyecto({ id }: { id: string }) {
   const { datos: v, error, recargar } = useSondeo<Vista>(`/api/proyectos/${id}`, 3000);
   const { datos: pl } = useSondeo<{ plantillas: { slug: string; nombre: string }[] }>("/api/plantillas", 60_000);
-  const [msg, setMsg] = useState<{ tipo: "ok" | "error"; texto: string } | null>(null);
+  const [msg, setMsg] = useState<MensajeEditor | null>(null);
+  const cerrarMsg = useCallback(() => setMsg(null), []);
   const [ocupado, setOcupado] = useState(false);
   // Reencuadre por cara en proyectos viejos: se pide una sola vez al abrir; el aviso deja deshacerlo.
   const [caras, setCaras] = useState<{ fase: "buscando" } | { fase: "listo"; escenas: { id: string; numero: number }[] } | null>(null);
@@ -269,22 +271,32 @@ export function EditorProyecto({ id }: { id: string }) {
   const [mostrarTxt, setMostrarTxt] = useState<string | null>(null);
   const [pestana, setPestana] = useState<"vivo" | "render" | null>(null);
 
-  /** Si `fn` devuelve un texto, ése es el mensaje de éxito (p. ej. con avisos); si no, `ok`. */
-  async function hacer(fn: () => Promise<unknown>, ok: string) {
+  /**
+   * Si `fn` devuelve un texto, ése es el mensaje de éxito (p. ej. con avisos); si no, `ok`. Devuelve si
+   * salió bien, para que quien llama no siga como si hubiera guardado (UX-02, UX-26).
+   */
+  async function intentar(fn: () => Promise<unknown>, ok: string | Omit<MensajeEditor, "tipo">): Promise<boolean> {
     setOcupado(true);
     setMsg(null);
     try {
       const r = await fn();
-      setMsg({ tipo: "ok", texto: typeof r === "string" ? r : ok });
+      setMsg({ tipo: "ok", ...(typeof r === "string" ? { texto: r } : typeof ok === "string" ? { texto: ok } : ok) });
       await recargar();
+      return true;
     } catch (e) {
       setMsg({ tipo: "error", texto: e instanceof Error ? e.message : String(e) });
+      return false;
     } finally {
       setOcupado(false);
     }
   }
-  const editar = (ed: object) => hacer(() => postJson(`/api/proyectos/${id}/editar`, { edicion: ed }), "Guardado como versión nueva. Ya se ve en «En vivo»; renderiza para el QC y la descarga.");
-  const editarVarias = (eds: object[]) => hacer(() => postJson(`/api/proyectos/${id}/editar`, { ediciones: eds }), "Guardado como versión nueva. Ya se ve en «En vivo»; renderiza para el QC y la descarga.");
+  const hacer = async (fn: () => Promise<unknown>, ok: string | Omit<MensajeEditor, "tipo">) => { await intentar(fn, ok); };
+  // UX-19: el aviso sale abajo, junto a lo que se edita, con el paso siguiente al lado.
+  const guardado = { texto: "Guardado. Ya se ve en «En vivo». Para descargarlo, crea el video otra vez.", accion: { texto: "Crear el video", hacer: () => void renderizar() } };
+  /** Guarda una edición y dice si salió bien. */
+  const editarOk = (ed: object) => intentar(() => postJson(`/api/proyectos/${id}/editar`, { edicion: ed }), guardado);
+  const editar = async (ed: object) => { await editarOk(ed); };
+  const editarVarias = (eds: object[]) => hacer(() => postJson(`/api/proyectos/${id}/editar`, { ediciones: eds }), guardado);
   const subirClip = (escena: string, f: File) => hacer(async () => {
     const fd = new FormData();
     fd.set("escena", escena);
@@ -338,7 +350,8 @@ export function EditorProyecto({ id }: { id: string }) {
   const textoMostrar = mostrarTxt ?? (p?.mostrar ?? []).map((m) => `${m.de}=${m.a}`).join("\n");
 
   return (
-    <div className="space-y-6">
+    <div className={`space-y-6 ${msg ? "pb-24" : ""}`}>
+      <FranjaAviso msg={msg} cerrar={cerrarMsg} />
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">{fila.nombre}</h1>
@@ -356,7 +369,6 @@ export function EditorProyecto({ id }: { id: string }) {
           <button type="button" className="boton boton-primario" disabled={ocupado || !p} onClick={() => void renderizar()}>Renderizar (sin GPU para generar)</button>
         </div>
       </header>
-      {msg && <Aviso tipo={msg.tipo}>{msg.texto}</Aviso>}
       {caras?.fase === "buscando" && <p className="text-sm text-tenue" role="status">Revisando los clips para encuadrar mejor las caras…</p>}
       {caras?.fase === "listo" && (
         <Aviso tipo="ok">
