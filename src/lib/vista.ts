@@ -111,5 +111,14 @@ export async function vistaProyecto(id: string) {
     : null;
   // Proyectos importados antes del reencuadre por cara: la UI pide analizarlos una vez al abrir.
   const carasPendientes = p ? await faltaAuto(dirProyecto(fila.slug)) : false;
-  return { fila, p, escenas, total, extras, carasPendientes };
+  // La vista viaja cada pocos segundos: el informe de QC sólo del último render (el que se muestra) y
+  // del proyecto sólo lo liviano; lo pesado (assets, pistas, escenas) ya va digerido en `escenas`/`extras`.
+  const renders = fila.renders.map((r, i) => (i === 0 ? r : { ...r, informeQc: null }));
+  return { fila: { ...fila, renders }, p: p ? proyectoLiviano(p) : null, escenas, total, extras, carasPendientes };
+}
+
+/** El proyecto sin lo pesado (assets, pistas, escenas, marcadores ni el guion entero). */
+export function proyectoLiviano(p: Proyecto) {
+  const { assets: _a, pistas: _pi, escenas: _e, marcadores: _m, guion: _g, ...resto } = p;
+  return resto;
 }

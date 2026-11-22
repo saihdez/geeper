@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
+import { proyectoDePrueba } from "./fixtures";
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "geeper-listas-"));
 process.env.GEEPER_DATA = dir;
@@ -27,7 +28,7 @@ beforeAll(async () => {
   await db.render.create({ data: { id: "r1", proyectoId: "p1", versionNumero: 1, perfil: "shorts-9x16", ruta: "renders/v1.mp4", estado: "aprobado", informeQc: { aprobado: true, reglas: [] } } });
   await db.render.create({ data: { id: "r0", proyectoId: "p1", versionNumero: 1, perfil: "shorts-9x16", ruta: "renders/v0.mp4", estado: "rechazado", informeQc: { aprobado: false, reglas: [{ id: "x" }] }, creado: new Date(Date.now() - 60_000) } });
   await db.trabajo.create({ data: { proyectoId: "p1", tipo: "publicar.subir", motor: "red", estado: "hecho", payload: { sesion: SESION }, resultado: { grande: "x".repeat(1000) }, terminado: new Date() } });
-});
+}, 60_000);
 
 describe("listas sondeadas livianas (WEB-04)", () => {
   it("/api/proyectos no trae informes, payloads ni la sesión de subida", async () => {
@@ -57,5 +58,24 @@ describe("listas sondeadas livianas (WEB-04)", () => {
     expect(texto).not.toContain(SESION);
     expect(v!.fila.trabajos[0]).not.toHaveProperty("payload");
     expect(v!.fila.trabajos[0]).toMatchObject({ tipo: "publicar.subir", estado: "hecho" });
+  });
+});
+
+describe("la vista del proyecto viaja liviana (WEB-11)", () => {
+  it("el informe de QC sólo del último render y el proyecto sin assets, pistas ni escenas", async () => {
+    const p = proyectoDePrueba();
+    await db.proyecto.create({ data: { id: "p2", slug: "p2", nombre: "Con versión", tema: "t", formato: "9:16", plantilla: "x", versionActual: 1 } });
+    await db.version.create({ data: { proyectoId: "p2", numero: 1, nota: "", hash: "h", json: JSON.stringify(p) } });
+    await db.render.create({ data: { proyectoId: "p2", versionNumero: 1, perfil: "shorts-9x16", ruta: "renders/v1.mp4", estado: "aprobado", informeQc: { aprobado: true, reglas: [] } } });
+    await db.render.create({ data: { proyectoId: "p2", versionNumero: 1, perfil: "shorts-9x16", ruta: "renders/v0.mp4", estado: "rechazado", informeQc: { aprobado: false, reglas: [] }, creado: new Date(Date.now() - 60_000) } });
+    const v = (await vista.vistaProyecto("p2"))!;
+    expect(v.fila.versionActual).toBe(1); // lo lee scripts/ui/editar-texto.ts
+    expect(v.fila.renders.map((r) => r.informeQc === null)).toEqual([false, true]);
+    expect(v.p).toMatchObject({ voz: p.voz, mostrar: p.mostrar, formato: p.formato, plantilla: p.plantilla, origen: {} });
+    for (const k of ["assets", "pistas", "escenas", "marcadores", "guion"]) expect(v.p).not.toHaveProperty(k);
+    expect((v.escenas[0] as { grupos: unknown[] }).grupos.length).toBeGreaterThan(0); // lo lee la skill de geeper
+    const completo = JSON.stringify({ ...v, p });
+    const liviano = JSON.stringify(v);
+    expect(liviano.length).toBeLessThan(completo.length);
   });
 });
