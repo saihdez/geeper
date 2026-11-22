@@ -10,9 +10,16 @@ on:
     # Las ramas de integración también arman los instaladores (el botón «Run workflow» sólo aparece
     # cuando el flujo ya está en main).
     branches: ["integracion/**"]
+    # Cambios sólo de textos o del sitio no cambian el instalador (las etiquetas no miran esto).
+    paths-ignore: ["sitio/**", "**.md"]
+
+# Un push nuevo a la misma rama cancela la corrida anterior (su instalador ya quedó viejo).
+concurrency:
+  group: escritorio-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   instalador:
@@ -37,6 +44,8 @@ jobs:
       # Las pruebas que no dependen del estudio de desarrollo (ffmpeg en ~/.local, mpt_acabado, WSL):
       # las de la app de escritorio, que tienen que pasar en Windows y en macOS.
       - run: pnpm test:escritorio
+      # Las de la carcasa y del empaquetado (escritorio/, scripts/escritorio/), también en los dos sistemas.
+      - run: pnpm exec vitest run tests/escritorio-carcasa.test.ts tests/escritorio-armado.test.ts tests/escritorio-vigia.test.ts tests/escritorio-probar-app.test.ts tests/ci-escritorio.test.ts
       - run: pnpm escritorio:empaquetar
       - uses: actions/upload-artifact@v4
         with:
@@ -46,8 +55,23 @@ jobs:
             dist-escritorio/*.dmg
             dist-escritorio/latest*.yml
           if-no-files-found: error
-      - if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+          # Pocos días: cada push deja instaladores nuevos. Ya vienen comprimidos (.exe, .dmg).
+          retention-days: 5
+          compression-level: 0
+
+  # Sólo con una etiqueta v*: la release es el único paso que necesita escribir en el repo.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: instalador
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist-escritorio
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
         with:
           files: |
             dist-escritorio/*.exe

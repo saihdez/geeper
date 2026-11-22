@@ -10,6 +10,7 @@ import { medidasPortada, origenDeFotograma, pasosPlantillaBase } from "@/lib/por
 import { proyectoDePrueba } from "./fixtures";
 import { cli } from "@/lib/photocraft";
 import { FFMPEG, PHOTOCRAFT_CLI } from "@/lib/rutas";
+import { pruebasReales } from "./ayudas/reales";
 
 // Recorte de `photocraft-cli info --compact` real (0.23.1), con un grupo.
 const INFO = {
@@ -89,7 +90,7 @@ describe("plantillas de PhotoCraft", () => {
   });
 });
 
-describe.skipIf(!existsSync(PHOTOCRAFT_CLI) || !existsSync(FFMPEG))("PhotoCraft real", () => {
+describe.skipIf(!pruebasReales || !existsSync(PHOTOCRAFT_CLI) || !existsSync(FFMPEG))("PhotoCraft real", () => {
   it("compone una portada: reemplaza imagen y texto y achica un título largo", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "geeper-pc-"));
     try {
