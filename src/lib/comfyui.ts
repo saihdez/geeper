@@ -20,6 +20,7 @@ import { comandoGpuSolo } from "./gpu-solo";
 import { bajarHub, dirHub, HUB_COMMIT, resolverArchivo, unirHub } from "./hub-comfy";
 import { pythonDeVenv } from "./plataforma";
 import { correr, matarArbol, patronComando } from "./proceso";
+import { anotarProceso } from "./procesos-largos";
 import { CACHE_HF, dirDatos, ESTUDIO, GPU_SOLO_BIN, RAIZ_REPO } from "./rutas";
 
 export const COMFYUI_DIR = process.env.GEEPER_COMFYUI ?? path.join(ESTUDIO, "ComfyUI");
@@ -330,6 +331,7 @@ export async function arrancarComfyui(op: { puerto: number; gpuSolo?: boolean; l
   // «close»: el hijo salió y nadie más (un Python que siguiera vivo) tiene abierta su salida.
   let salio = false;
   hijo.once("close", () => (salio = true));
+  anotarProceso(hijo, "ComfyUI");
   let salida = "";
   const leer = (d: Buffer) => {
     const t = d.toString();

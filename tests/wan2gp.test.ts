@@ -12,6 +12,8 @@ const HERRAMIENTAS = vi.hoisted(() => {
   fs.mkdirSync(`${tmp}/bin`, { recursive: true });
   fs.writeFileSync(`${tmp}/bin/gpu-solo`, `#!/usr/bin/env bash\ntrap 'echo ok > "${tmp}/restaurado"' EXIT\ntrap 'exit 130' INT TERM\n"$@"\n`, { mode: 0o755 });
   process.env.GEEPER_HERRAMIENTAS = tmp;
+  // Las notas de procesos largos (procesos-largos.ts) van a una carpeta de datos temporal.
+  process.env.GEEPER_DATA = `${tmp}/datos`;
   process.env.GEEPER_GPU_LOCK_PROPIO = "1";
   process.env.GPU_LOCK = `${tmp}.lock`;
   return tmp;

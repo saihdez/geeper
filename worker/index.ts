@@ -10,6 +10,7 @@ import {
 } from "@/lib/cola";
 import { db, prepararDb } from "@/lib/db";
 import { enTrabajo } from "@/lib/proceso";
+import { cerrarHuerfanos } from "@/lib/procesos-largos";
 import { tapar } from "@/lib/redes/secretos";
 import { dirProyecto } from "@/lib/rutas";
 import { EJECUTORES, rutaLog } from "./ejecutores";
@@ -125,6 +126,9 @@ async function main() {
   const r = await recuperarAlArrancar();
   avisar(`id ${workerId}. ${r.reinicio.hubo ? "REINICIO DETECTADO: " + r.reinicio.motivo : "Sin reinicio desde la última corrida"}.`);
   if (r.interrumpidos || r.reencolados) avisar(`Recuperación: ${r.interrumpidos} interrumpidos (esperan que los relances), ${r.reencolados} devueltos a la cola`);
+  // ComfyUI o Wan2GP de un worker anterior que murió sin cerrarlos: tienen la tarjeta tomada (WRK-04).
+  const huerfanos = cerrarHuerfanos(avisar);
+  if (huerfanos.length) avisar(`Cerrados ${huerfanos.length} proceso(s) de tarjeta sin dueño: ${huerfanos.join(", ")}`);
   await guardarLatidoWorker();
   const latidoSistema = setInterval(() => {
     guardarLatidoWorker().catch((e: unknown) => avisar(`No se pudo guardar el latido del worker: ${mensaje(e)} (se reintenta en ${LATIDO_MS / 1000} s)`));

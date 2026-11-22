@@ -23,6 +23,7 @@ import { comandoGpuSolo } from "./gpu-solo";
 import { LICENCIAS } from "./licencias";
 import { aplicarParchesWan2gp } from "./parches-wan2gp";
 import { matarArbol, patronComando } from "./proceso";
+import { anotarProceso } from "./procesos-largos";
 import { GPU_SOLO_BIN, WAN2GP_DIR, WAN2GP_PYTHON } from "./rutas";
 
 export interface ModeloPlano {
@@ -498,6 +499,7 @@ async function correrWan2gp(op: OpcionesGenerar, tipo: "video" | "imagen"): Prom
   try {
     if (signal?.aborted) throw new Error("Cancelado");
     const hijo = lanzar(i, ["--process", archivo, "--output-dir", out], conGpuSolo);
+    anotarProceso(hijo, "Wan2GP");
     const lector = crearLectorAvance();
     let modeloCargado = false;
     const salida = juntarSalida(hijo, (t) => {
