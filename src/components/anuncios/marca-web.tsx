@@ -131,13 +131,15 @@ export function MarcaDesdeWeb({ ctx }: { ctx: Ctx }) {
             <Campo etiqueta="Nombre de la marca"><input className="campo" value={eleccion.marca} maxLength={60} onChange={(e) => setEleccion((x) => ({ ...x, marca: e.target.value }))} /></Campo>
             <div className="grid grid-cols-3 gap-2">
               {ROLES.map((r) => (
-                <button key={r.id} onClick={() => setRol(r.id)} aria-pressed={rol === r.id} title={r.ayuda}
-                  className={`rounded-lg border p-2 text-left text-xs ${rol === r.id ? "border-cyan-600 bg-cyan-950/40 ring-2 ring-cyan-600" : "border-borde bg-[#0f131a]"}`}>
-                  <span className="mb-1 block h-6 rounded" style={{ background: eleccion[r.id] }} />
-                  {r.nombre}
+                // A11-09: el botón y el campo van como hermanos (como ControlColor): un campo dentro de un botón no se puede usar con el teclado.
+                <div key={r.id} className={`rounded-lg border p-2 text-xs ${rol === r.id ? "border-cyan-600 bg-cyan-950/40 ring-2 ring-cyan-600" : "border-borde bg-[#0f131a]"}`}>
+                  <button type="button" onClick={() => setRol(r.id)} aria-pressed={rol === r.id} title={r.ayuda} className="block w-full text-left">
+                    <span className="mb-1 block h-6 rounded" style={{ background: eleccion[r.id] }} />
+                    {r.nombre}
+                  </button>
                   <input className="mt-1 w-full bg-transparent rounded tabular-nums text-tenue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-acento" value={eleccion[r.id]} maxLength={7}
-                    onChange={(e) => setEleccion((x) => ({ ...x, [r.id]: e.target.value }))} aria-label={`${r.nombre} en hexadecimal`} />
-                </button>
+                    onFocus={() => setRol(r.id)} onChange={(e) => setEleccion((x) => ({ ...x, [r.id]: e.target.value }))} aria-label={`${r.nombre} en hexadecimal`} />
+                </div>
               ))}
             </div>
             <details className="text-sm">
