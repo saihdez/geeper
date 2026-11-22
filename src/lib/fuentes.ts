@@ -47,6 +47,14 @@ export function esUrl(s: string): boolean {
   return /^https?:\/\//i.test(s);
 }
 
+/**
+ * Lo que acepta «Buscar los mejores momentos»: un enlace http(s), una ruta absoluta o una con «~/».
+ * En Windows la ruta de un archivo subido es «C:\…\_subidos\…» (UX-03): por eso `isAbsolute` y no «/».
+ */
+export function srcAceptable(src: string, rutas: Pick<typeof path, "isAbsolute"> = path): boolean {
+  return esUrl(src) || rutas.isAbsolute(src) || src.startsWith("~/");
+}
+
 export function idFuente(src: string): string {
   const base = esUrl(src) ? src : path.resolve(src);
   return createHash("sha1").update(base).digest("hex").slice(0, 12);
@@ -70,7 +78,7 @@ export function runtimeJsYtdlp(): { args: string[]; env: Record<string, string> 
 
 /** Lo que más pasa al abrir un enlace, dicho en palabras simples (UX-03). Gana la primera que coincide. */
 const FALLOS_YTDLP: [RegExp, string][] = [
-  [/No module named|ENOENT|command not found|no such file or directory.*python/i, "A Geeper le falta la herramienta para bajar videos. Pide ayuda y muestra el detalle técnico."],
+  [/No module named|spawn .*ENOENT|command not found|no such file or directory.*python/i, "A Geeper le falta la herramienta para bajar videos. Pide ayuda y muestra el detalle técnico."],
   [/private video|video is private/i, "Ese video es privado: sólo lo puede ver quien lo subió. Usa un video público o pídele el archivo al creador."],
   [/members[- ]only|join this channel/i, "Ese video es sólo para miembros del canal: Geeper no puede abrirlo. Usa un video público."],
   [/confirm you.?re not a bot/i, "La página pidió comprobar que no eres un robot. Espera unos minutos y vuelve a intentar."],
