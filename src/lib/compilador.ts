@@ -16,6 +16,7 @@ import { ANCHO_CARACTER, caracteresPorLinea, dentro, metricas, PADDING_PASTILLA,
 import { duracionEscenas, escenasEnLinea, intervalos, opcionesDe, todosLosGrupos, type EscenaEnLinea, type Grupo } from "./linea";
 import { cajaMarco, estiloMarco } from "./marco";
 import type { DatosPlantilla } from "./plantillas";
+import { logoPermitido } from "./plantillas-rutas";
 import { lineas, lineasDePalabras } from "./subtitulos";
 import { textoSobre } from "./colores-marca";
 
@@ -361,7 +362,9 @@ export function compilar(original: Proyecto, plantilla: DatosPlantilla, rutaMezc
 
   // ---- Marca (logo opcional).
   let logoHtml = "";
-  if (plantilla.marca.logo) {
+  // Sólo un logo subido desde el editor (<datos>/plantillas/, imagen): otra ruta podría sacar cualquier
+  // archivo de la PC por la vista previa (SEG-02). Si no vale, queda el texto de la marca.
+  if (plantilla.marca.logo && logoPermitido(plantilla.marca.logo)) {
     const nombre = `assets/logo${path.extname(plantilla.marca.logo)}`;
     archivos[nombre] = plantilla.marca.logo;
     logoHtml = `<img class="logo" src="${e(nombre)}" alt="" />`;
