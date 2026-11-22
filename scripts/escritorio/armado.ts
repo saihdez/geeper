@@ -79,3 +79,28 @@ export function podarNodeModules(nm: string): string[] {
   for (const rel of borrar) fs.rmSync(path.join(nm, rel), { recursive: true, force: true });
   return borrar;
 }
+
+/**
+ * Lo que el código lee del disco en tiempo de ejecución y tiene que viajar en la app (ESC-01): si falta,
+ * la falla se ve en el equipo de alguien («En vivo» con una ruta en vez del video). Devuelve lo que falta.
+ */
+export function faltantesApp(app: string): string[] {
+  const falta: string[] = [];
+  const necesarios = [
+    path.join("node_modules", "hyperframes", "dist", "hyperframe.runtime.iife.js"),
+    path.join("node_modules", "hyperframes", "bin", "hyperframes.mjs"),
+    path.join("docs", "fuentes.json"),
+    "esquema.sql",
+    path.join("standalone", "server.js"),
+    "main.cjs",
+    "worker.mjs",
+    "preparar-db.mjs",
+  ];
+  for (const rel of necesarios) {
+    const f = path.join(app, rel);
+    if (!fs.existsSync(f) || fs.statSync(f).size === 0) falta.push(rel);
+  }
+  const py = path.join(app, "py");
+  if (!fs.existsSync(py) || !fs.readdirSync(py).some((n) => n.endsWith(".py"))) falta.push(path.join("py", "*.py"));
+  return falta;
+}

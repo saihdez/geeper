@@ -17,7 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import { build } from "esbuild";
 import { unzipSync } from "fflate";
-import { copiarStandalone, podarNodeModules, revisarStandalone, tamanoCarpeta } from "./armado";
+import { copiarStandalone, faltantesApp, podarNodeModules, revisarStandalone, tamanoCarpeta } from "./armado";
 
 const REPO = path.resolve(__dirname, "..", "..");
 const APP = path.join(REPO, "escritorio-app");
@@ -217,6 +217,10 @@ async function main() {
 
   // 5. Programas de este sistema (ffmpeg, uv, whisper).
   await recursos();
+
+  // Lo que se lee en tiempo de ejecución tiene que estar: si no, se vería en el equipo de alguien.
+  const falta = faltantesApp(APP);
+  if (falta.length) throw new Error(`A la app le falta lo que necesita al correr: ${falta.join(", ")}`);
 
   if (sinInstalador) {
     console.log(`Lista: ${APP}\nProbar: pnpm exec electron ${APP}`);
