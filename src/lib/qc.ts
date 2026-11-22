@@ -143,18 +143,29 @@ export const ENTREGA = {
 /**
  * Segunda pasada de loudnorm (lineal, con las medidas de la primera) a −14 LUFS / −2 dBTP y, en la
  * misma pasada, la codificación de entrega del video (ver ENTREGA).
+ *
+ * Con `audio` (REN-07) el sonido sale de ese archivo (la mezcla en WAV) y del render sólo se toma el
+ * video: así un cambio de audio no obliga a volver a capturar, y el sonido pasa una sola vez por AAC.
+ * El audio se rellena con silencio o se corta para que dure lo mismo que el video.
  */
-export async function normalizarAudio(entrada: string, salida: string, log: Registro, fps: number = OBJETIVO.fps): Promise<Sonoridad> {
-  const m = await medirSonoridad(entrada, log);
+export async function normalizarAudio(entrada: string, salida: string, log: Registro, fps: number = OBJETIVO.fps, audio?: string): Promise<Sonoridad> {
+  const m = await medirSonoridad(audio ?? entrada, log);
+  const fuente = audio
+    ? await (async () => {
+        const info = await probar(entrada);
+        const dur = Number(info.video?.duration) || info.duracion;
+        return ["-i", entrada, "-i", audio, "-map", "0:v:0", "-map", "1:a:0", "-t", dur.toFixed(3)];
+      })()
+    : ["-i", entrada, "-map", "0:v:0", "-map", "0:a:0"];
   await ffmpeg([
-    "-v", "error", "-i", entrada, "-map", "0:v:0", "-map", "0:a:0",
+    "-v", "error", ...fuente,
     "-c:v", "libx264", "-preset", ENTREGA.preset, "-crf", String(ENTREGA.crf), "-profile:v", "high",
     "-pix_fmt", "yuv420p", "-g", String(ENTREGA.gopSegundos * fps), "-fps_mode", "passthrough",
     "-maxrate", ENTREGA.maxrate, "-bufsize", ENTREGA.bufsize,
     "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-color_range", "tv",
     "-af",
     `loudnorm=I=${OBJETIVO.lufs}:TP=-2:LRA=11:measured_I=${m.input_i}:measured_TP=${m.input_tp}:` +
-      `measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true,aresample=48000`,
+      `measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true,aresample=48000${audio ? ",apad" : ""}`,
     // -aac_pns 0: el AAC nativo convierte pasajes suaves en chasquidos con PNS (truco de explainroo).
     "-c:a", "aac", "-b:a", `${ENTREGA.audioKbps}k`, "-aac_pns", "0", "-ar", "48000",
     "-movflags", "+faststart", "-f", "mp4", salida,

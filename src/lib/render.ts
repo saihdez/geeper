@@ -18,6 +18,7 @@ import { aSrt, duracionEscenas, escenasEnLinea, opcionesDe } from "./linea";
 import { huellaFfmpeg, probar } from "./media";
 import { mezclar } from "./mezcla";
 import { paso, type Contexto } from "./pasos";
+import { entradasCaptura } from "./render-entradas";
 import { obtenerPlantilla } from "./plantillas";
 import { cortesDe, medirRitmo, type Ritmo } from "./pulsos";
 import { asegurarPicoReal, correrQc, duplicadosEsperados, ENTREGA, normalizarAudio, TOPES_PICO, type InformeQc } from "./qc";
@@ -158,7 +159,8 @@ export async function renderEntregar(
   const rr = await paso(
     ctx,
     "hyperframes.render",
-    { archivos: [indexHtml, ...Object.values(comp.archivos)], params: { calidad: "delivery", fps: p.fps }, motor: huella },
+    // Sin la mezcla (REN-07): el sonido de la entrega sale del WAV, cambiar sólo el audio no recaptura.
+    { archivos: entradasCaptura([indexHtml, ...Object.values(comp.archivos)], rutaMezcla), params: { calidad: "delivery", fps: p.fps, audio: "aparte" }, motor: huella },
     [crudo],
     async ([tmp]) => {
       // NVENC sólo con NVIDIA: en macOS el render va por CPU (VideoToolbox queda para cuando se pruebe en un Mac).
@@ -185,8 +187,9 @@ export async function renderEntregar(
   await ctx.etapa("Normalizando sonoridad", 0.8);
   const base = `v${numero}-${m.perfil}`;
   const final = path.join(dir, "renders", `${base}.mp4`);
-  await paso(ctx, "entrega.loudnorm", { archivos: [crudo], params: { lufs: -14, tp: -2, entrega: ENTREGA, fps: p.fps, pico: TOPES_PICO }, motor: huella }, [final], async ([tmp]) => {
-    const medido = await normalizarAudio(crudo, tmp!, ctx.log, p.fps);
+  // El sonido sale de la mezcla en WAV, no del crudo (REN-07).
+  await paso(ctx, "entrega.loudnorm", { archivos: [crudo, rutaMezcla], params: { lufs: -14, tp: -2, entrega: ENTREGA, fps: p.fps, pico: TOPES_PICO, audio: "mezcla" }, motor: huella }, [final], async ([tmp]) => {
+    const medido = await normalizarAudio(crudo, tmp!, ctx.log, p.fps, rutaMezcla);
     // El AAC sube el pico real: si pasa de −1 dBTP, limitador a 192 kHz y otra vez (hasta 4).
     const pico = await asegurarPicoReal(tmp!, ctx.log);
     return { antes: medido, pico };
