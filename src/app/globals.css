@@ -27,6 +27,25 @@ body { background: var(--color-fondo); color: #e6e9ef; }
 label:has(input.sr-only:focus-visible), label:has(input[type="file"]:focus-visible) { outline: 2px solid var(--color-acento); outline-offset: 2px; }
 .etiqueta { font-size: .8rem; color: var(--color-tenue); display: block; margin-bottom: .25rem; }
 
+/* Barra de arriba (A11-16): en ventanas angostas sólo se ven las secciones de todos los días y el resto
+   va en «Más» (src/components/barra.tsx). Desde 1280 px caben todas en una fila y «Más» no hace falta. */
+.barra-mas { position: relative; }
+.barra-mas > summary { list-style: none; }
+.barra-mas > summary::-webkit-details-marker { display: none; }
+.barra-mas > ul { position: absolute; right: 0; top: 100%; }
+@media (min-width: 1280px) { .barra-mas { display: none; } }
+@media (max-width: 1279.98px) { .barra .barra-extra { display: none; } }
+/* En un teléfono el menú va a lo ancho, debajo de la barra, sin salirse de la pantalla. */
+@media (max-width: 639.98px) {
+  .barra-mas { position: static; }
+  .barra-mas > ul { left: 1rem; right: 1rem; }
+}
+/* Con el dedo, cada sección es fácil de tocar (44 px). */
+@media (pointer: coarse) {
+  .barra a, .barra summary { min-height: 44px; display: inline-flex; align-items: center; }
+  .barra-mas li > a { display: flex; }
+}
+
 /* «Rehacer la toma»: vista previa de cada movimiento de cámara sobre la imagen de la escena. */
 @keyframes cam-paneo-der { from { transform: scale(1.3) translateX(8%); } to { transform: scale(1.3) translateX(-8%); } }
 @keyframes cam-paneo-izq { from { transform: scale(1.3) translateX(-8%); } to { transform: scale(1.3) translateX(8%); } }
