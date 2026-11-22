@@ -9,7 +9,8 @@ import { ESCRITORIO, PYTHON_SISTEMA, SISTEMA } from "./plataforma";
 import { MODELO_WHISPER } from "./voz";
 import { versionPhotocraft } from "./photocraft";
 import { versionVectorcraft } from "./vectorcraft";
-import { existe } from "./archivos";
+import { existe, sha256Archivo } from "./archivos";
+import { rutaVad, VAD_SILERO } from "./whisper";
 import { PYTHON_CLIPS } from "./fuentes";
 import { db } from "./db";
 import { existeClave, rutaClave } from "./redes/cifrado";
@@ -122,6 +123,13 @@ export async function diagnosticar(): Promise<Chequeo[]> {
   c.push({
     nombre: `whisper ${MODELO_WHISPER} (Hyperframes)`, ok: whisper, detalle: whisper ? "modelo en caché" : "falta el modelo",
     arreglo: whisper ? undefined : ESCRITORIO ? PREPARAR : "Se descarga solo en el primer `hyperframes transcribe --model medium` (~1,5 GB).",
+  });
+  // Filtro de voz de whisper (src/lib/whisper.ts): sin él, whisper puede inventar palabras sobre música.
+  const vad = (await existe(rutaVad())) && (await sha256Archivo(rutaVad())) === VAD_SILERO.sha256;
+  c.push({
+    nombre: "Filtro de voz para subtítulos (VAD Silero)", ok: vad, aviso: true,
+    detalle: vad ? `${VAD_SILERO.id} verificado` : "falta: se transcribe sin él (puede inventar palabras sobre música o silencio)",
+    arreglo: vad ? undefined : ESCRITORIO ? PREPARAR : "Se descarga solo (885 KB, SHA-256 fijado) la próxima vez que Geeper transcriba con internet.",
   });
 
   // Clips de material largo (opcional): venv con OpenCV + yt-dlp y el modelo YuNet verificado.

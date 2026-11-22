@@ -17,6 +17,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { argsAtencionWan2gp, atencionInstalada, elegirAtencion } from "./atencion";
 import type { Formato } from "./esquema";
 import { tomarGpu } from "./gpu";
 import { comandoGpuSolo } from "./gpu-solo";
@@ -403,7 +404,9 @@ function matarWan2gp(hijo: ChildProcess, i: InstalacionWan2gp, conGpuSolo: boole
 
 const TOPE_SALIDA = 2 * 1024 * 1024;
 
-function lanzar(i: InstalacionWan2gp, args: string[], conGpuSolo: boolean) {
+function lanzar(i: InstalacionWan2gp, argsPedidos: string[], conGpuSolo: boolean) {
+  // La mejor atención instalada en su venv (sage > flash > sdpa); ver atencion.ts.
+  const args = [...argsAtencionWan2gp(elegirAtencion(atencionInstalada(i.python))), ...argsPedidos];
   const c = conGpuSolo ? comandoGpuSolo(i.python, [i.wgp, ...args]) : { cmd: i.python, args: [i.wgp, ...args] };
   return spawn(c.cmd, c.args, {
     cwd: i.dir,

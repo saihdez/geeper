@@ -12,7 +12,7 @@ import path from "node:path";
 import { escribirAtomico, existe } from "./archivos";
 import { probar } from "./media";
 import { correr, type Registro } from "./proceso";
-import { pythonDeVenv } from "./plataforma";
+import { ESCRITORIO, pythonDeVenv } from "./plataforma";
 import { dirDatos, VENV_CLIPS } from "./rutas";
 
 /** Python con OpenCV, numpy y yt-dlp para clips (venv propio, ver README). */
@@ -55,8 +55,21 @@ export function dirFuentes(): string {
   return path.join(dirDatos(), "_fuentes");
 }
 
+/**
+ * yt-dlp necesita un runtime de JavaScript para los desafíos del reproductor de YouTube; sin él avisa
+ * «some formats may be missing» (y `--no-warnings` lo ocultaba). Sólo trae Deno activado: se le pasa el
+ * propio Node de Geeper; en la app, el de Electron como Node (idea de OpenWhispr `urlAudioDownloader.js`).
+ */
+export function runtimeJsYtdlp(): { args: string[]; env: Record<string, string> } {
+  return {
+    args: ["--js-runtimes", `node:${process.execPath}`],
+    env: ESCRITORIO ? { ELECTRON_RUN_AS_NODE: "1" } : {},
+  };
+}
+
 async function ytdlp(args: string[], log?: Registro, signal?: AbortSignal) {
-  return correr(PYTHON_CLIPS, ["-I", "-m", "yt_dlp", "--no-warnings", "--no-progress", ...args], { log, signal });
+  const js = runtimeJsYtdlp();
+  return correr(PYTHON_CLIPS, ["-I", "-m", "yt_dlp", "--no-warnings", "--no-progress", ...js.args, ...args], { log, signal, env: js.env });
 }
 
 /** Trae (o reutiliza) la fuente. `maxMinutos` limita lo que se baja de un VOD largo. */

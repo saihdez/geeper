@@ -26,7 +26,7 @@ const MAPA: Record<string, Explicacion> = {
   "zonas-seguras": { que: "Que ningún texto quede tapado por los botones de la red social.", hacer: "Acorta el texto en pantalla o cambia su posición." },
   "hyperframes-check": { que: "Que la composición no tenga errores (textos ilegibles, piezas rotas).", hacer: "Mira el detalle: si dice «contrast», cambia el texto o su posición; si no, avisa." },
   licencias: { que: "Que tengas derecho a usar todo lo que aparece.", hacer: "Si es un clip de otra persona, publica sólo con su permiso o dentro de su campaña. La música sin licencia clara: cámbiala." },
-  alineacion: { que: "Que los subtítulos vayan al tiempo con la voz.", hacer: "Escucha las palabras marcadas como dudosas y corrige o recorta." },
+  alineacion: { que: "Que los subtítulos digan lo que se oye y vayan al tiempo con la voz.", hacer: "En cada escena, «Revisarlas una por una»: escucha las palabras marcadas y confírmalas, corrígelas o recórtalas." },
   ritmo: { que: "Que los cortes caigan al ritmo de la música.", hacer: "Es un aviso: usa «Alinear cortes al ritmo» o cambia la música." },
   clip: { que: "Que el clip respete las reglas: crédito al creador, sin leaks, piratería ni «oficial», y la duración de la campaña.", hacer: "Cambia el título o el gancho, o ajusta la duración. El crédito se pone solo en la descripción." },
 };

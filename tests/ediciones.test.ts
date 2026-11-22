@@ -41,6 +41,16 @@ describe("ediciones sin GPU", () => {
     expect(p.escenas.e02!.palabras[0]!.texto).toBe("Escena");
   });
 
+  it("corregir una palabra «revisada» (clips) la saca de las dudosas; sin la marca no toca la confianza", () => {
+    const base = structuredClone(proyectoDePrueba());
+    base.escenas.e02!.palabras[1] = { ...base.escenas.e02!.palabras[1]!, confianza: 0.4 };
+    const sin = aplicarEdicion(base, { tipo: "corregirSubtitulo", escena: "e02", desde: 1, hasta: 2, texto: "escenas" });
+    expect(sin.escenas.e02!.palabras[1]!.confianza).toBe(0.4);
+    const con = aplicarEdicion(base, { tipo: "corregirSubtitulo", escena: "e02", desde: 1, hasta: 2, texto: "escenas", revisada: true });
+    expect(con.escenas.e02!.palabras[1]!.confianza).toBe(1);
+    expect(con.escenas.e02!.correcciones).toEqual([{ desde: 1, hasta: 2, texto: "escenas" }]);
+  });
+
   it("rechaza un geeper.json inconsistente", () => {
     const p = structuredClone(proyectoDePrueba());
     pista(p, "visual").clips.pop();

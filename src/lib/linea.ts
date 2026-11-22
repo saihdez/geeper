@@ -91,6 +91,12 @@ export function tramoDe(tramos: Tramo[], t: number): number {
 }
 
 /**
+ * Lo más que puede durar una palabra en pantalla (s). Idea de Cap (`MAX_CAPTION_WORD_DURATION`,
+ * `crates/project/src/caption_words.rs`): una palabra «larga» suele ser whisper estirándola sobre una pausa.
+ */
+export const MAX_DURACION_PALABRA = 2.5;
+
+/**
  * Palabras mostradas de una escena, ya en tiempo de la línea final. Una palabra cuyo centro cae en un
  * recorte no se muestra; las demás se acomodan al tramo que las contiene.
  */
@@ -109,7 +115,8 @@ function fichasDeEscena(p: Proyecto, e: EscenaEnLinea): (Ficha & { escena: strin
       const a = Math.max(x.inicio, ini);
       const b = Math.min(x.fin, fin);
       const base = e.inicio + x.enEscena - x.inicio;
-      return [{ ...f, inicio: base + a, fin: base + Math.max(a + 0.02, b), escena: e.escena.id }];
+      // Tope por palabra: whisper a veces estira la última sobre un silencio y el subtítulo se queda.
+      return [{ ...f, inicio: base + a, fin: base + Math.max(a + 0.02, Math.min(b, a + MAX_DURACION_PALABRA)), escena: e.escena.id }];
     });
 }
 

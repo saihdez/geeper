@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { escribirAtomico, existe } from "./archivos";
-import { dirFuentes, PYTHON_CLIPS } from "./fuentes";
+import { dirFuentes, PYTHON_CLIPS, runtimeJsYtdlp } from "./fuentes";
 import { correr } from "./proceso";
 
 export interface Tendencia {
@@ -57,7 +57,8 @@ export function ordenar(infos: InfoYt[], ahora: number, horasMax: number): Tende
 }
 
 async function json(args: string[]): Promise<unknown> {
-  const r = await correr(PYTHON_CLIPS, ["-I", "-m", "yt_dlp", "--no-warnings", "--no-progress", "-J", ...args], { timeout: 90_000 });
+  const js = runtimeJsYtdlp();
+  const r = await correr(PYTHON_CLIPS, ["-I", "-m", "yt_dlp", "--no-warnings", "--no-progress", ...js.args, "-J", ...args], { timeout: 90_000, env: js.env });
   return JSON.parse(r.stdout);
 }
 

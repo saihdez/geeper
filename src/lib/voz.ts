@@ -1,4 +1,8 @@
-/** Voz y tiempos por palabra: Kokoro (hyperframes tts) y whisper.cpp (hyperframes transcribe), en CPU. */
+/**
+ * Voz y tiempos por palabra: Kokoro (hyperframes tts) y whisper.cpp, en CPU. whisper corre directo
+ * (`whisper.ts`: VAD, umbrales y probabilidad por palabra); si todavía no está en disco, por
+ * `hyperframes transcribe`, que lo compila y baja el modelo la primera vez.
+ */
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -6,6 +10,7 @@ import { correrHf } from "./hyperframes";
 import { ESCRITORIO, PYTHON_SISTEMA } from "./plataforma";
 import { correr, type Registro } from "./proceso";
 import { PYTHON_VOZ, RAIZ_REPO } from "./rutas";
+import { MOTOR_WHISPER, transcribirWhisper, whisperDirectoDisponible } from "./whisper";
 import type { Palabra } from "./esquema";
 
 export const MODELO_WHISPER = "medium";
@@ -14,10 +19,24 @@ interface PalabraW {
   text: string;
   start: number;
   end: number;
+  /** Probabilidad de whisper (0..1); sólo con whisper directo. */
+  p?: number;
 }
 
-/** Transcribe con whisper `medium` y devuelve tiempos por palabra (como mpt_acabado.py). */
-export async function transcribir(audio: string, idioma: string, log: Registro): Promise<PalabraW[]> {
+/** Huella del motor de transcripción para los pasos: cambia si se pasa de Hyperframes a whisper directo. */
+export async function motorTranscripcion(): Promise<string> {
+  return (await whisperDirectoDisponible(MODELO_WHISPER)) ? MOTOR_WHISPER : "hf-transcribe";
+}
+
+/**
+ * Transcribe con whisper `medium` y devuelve tiempos por palabra (como mpt_acabado.py). `glosario`:
+ * nombres propios para guiar a whisper (sólo con whisper directo; ver whisper.ts).
+ */
+export async function transcribir(audio: string, idioma: string, log: Registro, o: { glosario?: string; signal?: AbortSignal } = {}): Promise<PalabraW[]> {
+  if (await whisperDirectoDisponible(MODELO_WHISPER)) {
+    return transcribirWhisper(audio, { modelo: MODELO_WHISPER, idioma, glosario: o.glosario, log, signal: o.signal });
+  }
+  if (o.glosario) log("Aviso: el glosario no se usa hasta que whisper esté instalado (esta primera vez va por Hyperframes)");
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "geeper-tr-"));
   try {
     const local = path.join(tmp, "voz" + path.extname(audio));

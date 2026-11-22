@@ -109,10 +109,43 @@ export function ListaPublicaciones({ publicaciones, alCambiar }: { publicaciones
   );
 }
 
-function CamposDestino({ c, red, v, cambiar, portada, perfil, texto, problemas }: { c: CuentaInfo; red: RedInfo; v: Campos; cambiar: (v: Campos) => void; portada: PortadaV | null; perfil: string; texto: TextoPublicacion; problemas: Problema[] }) {
+/** «✨ Sugerir» título, descripción y hashtags con el modelo local (/api/proyectos/[id]/sugerir-texto). */
+function SugerirTexto({ proyectoId, red, v, cambiar }: { proyectoId: string; red: RedInfo; v: Campos; cambiar: (v: Campos) => void }) {
+  const [pensando, setPensando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sugerido, setSugerido] = useState(false);
+  async function sugerir() {
+    setPensando(true);
+    setError(null);
+    try {
+      const s = await postJson<{ titulo: string; descripcion: string }>(`/api/proyectos/${proyectoId}/sugerir-texto`, { red: red.id });
+      cambiar({ ...v, titulo: s.titulo, descripcion: s.descripcion });
+      setSugerido(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPensando(false);
+    }
+  }
+  return (
+    <div className="space-y-1 sm:col-span-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" className="boton" disabled={pensando} onClick={() => void sugerir()}>
+          {pensando ? "Pensando (hasta 1 min)…" : sugerido ? "↻ Sugerir otra vez" : "✨ Sugerir título, descripción y hashtags"}
+        </button>
+        <span className="text-xs text-tenue">Con la IA de esta PC, a partir de lo que dice el video. Reemplaza lo que esté escrito abajo.</span>
+      </div>
+      {sugerido && !error && <p className="text-xs text-amber-300">Léelo y corrige lo que haga falta antes de publicar: la IA puede equivocarse.</p>}
+      {error && <Aviso tipo="alerta">{error}</Aviso>}
+    </div>
+  );
+}
+
+function CamposDestino({ proyectoId, c, red, v, cambiar, portada, perfil, texto, problemas }: { proyectoId: string; c: CuentaInfo; red: RedInfo; v: Campos; cambiar: (v: Campos) => void; portada: PortadaV | null; perfil: string; texto: TextoPublicacion; problemas: Problema[] }) {
   const pre = `pub-${c.id}`;
   return (
     <div className="grid gap-3 border-l-2 border-borde pl-3 sm:grid-cols-2">
+      {["youtube", "tiktok", "instagram"].includes(red.id) && <SugerirTexto proyectoId={proyectoId} red={red} v={v} cambiar={cambiar} />}
       <div className="sm:col-span-2">
         <label className="etiqueta" htmlFor={`${pre}-titulo`}>
           Título ({Array.from(v.titulo).length}/100)
@@ -258,7 +291,7 @@ export function PanelPublicar({ proyectoId, render, nombre, tema, publicaciones,
                   {c.alias && <span className="text-tenue">{c.usuario}</span>}
                   {publicada && <span className="text-xs text-tenue">(este render ya está en esta cuenta)</span>}
                 </label>
-                {marcadas[c.id] && <CamposDestino c={c} red={red} v={marcadas[c.id]!} cambiar={(v) => setMarcadas((m) => ({ ...m, [c.id]: v }))} portada={portada} perfil={render.perfil} texto={textos.get(c.id)!} problemas={problemas.get(c.id) ?? []} />}
+                {marcadas[c.id] && <CamposDestino proyectoId={proyectoId} c={c} red={red} v={marcadas[c.id]!} cambiar={(v) => setMarcadas((m) => ({ ...m, [c.id]: v }))} portada={portada} perfil={render.perfil} texto={textos.get(c.id)!} problemas={problemas.get(c.id) ?? []} />}
               </div>
             );
           })}

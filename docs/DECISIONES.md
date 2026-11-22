@@ -204,6 +204,12 @@ whisper en ese tiempo, si cae dentro de un silencio (`silencedetect` −35 dB / 
 fallida), si no, avisa. Los proyectos importados antes no tienen confianza («sin medir») hasta que se
 regenera su voz.
 
+**Corregido el 2026-11-20 (HEREDADO.md, OpenWhispr):** whisper.cpp sí da probabilidad por token en
+`--output-json-full`; la descartaba `hyperframes transcribe`. Ahora whisper corre directo (`whisper.ts`,
+con VAD Silero y los umbrales de OpenWhispr) y, en los clips, la `p` de cada palabra entra como cuarta
+señal (`topePorProbabilidad`: < 0,35 = dudosa). En las voces TTS no: el subtítulo sale del guion y una
+`p` baja no dice nada de su tiempo. Si whisper todavía no está en disco, se usa Hyperframes como antes.
+
 ## 18. Pulsos: se mueve la música, no los cortes
 
 Los cortes los decide la voz (pausas y fines de frase). Para cortar al ritmo se elige desde qué segundo
@@ -335,6 +341,34 @@ casilla y la UX simple primero en clips (el resto de la app, después).
   del worktree la página se recarga en bucle (también `/trabajos`, que no se tocó): las pruebas de UI
   se hicieron con `next build` + `next start`, donde no pasa.
 
+
+## 23. Versión en otro idioma: una copia, Gemma con el guion entero y el video se estira, no la voz
+
+«Hacer una versión en otro idioma» (`src/lib/traducir.ts`, panel en el editor) crea un **proyecto
+aparte**: el original no cambia y la copia comparte los assets por enlace duro (no ocupa espacio).
+Idiomas: inglés, portugués (Brasil), francés e italiano, los que tienen voz en Kokoro y whisper entiende
+(medido: las 7 voces dicen y whisper devuelve la frase exacta). La voz es del mismo tipo que la original.
+
+- **Gemma traduce el guion entero repartido en las mismas escenas**, porque una escena suele empezar o
+  terminar a mitad de frase. Se le da a cada escena un largo orientativo (15 car./s × su duración).
+- **Gemma 4 con `--think=false`**: con el razonamiento activado escribe un «Thinking…» largo antes del
+  JSON (que lo rompía) y tardaba ~4 min; sin él, ~30 s. `titulos.ts` y `ganchos.ts` llaman igual a Gemma
+  sin esa opción: revisarlos.
+- **Ollama puede estar apagado o recién encendido** (gpu-solo lo pausa mientras corre Wan): con el
+  gpu-lock tomado se enciende si hace falta y se espera a que responda antes de preguntar.
+- **Ajuste a los tiempos** (idea del doblaje de VoiceStudio, reescrita): en Geeper la escena dura lo
+  que su voz, así que el único problema es que el clip de video se acabe antes. Primero el video hasta
+  0,8× (casi no se nota en planos de apoyo); si no alcanza, Gemma acorta la frase y se vuelve a decir;
+  después hasta 0,67×; si aun así no alcanza, el clip se repite y la escena queda marcada.
+- Se traducen los textos en pantalla y el botón de la tarjeta final (el de la plantilla también, que
+  queda como botón propio de la copia); las reglas «mostrar» se quitan (eran del español).
+- La copia muestra arriba qué se ajustó, escena por escena y en palabras simples.
+
+Prueba real (2026-11-20, «Los faros más extraños del mundo» → inglés): traducción, 38,6 s de voz,
+alineación, una frase acortada (escena 7, video a 0,88×) y otra a 0,97×; ~94 s en total sin contar la
+espera de la GPU. Render aprobado por el QC (subtítulos ≤ 17 car./s, −14 LUFS); 11 % de palabras
+dudosas, casi todas al final, como en español.
+
 ## 24. Voz nueva: VoxCPM2 diseña una vez y después clona su propia muestra
 
 Comparativa en MODELOS.md («Comparativa de modelos locales»). VoxCPM2 (Apache 2.0) porque con **un solo
@@ -352,3 +386,21 @@ a otra persona. Qwen3-TTS necesitaría dos modelos (VoiceDesign y Base).
   (`TORCHDYNAMO_DISABLE=1`). Cargar el modelo tarda 60–95 s la primera vez, por eso regenerar el guion
   completo (una carga) conviene más que escena por escena.
 - Toma el gpu-lock y espera su turno (~6 GB). Venv `~/dev/video-tools/venvs/voxcpm`.
+
+## 25. Efectos de sonido generados: MOSS-SoundEffect con gpu-solo y biblioteca compartida
+
+MOSS-SoundEffect v2.0 (Apache 2.0, del inventario de VoiceStudio). Su pipeline genera siempre un bloque
+de 30 s y recorta: así llegó a **15,95 GB** (de 16) y ~40 s por efecto, y en la segunda prueba se quedó
+sin memoria. Los efectos de hasta 10 s se generan en una ventana de 10 s (`max_inference_seconds`):
+**14,5 GB y ~9 s por efecto**, sin pérdida de calidad que se note (a ciegas con Nemotron Omni: whoosh
+30 s 9/10 frente a 10 s 7/10, olas 10 s 9/10 frente a 30 s 6/10; ruido del juez, no tendencia). Corre con
+`gpu-solo`, que pausa Ollama y el servidor de imágenes de MPT, en la misma fila que MPT y Wan
+(`efecto.generar`, motor `mpt`). Si falla, el log del trabajo guarda el error real.
+
+- Cada efecto queda en `~/geeper-data/efectos/` (índice `efectos.json`, id = hash de descripción y
+  duración): pedir el mismo sonido otra vez no usa la GPU y entra al instante.
+- El modelo entiende inglés: hay 12 sonidos listos con su descripción en inglés, y una descripción
+  propia en español la reescribe Gemma antes (Ollama tiene que estar encendido, por eso va primero).
+- En el editor, 3 pasos: qué sonido, cuándo suena (al empezar una escena o en un segundo exacto) y
+  agregar. Entra en la pista libre `efectos` a volumen 0,6; se quita desde «Superposiciones y efectos
+  de sonido».

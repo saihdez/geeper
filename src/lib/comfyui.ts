@@ -16,6 +16,7 @@ import { existsSync, readdirSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { argsAtencionComfyui, atencionInstalada, elegirAtencion } from "./atencion";
 import { comandoGpuSolo } from "./gpu-solo";
 import { bajarHub, dirHub, HUB_COMMIT, resolverArchivo, unirHub } from "./hub-comfy";
 import { pythonDeVenv } from "./plataforma";
@@ -324,7 +325,7 @@ export async function arrancarComfyui(op: { puerto: number; gpuSolo?: boolean; a
   const python = op.python ?? COMFYUI_PYTHON;
   const falta = faltaComfyui(dir, python);
   if (falta) throw new Error(falta);
-  const args = [path.join(dir, "main.py"), "--listen", "127.0.0.1", "--port", String(op.puerto), "--disable-auto-launch", "--output-directory", path.join(dir, "output"), ...(op.nodos ?? ["--disable-all-custom-nodes"])];
+  const args = [path.join(dir, "main.py"), "--listen", "127.0.0.1", "--port", String(op.puerto), "--disable-auto-launch", "--output-directory", path.join(dir, "output"), ...argsAtencionComfyui(elegirAtencion(atencionInstalada(python))), ...(op.nodos ?? ["--disable-all-custom-nodes"])];
   const conGpuSolo = op.gpuSolo ?? existsSync(GPU_SOLO_BIN);
   const c = conGpuSolo ? comandoGpuSolo(python, args) : { cmd: python, args };
   const hijo = spawn(c.cmd, c.args, { cwd: dir, env: { ...process.env, PYTHONUNBUFFERED: "1", PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" }, detached: process.platform !== "win32" });

@@ -12,8 +12,12 @@ pnpm tsx scripts/verificar-vpn.ts US   # el código ISO del país elegido
 ```
 
 Revisa desde Windows y desde WSL la IP y el país de salida, la fuga por IPv6, el túnel, el DNS, el
-servicio de ubicación de Windows y la zona y región. No cambia nada. El 18-11-2026 daba: salida por
-CR, sin túnel y DNS del router. La ubicación de Windows ya está desactivada (19-11-2026).
+servicio de ubicación de Windows y la zona y región. No cambia nada.
+
+**Estado (20-11-2026):** en marcha. Servidor Oracle Always Free `geeper-vpn` en US East (Ashburn), IP
+efímera `150.136.165.130` (gratis; se mantiene mientras exista la instancia), túnel `geeper` instalado como servicio en Windows. El verificador da ✓ en
+salida (Windows y WSL), IPv6, túnel, DNS y ubicación. Geeper tiene `VPN: requerido · US ·
+150.136.165.130`. Pendiente y opcional: zona horaria y región de Windows (§4).
 
 ## 1. Elegir el servidor
 

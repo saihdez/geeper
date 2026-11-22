@@ -11,6 +11,7 @@
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { instalarAtencionRapida } from "./atencion";
 import { COMFYUI_DIR, COMFYUI_PYTHON, faltaComfyui, leerCatalogo } from "./comfyui";
 import { entornoUv } from "./estudio";
 import { bajar, carpetaRaiz } from "./instalar-craft";
@@ -163,6 +164,8 @@ export function instalarComfyui(): EstadoComfyui {
         }
         poner(c.paso, "listo");
       }
+      // Opcional: FlashAttention desde una rueda guardada (nunca hace fallar la instalación).
+      await instalarAtencionRapida(python, log, env);
       actual = "prueba";
       poner("prueba", "trabajando");
       const r = await correr(python, ["-c", "import torch; ok = torch.cuda.is_available(); print(ok, torch.cuda.get_device_name(0) if ok else '')"], { log, permitirFallo: true, timeout: 120_000 });

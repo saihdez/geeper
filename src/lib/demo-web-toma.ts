@@ -1,0 +1,333 @@
+/**
+ * Toma y render de la demo de producto (ver demo-web.ts). Lo usan `scripts/demo-web.ts` y el trabajo
+ * «demo.crear» del worker. Chromium headless + screencast de CDP; el tratamiento es Hyperframes.
+ */
+import fs from "node:fs";
+import fsp from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import {
+  acentoDe,
+  componerDemo,
+  elegirCta,
+  fpsDominante,
+  gradienteMarca,
+  leerRgb,
+  planDemo,
+  type Candidato,
+  type EstiloDemo,
+  type FormatoDemo,
+  type Historia,
+  type Montaje,
+  type RegistroDemo,
+} from "./demo-web";
+import { correrHf } from "./hyperframes";
+import { ffmpeg, fotograma, probar } from "./media";
+import type { Registro } from "./proceso";
+import { CACHE_HF } from "./rutas";
+
+const espera = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((ok, mal) => {
+    if (signal?.aborted) return mal(new Error("Cancelado"));
+    const t = setTimeout(ok, ms);
+    signal?.addEventListener("abort", () => {
+      clearTimeout(t);
+      mal(new Error("Cancelado"));
+    }, { once: true });
+  });
+
+/** El Chrome headless que ya baja Hyperframes (en desarrollo o en la app de escritorio); si no, el de Playwright. */
+function chrome(): string | undefined {
+  for (const base of [path.join(os.homedir(), ".cache", "hyperframes"), CACHE_HF]) {
+    try {
+      const raiz = path.join(base, "chrome", "chrome-headless-shell");
+      const v = fs.readdirSync(raiz).sort().pop()!;
+      for (const sub of ["chrome-headless-shell-linux64", "chrome-headless-shell-win64", "chrome-headless-shell-mac-arm64", "chrome-headless-shell-mac-x64"]) {
+        for (const exe of ["chrome-headless-shell", "chrome-headless-shell.exe"]) {
+          const ruta = path.join(raiz, v, sub, exe);
+          if (fs.existsSync(ruta)) return ruta;
+        }
+      }
+    } catch {
+      /* no está en esta carpeta */
+    }
+  }
+  return undefined;
+}
+
+export interface OpcionesToma {
+  formato: FormatoDemo;
+  historia?: Historia;
+  /** Segundos mínimos de grabación: si el recorrido termina antes, sigue bajando por la página. */
+  duracionMin?: number;
+  log?: Registro;
+  signal?: AbortSignal;
+}
+
+/** Toma: abre la página, elige la historia, la recorre con el cursor virtual y deja `<dir>/toma.mp4`. */
+export async function tomarDemo(url: string, dir: string, op: OpcionesToma): Promise<RegistroDemo> {
+  const log = op.log ?? (() => {});
+  const signal = op.signal;
+  const dormir = (ms: number) => espera(ms, signal);
+  const movil = op.formato === "9:16";
+  const vista = movil ? { width: 412, height: 892 } : { width: 1280, height: 800 };
+  const escala = movil ? 2.5 : 1.5;
+  let pw: typeof import("playwright-core");
+  try {
+    pw = await import("playwright-core");
+  } catch {
+    throw new Error("Esta instalación no trae el navegador para grabar páginas (playwright-core). En la versión de desarrollo sí funciona.");
+  }
+  const dirCuadros = path.join(dir, "cuadros");
+  await fsp.rm(dirCuadros, { recursive: true, force: true });
+  await fsp.mkdir(dirCuadros, { recursive: true });
+  // Sin la bandera, el screencast del Chrome headless sale en píxeles CSS (1280 de ancho) y la tarjeta
+  // se reescala borrosa; con ella, a la escala pedida (medido: 1280 → 1920).
+  const nav = await pw.chromium.launch({ executablePath: chrome(), args: [`--force-device-scale-factor=${escala}`] });
+  const cerrar = () => void nav.close().catch(() => {});
+  signal?.addEventListener("abort", cerrar, { once: true });
+  try {
+    const ctx = await nav.newContext({ viewport: vista, deviceScaleFactor: escala, isMobile: movil, hasTouch: movil, locale: "es-MX", colorScheme: "light" });
+    // tsx (esbuild con keepNames) envuelve las funciones en __name(); en la página no existe.
+    await ctx.addInitScript({ content: "window.__name = (f) => f;" });
+    const page = await ctx.newPage();
+    try {
+      await page.goto(url, { waitUntil: "load", timeout: 60_000 });
+    } catch (e) {
+      throw new Error(`No se pudo abrir ${url}: revisa que el link esté bien escrito y que la página abra en tu navegador (${e instanceof Error ? e.message.split("\n")[0] : e}).`);
+    }
+    await dormir(2600);
+
+    // Fuera los avisos de cookies antes de grabar.
+    await page
+      .evaluate(() => {
+        const re = /^(aceptar|aceptar todo|aceptar todas|acepto|de acuerdo|entendido|vale|ok|rechazar|rechazar todo|cerrar|accept|accept all|allow all|agree|i agree|got it|reject all|decline|dismiss|close)$/i;
+        for (const el of document.querySelectorAll("button, a, [role=button]")) {
+          if (re.test((el.textContent || "").trim())) (el as HTMLElement).click?.();
+        }
+      })
+      .catch(() => {});
+    await dormir(400);
+
+    // Exploración: titular, candidatos a botón y colores.
+    const sc = await page.evaluate(() => {
+      const vis = (el: Element) => {
+        const r = el.getBoundingClientRect();
+        const s = getComputedStyle(el);
+        return r.width > 8 && r.height > 8 && s.visibility !== "hidden" && s.display !== "none" && r.y < innerHeight * 1.1;
+      };
+      const heroe = [...document.querySelectorAll("h1")].find(vis) ?? [...document.querySelectorAll("h2")].find(vis);
+      const caja = (r: DOMRect) => ({ x: r.x, y: r.y, width: r.width, height: r.height });
+      const candidatos = [...document.querySelectorAll("a, button")].filter(vis).map((el) => {
+        const bg = getComputedStyle(el).backgroundColor;
+        return {
+          texto: (el.textContent || "").trim().slice(0, 60),
+          href: el instanceof HTMLAnchorElement ? el.href : null,
+          relleno: !!bg && bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent",
+          fondo: bg,
+          caja: caja(el.getBoundingClientRect()),
+        };
+      });
+      let fondoPagina: string | null = null;
+      for (const el of [document.body, document.documentElement, ...document.querySelectorAll("main, header, section")]) {
+        const c = getComputedStyle(el).backgroundColor;
+        if (c && c !== "rgba(0, 0, 0, 0)" && c !== "transparent") {
+          fondoPagina = c;
+          break;
+        }
+      }
+      return { titulo: document.title, heroe: heroe ? caja(heroe.getBoundingClientRect()) : null, candidatos, fondoPagina, iw: innerWidth, ih: innerHeight };
+    });
+    const cta = elegirCta(sc.candidatos as Candidato[], { url: page.url(), altoVentana: sc.ih });
+    const historia: Historia = op.historia ?? (cta?.href ? "clic" : "scroll");
+    const acento = acentoDe([...(cta ? [cta] : []), ...(sc.candidatos as Candidato[])]);
+    log(`Historia: ${historia} · botón: ${cta ? `«${cta.texto}» (${cta.puntaje})` : "ninguno"} · acento ${acento ?? "-"} · fondo ${sc.fondoPagina ?? "-"}`);
+
+    // Grabación: screencast de CDP (cuadro variable, con la hora de cada cuadro).
+    const cdp = await ctx.newCDPSession(page);
+    const cuadros: { archivo: string; t: number }[] = [];
+    const escrituras: Promise<void>[] = [];
+    cdp.on("Page.screencastFrame", (f: { data: string; sessionId: number; metadata: { timestamp?: number } }) => {
+      const archivo = path.join(dirCuadros, `c${String(cuadros.length).padStart(5, "0")}.jpg`);
+      cuadros.push({ archivo, t: f.metadata.timestamp ?? Date.now() / 1000 });
+      escrituras.push(fsp.writeFile(archivo, Buffer.from(f.data, "base64")));
+      cdp.send("Page.screencastFrameAck", { sessionId: f.sessionId }).catch(() => {});
+    });
+    await cdp.send("Page.startScreencast", {
+      format: "jpeg",
+      quality: 92,
+      maxWidth: Math.round(vista.width * escala),
+      maxHeight: Math.round(vista.height * escala),
+      everyNthFrame: 1,
+    });
+    const t0 = Date.now() / 1000;
+    const ahora = () => Date.now() / 1000 - t0;
+    const eventos: RegistroDemo["eventos"] = [];
+    const cursor: RegistroDemo["cursor"] = [];
+    const clics: number[] = [];
+    const marcar = (nombre: string, extra: { x?: number; y?: number } = {}) => eventos.push({ nombre, t: ahora(), ...extra });
+    const fr = (b: { x: number; y: number; width: number; height: number }) => ({ x: (b.x + b.width / 2) / sc.iw, y: (b.y + b.height / 2) / sc.ih });
+    const kx = sc.iw / 1280;
+    const ky = sc.ih / 800;
+    let pos = { x: sc.iw * 0.55, y: sc.ih * 0.45 };
+    const mover = async (p: { x: number; y: number }) => {
+      pos = { x: Math.min(sc.iw * 0.95, Math.max(sc.iw * 0.05, p.x)), y: Math.min(sc.ih * 0.95, Math.max(sc.ih * 0.05, p.y)) };
+      await page.mouse.move(pos.x, pos.y).catch(() => {});
+      cursor.push({ t: ahora(), x: pos.x / sc.iw, y: pos.y / sc.ih });
+    };
+    // Deslizamiento con curva suave (smoothstep), ~60 pasos por segundo.
+    const deslizar = async (a: { x: number; y: number }, ms: number) => {
+      const de = { ...pos };
+      const n = Math.max(8, Math.round(ms / 16));
+      for (let i = 1; i <= n; i++) {
+        const t = i / n;
+        const e = t * t * (3 - 2 * t);
+        await mover({ x: de.x + (a.x - de.x) * e, y: de.y + (a.y - de.y) * e });
+        await dormir(ms / n);
+      }
+    };
+    const desplazar = (d: number) => page.evaluate((y) => window.scrollBy({ top: y, behavior: "smooth" }), d).catch(() => {});
+    const alturaVista = () => page.evaluate(() => window.scrollY).catch(() => 0);
+
+    await mover(pos);
+    if (sc.heroe) marcar("heroe", fr(sc.heroe));
+    await dormir(1300);
+    if (historia === "clic" && cta) {
+      const c = { x: cta.caja.x + cta.caja.width / 2, y: cta.caja.y + cta.caja.height / 2 };
+      marcar("cta", fr(cta.caja));
+      await deslizar({ x: c.x + 16, y: c.y + 24 }, 700);
+      await deslizar(c, 380);
+      await dormir(420);
+      marcar("clic");
+      clics.push(ahora());
+      await page.mouse.down().catch(() => {});
+      await dormir(70);
+      await page.mouse.up().catch(() => {});
+      await page.waitForLoadState("load", { timeout: 25_000 }).catch(() => {});
+      await dormir(1100);
+      marcar("listo");
+      const h2 = await page.locator("h1, h2").first().boundingBox().catch(() => null);
+      if (h2 && h2.y < sc.ih) marcar("pagina2", fr(h2));
+      await deslizar({ x: sc.iw * 0.55, y: sc.ih * 0.5 }, 800);
+      await dormir(1100);
+    } else {
+      await deslizar({ x: sc.iw * 0.5, y: sc.ih * 0.45 }, 900);
+      await dormir(500);
+      marcar("scroll1");
+      await desplazar(Math.round(sc.ih * 0.95));
+      await deslizar({ x: pos.x + 90 * kx, y: pos.y + 120 * ky }, 900);
+      await dormir(2300);
+    }
+    marcar("scroll2");
+    await desplazar(Math.round(sc.ih * 0.85));
+    await deslizar({ x: pos.x + 110 * kx, y: pos.y + 130 * ky }, 900);
+    await dormir(800);
+    // Si hace falta más (la voz es larga), seguir bajando por la página con calma; cada bajada es
+    // contenido nuevo. Al llegar al final, quedarse quieto.
+    const minimo = op.duracionMin ?? 0;
+    let lado = -1;
+    while (ahora() < minimo - 2.3) {
+      const antes = await alturaVista();
+      await desplazar(Math.round(sc.ih * 0.7));
+      await deslizar({ x: sc.iw * (0.5 + lado * 0.12), y: sc.ih * 0.5 }, 900);
+      lado = -lado;
+      await dormir(1600);
+      if ((await alturaVista()) <= antes + 2) {
+        await dormir(Math.max(0, (minimo - 2.3 - ahora()) * 1000));
+        break;
+      }
+    }
+    // Reposo con un leve temblor del cursor.
+    const hasta = Date.now() + 2300;
+    while (Date.now() < hasta) {
+      await mover({ x: pos.x + (Math.random() - 0.5) * 2.4, y: pos.y + (Math.random() - 0.5) * 2.4 });
+      await dormir(150);
+    }
+    marcar("fin");
+    const tFin = Date.now() / 1000;
+    await cdp.send("Page.stopScreencast").catch(() => {});
+    await Promise.all(escrituras);
+    if (cuadros.length < 2) throw new Error("La página no se dejó grabar (no dio imágenes). Prueba con otra página o más tarde.");
+
+    // Cuadros → video a 30 fps (cada cuadro dura hasta el siguiente; uno por segundo es keyframe).
+    const lista = cuadros.map((c, i) => `file '${c.archivo}'\nduration ${(((cuadros[i + 1]?.t ?? tFin) - c.t) || 0.001).toFixed(4)}`).join("\n");
+    await fsp.writeFile(path.join(dir, "cuadros.txt"), `${lista}\nfile '${cuadros[cuadros.length - 1]!.archivo}'\n`);
+    log(`Toma: ${cuadros.length} cuadros, ${(tFin - cuadros[0]!.t).toFixed(1)} s, ~${fpsDominante(cuadros.map((c) => c.t)) ?? "?"} fps reales → 30 fps`);
+    const video = path.join(dir, "toma.mp4");
+    await ffmpeg([
+      "-f", "concat", "-safe", "0", "-i", path.join(dir, "cuadros.txt"),
+      "-vf", "fps=30,scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p",
+      "-c:v", "libx264", "-preset", "medium", "-crf", "14", "-g", "30", "-movflags", "+faststart", video,
+    ]);
+    await fsp.rm(dirCuadros, { recursive: true, force: true });
+    await fsp.rm(path.join(dir, "cuadros.txt"), { force: true });
+    const info = await probar(video);
+    // Los eventos van con el reloj de la máquina; el video empieza en el primer cuadro.
+    const corr = t0 - cuadros[0]!.t;
+    const mueve = <T extends { t: number }>(x: T) => ({ ...x, t: Math.max(0, x.t + corr) });
+    const r: RegistroDemo = {
+      url,
+      titulo: sc.titulo,
+      historia,
+      formato: op.formato,
+      cta: cta?.texto ?? null,
+      acento,
+      fondoPagina: leerRgb(sc.fondoPagina),
+      eventos: eventos.map(mueve),
+      cursor: cursor.map(mueve),
+      clics: clics.map((t) => Math.max(0, t + corr)),
+      duracion: info.duracion,
+      ancho: info.ancho ?? Math.round(vista.width * escala),
+      alto: info.alto ?? Math.round(vista.height * escala),
+    };
+    await fsp.writeFile(path.join(dir, "toma.json"), JSON.stringify(r, null, 1));
+    return r;
+  } finally {
+    signal?.removeEventListener("abort", cerrar);
+    await nav.close().catch(() => {});
+  }
+}
+
+export interface OpcionesRender {
+  estilo: EstiloDemo;
+  maximo: number;
+  fondo?: { desde: string; hasta: string };
+  salida: string;
+  log?: Registro;
+  signal?: AbortSignal;
+  /** Deja qa-*.jpg junto a la salida (fotogramas de los momentos clave). */
+  fotogramas?: boolean;
+}
+
+/** Compone la demo en Hyperframes (en `<dir>/build`) y la renderiza a `op.salida`. */
+export async function renderDemo(dir: string, r: RegistroDemo, op: OpcionesRender): Promise<{ montaje: Montaje; fondo: { desde: string; hasta: string } }> {
+  const log = op.log ?? (() => {});
+  const montaje = planDemo(r, op.estilo, op.maximo);
+  const fondo = op.fondo ?? gradienteMarca(r.acento, r.fondoPagina);
+  log(`Montaje: ${montaje.total.toFixed(2)} s, cortes ${montaje.cortes.map(([a, b]) => `${a.toFixed(2)}–${b.toFixed(2)}`).join(" + ")}, fondo ${fondo.desde} → ${fondo.hasta}`);
+  const build = path.join(dir, "build");
+  await fsp.rm(build, { recursive: true, force: true });
+  await fsp.mkdir(path.join(build, "assets"), { recursive: true });
+  const toma = path.join(dir, "toma.mp4");
+  await fsp.link(toma, path.join(build, "assets", "toma.mp4")).catch(() => fsp.copyFile(toma, path.join(build, "assets", "toma.mp4")));
+  await fsp.writeFile(path.join(build, "index.html"), componerDemo({ registro: r, montaje, video: "assets/toma.mp4", fondo }));
+  await fsp.writeFile(
+    path.join(build, "hyperframes.json"),
+    JSON.stringify({ $schema: "https://hyperframes.heygen.com/schema/hyperframes.json", paths: { blocks: "compositions", components: "compositions/components", assets: "assets" }, media: { autoProxy: true } }, null, 2),
+  );
+  const env = { HYPERFRAMES_NO_TELEMETRY: "1", DO_NOT_TRACK: "1" };
+  const chk = await correrHf(["check", "--json", "--no-cache", "--no-craft"], { cwd: build, env, permitirFallo: true, signal: op.signal, timeout: 15 * 60_000 });
+  await fsp.writeFile(path.join(build, "check.json"), chk.stdout || "{}");
+  try {
+    const j = JSON.parse(chk.stdout) as { ok?: boolean };
+    log(`hyperframes check: ${j.ok ? "ok" : "con problemas (ver build/check.json)"}`);
+  } catch {
+    log("hyperframes check: salida no JSON (ver build/check.json)");
+  }
+  await correrHf(["render", "--output", op.salida, "--quality", "high", "--fps", "30", "--quiet", "--no-browser-gpu"], { cwd: build, env, signal: op.signal, timeout: 60 * 60_000 });
+  if (op.fotogramas) {
+    const momentos = [0.4, ...montaje.tomas.map((t) => (t.inicio + t.fin) / 2), montaje.total - 0.3];
+    for (const [i, t] of momentos.entries()) await fotograma(op.salida, Math.max(0, Math.min(t, montaje.total - 0.05)), path.join(path.dirname(op.salida), `qa-${i + 1}.jpg`), 640);
+  }
+  return { montaje, fondo };
+}
