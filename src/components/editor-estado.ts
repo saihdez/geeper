@@ -132,3 +132,15 @@ export function opcionesRitmo(actual: number): { valor: number; nombre: string }
 export function avisoRitmo(velocidad: number): string | null {
   return velocidad >= 0.9 ? "Con este ritmo los subtítulos pueden pasar muy rápido y el video no se podrá descargar." : null;
 }
+
+/**
+ * UX-18: si la ruta de editar responde que nada cambió (`sinCambios`), no se dice «Guardado» ni se pide
+ * crear el video otra vez. Hasta que la ruta lo responda, devuelve null y vale el mensaje de siempre.
+ */
+export function mensajeSinCambios(ediciones: { tipo?: unknown }[], r: unknown): string | null {
+  if (!r || typeof r !== "object" || (r as { sinCambios?: unknown }).sinCambios !== true) return null;
+  const tipos = ediciones.map((e) => e.tipo);
+  if (tipos.length === 1 && tipos[0] === "quitarMuletillas") return "No encontré muletillas en este video.";
+  if (tipos.length === 1 && tipos[0] === "quitarSilencios") return "No hay pausas largas que acortar.";
+  return "No había nada que cambiar: el video sigue igual.";
+}

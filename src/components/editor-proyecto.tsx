@@ -18,7 +18,7 @@ import { SelectorEncuadre, type EncuadreV } from "./selector-encuadre";
 import { PanelOtroEditor } from "./panel-otro-editor";
 import { useAccionesProyecto } from "./acciones-proyecto";
 import { FranjaAviso, type MensajeEditor } from "./franja-aviso";
-import { avisoRitmo, correccionesVacias, enLista, opcionesRitmo, errorSubtitulo, escenasConOtraVoz, estaActivo, estadoCreacion, mismoContenido, pasoRender, preguntaVozEscena, renderEnCurso, verTrabajos, type TrabajoV, type VocesV } from "./editor-estado";
+import { avisoRitmo, correccionesVacias, enLista, mensajeSinCambios, opcionesRitmo, errorSubtitulo, escenasConOtraVoz, estaActivo, estadoCreacion, mismoContenido, pasoRender, preguntaVozEscena, renderEnCurso, verTrabajos, type TrabajoV, type VocesV } from "./editor-estado";
 import { Plegable } from "./plegable";
 import { EdicionPorTexto, EfectosEscena, PanelAvanzado, PanelEstilo, type EfectosV, type EstiloV, type ExtrasV, type PalabraV } from "./edicion-avanzada";
 
@@ -370,9 +370,15 @@ export function EditorProyecto({ id }: { id: string }) {
   // UX-19: el aviso sale abajo, junto a lo que se edita, con el paso siguiente al lado.
   const guardado = { texto: "Guardado. Ya se ve en «En vivo». Para descargarlo, crea el video otra vez.", accion: { texto: "Crear el video", hacer: () => void renderizar() } };
   /** Guarda una edición y dice si salió bien. */
-  const editarOk = (ed: object) => intentar(() => postJson(`/api/proyectos/${id}/editar`, { edicion: ed }), guardado);
+  // UX-18: si nada cambió, se dice eso (sin «Guardado» ni «Crear el video»).
+  const guardar = async (eds: object[]) => {
+    const r = await postJson(`/api/proyectos/${id}/editar`, eds.length === 1 ? { edicion: eds[0] } : { ediciones: eds });
+    const nada = mensajeSinCambios(eds as { tipo?: unknown }[], r);
+    return nada ?? r; // un texto reemplaza al «Guardado» (y a su «Crear el video»)
+  };
+  const editarOk = (ed: object) => intentar(() => guardar([ed]), guardado);
   const editar = async (ed: object) => { await editarOk(ed); };
-  const editarVarias = (eds: object[]) => hacer(() => postJson(`/api/proyectos/${id}/editar`, { ediciones: eds }), guardado);
+  const editarVarias = (eds: object[]) => hacer(() => guardar(eds), guardado);
   const subirClip = (escena: string, f: File) => hacer(async () => {
     const fd = new FormData();
     fd.set("escena", escena);
