@@ -86,6 +86,10 @@ interface Vista {
   voces?: VocesV | null;
 }
 
+/** UX-26: lo que se pregunta tras elegir una voz (todavía no suena en el video). */
+export const preguntaUsarVoz = (nombre: string) =>
+  `Elegiste «${nombre}». ¿La ponemos ya en el video? Se vuelve a decir todo el guion (unos 2 minutos) y se acomodan los subtítulos.`;
+
 /** Mensaje de una subida: el de éxito más lo que VectorCraft avisó al convertir (p. ej. una fuente que faltaba). */
 const conAvisos = (r: { avisos?: string[] }, ok: string) => (r.avisos?.length ? `${ok} Ojo: ${r.avisos.join(" · ")}` : ok);
 
@@ -381,8 +385,9 @@ export function EditorProyecto({ id }: { id: string }) {
     "Voz en cola (Kokoro y whisper en CPU). Al terminar se realinean los subtítulos y se vuelve a renderizar.");
   /** Cambia la voz del proyecto y ofrece ponerla ya en el video (regenerar el guion completo). */
   const usarVoz = async (motor: MotorVoz, voz: string, nombre: string) => {
-    await editar({ tipo: "cambiarVoz", motor, voz });
-    if (confirm(`Listo: la voz del video ahora es «${nombre}». ¿La ponemos ya? Se vuelve a decir todo el guion con esa voz, se acomodan los subtítulos y se renderiza (unos minutos).`)) await regenerarVoz(null);
+    // UX-26: si no se pudo guardar la voz elegida, no se ofrece decir el guion (saldría con la anterior).
+    if (!(await editarOk({ tipo: "cambiarVoz", motor, voz }))) return;
+    if (confirm(preguntaUsarVoz(nombre))) await regenerarVoz(null);
   };
   const renderizar = async () => {
     // REN-04: si el QC lo va a rechazar por subtítulos rápidos, se pregunta antes de esperar el render.
