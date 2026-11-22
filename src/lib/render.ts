@@ -131,8 +131,9 @@ export async function renderEntregar(
       await ctx.etapa("Normalizando sonoridad", 0.8);
       await paso(ctx, "entrega.loudnorm", { archivos: [crudo, rutaMezcla], params: { lufs: -14, tp: -2, entrega: ENTREGA, fps: p.fps, pico: TOPES_PICO, audio: "mezcla" }, motor: huella }, [final], async ([tmp]) => {
         const medido = await normalizarAudio(crudo, tmp!, ctx.log, p.fps, rutaMezcla);
-        // El AAC sube el pico real: si pasa de −1 dBTP, limitador a 192 kHz y otra vez (hasta 4).
-        const pico = await asegurarPicoReal(tmp!, ctx.log);
+        // El AAC sube el pico real: si pasa de −1 dBTP, limitador a 192 kHz y otra vez (hasta 4), partiendo
+        // otra vez de la mezcla en WAV para no pasar el sonido dos veces por AAC (REN-07).
+        const pico = await asegurarPicoReal(tmp!, ctx.log, { audio: rutaMezcla, medido });
         return { antes: medido, pico };
       });
       return { check, gpu };
