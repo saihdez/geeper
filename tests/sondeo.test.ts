@@ -113,6 +113,19 @@ describe("useSondeo por dentro (WEB-01)", () => {
     sondeo.detener();
   });
 
+  it("con intervalo infinito no vuelve a pedir solo, pero recargar sí (WEB-10)", async () => {
+    const s = servidor();
+    const sondeo = crearSondeo({ url: "/a", intervalo: () => Infinity, alDatos: () => {}, alError: () => {}, visibilidad: null, pedirTexto: s.pedirTexto });
+    sondeo.iniciar();
+    s.pendientes[0]!.ok("{}");
+    await vaciar();
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(s.pedirTexto).toHaveBeenCalledTimes(1);
+    void sondeo.recargar();
+    expect(s.pedirTexto).toHaveBeenCalledTimes(2);
+    sondeo.detener();
+  });
+
   it("sin conexión dice «Reconectando…» y lo borra al volver", async () => {
     const s = servidor();
     const alError = vi.fn();

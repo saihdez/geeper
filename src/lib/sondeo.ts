@@ -57,7 +57,9 @@ export function crearSondeo<T>(o: OpcionesSondeo<T>): Sondeo {
     if (temporizador) clearTimeout(temporizador);
     temporizador = null;
     if (detenido || oculto()) return;
-    temporizador = setTimeout(() => void ciclo(), Math.max(250, o.intervalo(ultimos)));
+    const ms = o.intervalo(ultimos);
+    if (!Number.isFinite(ms)) return; // Infinity: no volver a pedir solo (sólo con recargar o al volver a la pestaña)
+    temporizador = setTimeout(() => void ciclo(), Math.max(250, ms));
   }
 
   async function ciclo(): Promise<void> {
