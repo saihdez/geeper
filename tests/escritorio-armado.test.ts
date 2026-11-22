@@ -92,7 +92,7 @@ describe("lo que la app lee al correr (ESC-01)", () => {
     const app = path.join(tmp, "app");
     fs.mkdirSync(app);
     expect(faltantesApp(app)).toEqual(expect.arrayContaining([path.join("node_modules", "hyperframes", "dist", "hyperframe.runtime.iife.js"), path.join("docs", "fuentes.json"), "esquema.sql", path.join("py", "*.py")]));
-    for (const f of ["node_modules/hyperframes/dist/hyperframe.runtime.iife.js", "node_modules/hyperframes/bin/hyperframes.mjs", "docs/fuentes.json", "esquema.sql", "standalone/server.js", "main.cjs", "worker.mjs", "preparar-db.mjs", "py/reencuadre.py"]) escribir(path.join("app", f));
+    for (const f of ["node_modules/hyperframes/dist/hyperframe.runtime.iife.js", "node_modules/hyperframes/bin/hyperframes.mjs", "docs/fuentes.json", "esquema.sql", "standalone/server.js", "main.cjs", "worker.mjs", "preparar-db.mjs", "vigia.mjs", "py/reencuadre.py"]) escribir(path.join("app", f));
     expect(faltantesApp(app)).toEqual([]);
     fs.writeFileSync(path.join(app, "esquema.sql"), "");
     expect(faltantesApp(app)).toEqual(["esquema.sql"]);

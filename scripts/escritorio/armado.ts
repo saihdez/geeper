@@ -95,6 +95,7 @@ export function faltantesApp(app: string): string[] {
     "main.cjs",
     "worker.mjs",
     "preparar-db.mjs",
+    "vigia.mjs",
   ];
   for (const rel of necesarios) {
     const f = path.join(app, rel);

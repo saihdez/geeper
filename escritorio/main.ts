@@ -5,7 +5,7 @@
  * ventana con la web en 127.0.0.1. Ver docs/ESCRITORIO.md.
  *
  * Estructura dentro de la app instalada (resources/app, sin asar: los hijos leen archivos reales):
- *   main.cjs, preparar-db.mjs, worker.mjs, esquema.sql
+ *   main.cjs, preparar-db.mjs, worker.mjs, vigia.mjs, esquema.sql
  *   standalone/            servidor de Next (server.js, .next, public)
  *   node_modules/          dependencias de los hijos (better-sqlite3 para Electron, hyperframes…)
  *   py/, docs/fuentes.json lo que lee el código en tiempo de ejecución
@@ -19,12 +19,15 @@ import net from "node:net";
 import path from "node:path";
 import { app, BrowserWindow, dialog, Menu, shell } from "electron";
 import { esVueltaOAuth } from "./oauth";
-import { esDeGeeper, paginaAbriendo, permitirReinicio, plantillaMenu, registrar, rotarRegistro } from "./reglas";
+import { comoRematar, esDeGeeper, paginaAbriendo, permitirReinicio, plantillaMenu, registrar, rotarRegistro } from "./reglas";
 
 const RAIZ = app.isPackaged ? path.join(process.resourcesPath, "app") : path.join(__dirname, "..", "escritorio-app");
 const hijos: { nombre: string; p: ChildProcess }[] = [];
 let ventana: BrowserWindow | null = null;
 let saliendo = false;
+/** Los hijos ya se detuvieron: `before-quit` deja cerrar la app. */
+let cerrado = false;
+let cerrando = false;
 let url = "";
 /** El servidor ya respondió: la ventana puede cargar Geeper. */
 let listo = false;
@@ -64,7 +67,12 @@ function entorno(puerto: number): NodeJS.ProcessEnv {
 }
 
 function lanzar(nombre: string, script: string, env: NodeJS.ProcessEnv, cwd = RAIZ): ChildProcess {
-  const p = spawn(process.execPath, [script], { cwd, env, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+  // Por vigia.mjs, con la entrada estándar abierta: al cerrarla (salir de Geeper, o si la carcasa se cae)
+  // el proceso se apaga en orden, también en Windows (ESC-11).
+  const p = spawn(process.execPath, [path.join(RAIZ, "vigia.mjs"), script], { cwd, env, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+  p.stdin?.on("error", () => {
+    /* el proceso ya terminó */
+  });
   registrar(p, log(nombre));
   p.on("exit", () => {
     if (saliendo) return;
@@ -158,6 +166,11 @@ function correrHasta(script: string, env: NodeJS.ProcessEnv): Promise<void> {
 async function arrancar(): Promise<void> {
   const puerto = await puertoLibre();
   url = `http://127.0.0.1:${puerto}`;
+  // Otro programa (o un Geeper viejo) tiene el 3300: se usa otro, y queda anotado para quien ayude.
+  if (puerto !== 3300) {
+    fs.mkdirSync(dirLogs(), { recursive: true });
+    fs.appendFileSync(path.join(dirLogs(), "web.log"), `\n--- ${new Date().toISOString()} el puerto 3300 estaba ocupado; se usa el ${puerto} ---\n`);
+  }
   const env = entorno(puerto);
   // Crea o pone al día las tablas antes de que los dos procesos abran la base.
   await correrHasta(path.join(RAIZ, "preparar-db.mjs"), env);
@@ -291,32 +304,31 @@ async function preguntarTrasError(titulo: string, detalle: string, reintentar: s
   }
 }
 
-/** Detiene el servidor y el worker sin cerrar la app (para «Volver a intentar»). */
+/**
+ * Detiene el servidor y el worker y espera a que salgan (hasta 6 s). Se les cierra la entrada estándar
+ * (vigia.mjs lo toma como Ctrl+C: el worker marca lo que corría como interrumpido y suelta la GPU); al que
+ * no salió a tiempo se lo remata, con sus hijos en Windows.
+ */
 async function detenerHijos(): Promise<void> {
   const vivos = hijos.splice(0).filter((h) => h.p.exitCode === null && h.p.signalCode === null);
   await Promise.all(
     vivos.map(
       (h) =>
         new Promise<void>((ok) => {
-          h.p.once("exit", () => ok());
-          h.p.kill(process.platform === "win32" ? undefined : "SIGINT");
-          setTimeout(() => {
-            if (h.p.exitCode === null && h.p.signalCode === null) h.p.kill("SIGKILL");
+          const tope = setTimeout(() => {
+            const r = comoRematar(process.platform, h.p.pid);
+            if (r && "comando" in r) spawn(r.comando, r.args, { stdio: "ignore", windowsHide: true }).on("error", () => h.p.kill());
+            else if (r) h.p.kill(r.senal);
             ok();
-          }, 6000).unref();
+          }, 6000);
+          h.p.once("exit", () => {
+            clearTimeout(tope);
+            ok();
+          });
+          h.p.stdin?.end();
         }),
     ),
   );
-}
-
-function apagar(): void {
-  if (saliendo) return;
-  saliendo = true;
-  // SIGINT: el worker marca lo que corría como interrumpido y suelta la GPU (igual que con Ctrl+C).
-  for (const h of hijos) h.p.kill(process.platform === "win32" ? undefined : "SIGINT");
-  setTimeout(() => {
-    for (const h of hijos) if (h.p.exitCode === null) h.p.kill("SIGKILL");
-  }, 6000).unref();
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -354,9 +366,18 @@ if (!app.requestSingleInstanceLock()) {
   app.on("activate", () => {
     if (!ventana && listo) crearVentana();
   });
-  app.on("window-all-closed", () => {
-    apagar();
-    app.quit();
+  app.on("window-all-closed", () => app.quit());
+  // Antes de cerrar se espera a que el servidor y el worker terminen (ESC-11): cerrar sin esperar dejaba
+  // el worker cortado en seco en Windows y los trabajos «corriendo» hasta 90 s al volver a abrir.
+  app.on("before-quit", (e) => {
+    if (cerrado) return;
+    e.preventDefault();
+    if (cerrando) return;
+    cerrando = true;
+    saliendo = true;
+    void detenerHijos().finally(() => {
+      cerrado = true;
+      app.exit(0);
+    });
   });
-  app.on("before-quit", apagar);
 }

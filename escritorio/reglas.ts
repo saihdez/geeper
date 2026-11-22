@@ -117,3 +117,13 @@ export function paginaAbriendo(): string {
 <body><div class="c"><div class="p"></div><div>Abriendo Geeper…</div></div></body></html>`;
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
+
+/**
+ * Cómo rematar un proceso que no salió solo a tiempo (ESC-11). En Windows, `taskkill /T /F` corta también
+ * a sus hijos (ffmpeg, Python, el Chrome de Hyperframes); en el resto, SIGKILL. `null` si ya no hay pid.
+ */
+export function comoRematar(plataforma: NodeJS.Platform, pid: number | undefined): { comando: string; args: string[] } | { senal: "SIGKILL" } | null {
+  if (!pid) return null;
+  if (plataforma === "win32") return { comando: "taskkill", args: ["/PID", String(pid), "/T", "/F"] };
+  return { senal: "SIGKILL" };
+}

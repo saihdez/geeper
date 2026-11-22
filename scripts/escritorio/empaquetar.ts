@@ -133,6 +133,8 @@ async function bundles() {
   for (const [entrada, salida] of [["worker/index.ts", "worker.mjs"], ["escritorio/preparar-db.ts", "preparar-db.mjs"]] as const) {
     await build({ ...comun, entryPoints: [path.join(REPO, entrada)], outfile: path.join(APP, salida), format: "esm", banner, external: ["better-sqlite3"] });
   }
+  // Arranca el servidor y el worker y los apaga en orden cuando la carcasa cierra (escritorio/main.ts).
+  fs.copyFileSync(path.join(REPO, "escritorio", "vigia.mjs"), path.join(APP, "vigia.mjs"));
 }
 
 async function main() {
