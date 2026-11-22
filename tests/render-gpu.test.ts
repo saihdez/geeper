@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { banderasRender, hayNvidia, olvidarNvidia, renderConRespaldo } from "@/lib/render-gpu";
+import { banderasRender, hayNvidia, leerNvidiaSmi, olvidarNvidia, renderConRespaldo } from "@/lib/render-gpu";
 
 describe("render: banderas de captura (REN-01, apagado por defecto)", () => {
   it("por defecto sigue igual: NVENC con --gpu y CPU con --no-browser-gpu", () => {
@@ -90,5 +90,18 @@ describe("render: equipo sin NVIDIA (REN-03)", () => {
     ac.abort();
     await expect(renderConRespaldo(true, async () => { throw new Error("z"); }, () => {}, {}, ac.signal, soltar)).rejects.toThrow("z");
     expect(soltado).toBe(false);
+  });
+});
+
+describe("nvidia-smi: el corte por el límite no cuenta como «no hay» (REN-03)", () => {
+  it("con la lista de tarjetas responde que hay", () => {
+    expect(leerNvidiaSmi("GPU 0: NVIDIA GeForce RTX 5080 (UUID: x)", 120)).toBe(true);
+  });
+  it("si tardó hasta el límite no se sabe, aunque salga con código 1 como con taskkill en Windows", () => {
+    expect(leerNvidiaSmi("", 15_000)).toBeNull();
+    expect(leerNvidiaSmi("", 14_600)).toBeNull();
+  });
+  it("si contestó rápido sin tarjetas, no hay", () => {
+    expect(leerNvidiaSmi("No devices were found", 300)).toBe(false);
   });
 });

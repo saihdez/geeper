@@ -67,14 +67,23 @@ export function olvidarNvidia() {
 
 const LIMITE_NVIDIA_SMI_MS = 15_000;
 
+/**
+ * Lee la salida de `nvidia-smi -L`. El corte por el límite se reconoce sólo por el tiempo: en Windows
+ * correr() lo mata con `taskkill /F` y sale con código 1, no -1, y guardarlo como «no hay» mandaría
+ * todos los renders por CPU hasta reiniciar.
+ */
+export function leerNvidiaSmi(stdout: string, ms: number, limite = LIMITE_NVIDIA_SMI_MS): ConsultaNvidia {
+  if (/GPU \d+:/.test(stdout)) return true;
+  if (ms >= limite - 500) return null;
+  return false;
+}
+
 async function consultarNvidiaSmi(): Promise<ConsultaNvidia> {
   const t0 = Date.now();
-  // Sin nvidia-smi, correr() lanza (ENOENT): hayNvidia lo toma como «no hay».
-  const r = await correr("nvidia-smi", ["-L"], { permitirFallo: true, timeout: LIMITE_NVIDIA_SMI_MS });
-  if (/GPU \d+:/.test(r.stdout)) return true;
-  // Cortado por el límite: no se sabe.
-  if (r.codigo === -1 && Date.now() - t0 >= LIMITE_NVIDIA_SMI_MS - 500) return null;
-  return false;
+  // Sin nvidia-smi, correr() lanza (ENOENT): hayNvidia lo toma como «no hay». `signal: null`: cancelar
+  // el render no debe cortar la consulta y dejar guardado un «no hay» falso.
+  const r = await correr("nvidia-smi", ["-L"], { permitirFallo: true, timeout: LIMITE_NVIDIA_SMI_MS, signal: null });
+  return leerNvidiaSmi(r.stdout, Date.now() - t0);
 }
 
 /**
