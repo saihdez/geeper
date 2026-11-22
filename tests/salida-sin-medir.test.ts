@@ -65,6 +65,28 @@ describe("verificarSinMedir", () => {
   });
 });
 
+describe("GET /api/cuentas", () => {
+  it("no mide la salida aunque la medida guardada sea vieja y el VPN sea requerido", async () => {
+    const vieja = new Date(Date.now() - 10 * 60_000).toISOString();
+    salida.usarMedidor(async () => ({ ip: "203.0.113.7", pais: "AR", fuente: "prueba", medido: vieja }));
+    await salida.verificarSalida(true);
+    let medidas = 0;
+    salida.usarMedidor(async () => {
+      medidas++;
+      return { ip: "198.51.100.1", pais: "US", fuente: "prueba", medido: new Date().toISOString() };
+    });
+    await salida.guardarAjustes({ vpn: "requerido", ipEsperada: "", paisEsperado: "AR" });
+    const { GET } = await import("@/app/api/cuentas/route");
+    for (let i = 0; i < 3; i++) {
+      const r = await GET();
+      expect(r.status).toBe(200);
+      const j = (await r.json()) as { vpn: { estado: string; salida: { medido: string } } };
+      expect(j.vpn).toMatchObject({ estado: "activo", salida: { medido: vieja } });
+    }
+    expect(medidas).toBe(0);
+  });
+});
+
 describe("textoVpn", () => {
   it("pinta la hora de la medida junto al aviso", () => {
     expect(textoVpn({ detalle: "VPN: caído", salida: { ip: "1.2.3.4", pais: "US", fuente: "x", medido: "2026-11-22T10:05:00Z" } })).toMatch(/^VPN: caído · medido .*2026/);
