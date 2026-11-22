@@ -70,10 +70,11 @@ describe("vigia.mjs: el hijo se apaga en orden cuando la app cierra (ESC-11)", (
     // vigia.mjs arranca antes, así que no puede salir antes de 1 s) y el techo deja 20 s de holgura por si
     // la máquina está cargada (antes fallaba con 9 s).
     const r = await correr(`process.on("SIGINT", () => console.log("aviso " + Date.now())); setInterval(() => {}, 1000); console.log("listo");`, [], 1000);
-    expect(r.codigo).toBe(0);
-    expect(r.salida).toContain("aviso ");
-    expect(r.msDesdeAviso).toBeGreaterThanOrEqual(900);
-    expect(r.ms).toBeLessThan(21_000);
+    const detalle = JSON.stringify(r);
+    expect(r.codigo, detalle).toBe(0);
+    expect(r.salida, detalle).toContain("aviso ");
+    expect(r.msDesdeAviso, detalle).toBeGreaterThanOrEqual(900);
+    expect(r.ms, detalle).toBeLessThan(21_000);
   }, 40_000);
 
   it("si el proceso necesita tiempo para cerrar en orden, se le dan los segundos que pida dentro del tope", async () => {
