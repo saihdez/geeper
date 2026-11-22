@@ -288,9 +288,15 @@ async function renderCrudo(ctx: CtxRender, slug: string, dirBuild: string, crudo
     [crudo],
     async ([tmp]) => {
       // NVENC sólo con NVIDIA: en macOS el render va por CPU (VideoToolbox queda para cuando se pruebe en un Mac).
-      // Con GEEPER_RENDER_DETECTAR_NVIDIA=1 (REN-03) tampoco se pide en un equipo sin NVIDIA (render-gpu.ts).
+      // Con la detección de REN-03 (por defecto en Windows) tampoco se pide en un equipo sin NVIDIA (render-gpu.ts).
       const nvidia = await hayNvidia(SISTEMA);
       const candado = !nvidia ? null : await tomarGpu(`render ${slug}`, { esperar: false, signal: ctx.signal });
+      let suelto = false;
+      const soltar = () => {
+        if (suelto) return;
+        suelto = true;
+        candado?.liberar();
+      };
       let gpu = candado !== null;
       ctx.log(gpu ? "GPU libre: render con NVENC (gpu-lock tomado)" : SISTEMA === "mac" ? "macOS: render con CPU (libx264)" : !nvidia ? "Sin tarjeta NVIDIA: render con CPU (libx264)" : "GPU ocupada: render con CPU (libx264), sin esperar");
       try {
@@ -298,9 +304,9 @@ async function renderCrudo(ctx: CtxRender, slug: string, dirBuild: string, crudo
           const b = banderasRender(conGpu, SISTEMA);
           const args = ["render", "--output", tmp!, "--quality", "delivery", "--fps", String(fps), "--quiet", ...b.args];
           await correrHf(args, { cwd: dirBuild, env: { ...ENV_HF, ...b.env }, log: ctx.log, signal: ctx.signal, timeout: 60 * 60_000 });
-        }, ctx.log, process.env, ctx.signal);
+        }, ctx.log, process.env, ctx.signal, soltar);
       } finally {
-        candado?.liberar();
+        soltar();
       }
       return { gpu };
     },
