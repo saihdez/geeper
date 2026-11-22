@@ -7,7 +7,9 @@
  *   node vigia.mjs <script> [args…]
  *
  * Apagar en orden = lo mismo que Ctrl+C: si el script atiende SIGINT, se le avisa y él decide cuándo salir
- * (con 5 s de tope); si no, sale ya.
+ * (con 13 s de tope, uno más que lo que el worker espera a sus trabajos y uno menos que lo que tarda la
+ * carcasa en rematarlo: PLAZO_VIGIA_MS en escritorio/reglas.ts); si no, sale ya.
+ * GEEPER_VIGIA_TOPE_MS cambia ese tope (sólo lo usan las pruebas).
  */
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -20,12 +22,14 @@ if (!destino) {
 // El script ve los argumentos como si lo hubieran lanzado directo.
 process.argv.splice(1, 2, path.resolve(destino));
 
+const TOPE_MS = Number(process.env.GEEPER_VIGIA_TOPE_MS) || 13_000;
+
 let apagando = false;
 function apagar() {
   if (apagando) return;
   apagando = true;
   console.log("--- la app pidió cerrar ---");
-  setTimeout(() => process.exit(0), 5000).unref();
+  setTimeout(() => process.exit(0), TOPE_MS).unref();
   if (process.listenerCount("SIGINT") > 0) process.emit("SIGINT", "SIGINT");
   else process.exit(0);
 }

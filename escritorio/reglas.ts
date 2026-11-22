@@ -104,9 +104,79 @@ export function permitirReinicio(historial: number[], ahora: number, max = 5, ve
   return true;
 }
 
-/** ¿`destino` es una página de Geeper (`base` = http://127.0.0.1:<puerto>)? Sin base todavía, nada lo es. */
+/**
+ * Un relanzamiento programado del worker (ESC-13). Programar otro cancela el anterior y `cancelar()` lo
+ * quita: si la app se reinicia (o se cierra) mientras espera, no queda un worker viejo por lanzarse además
+ * del nuevo.
+ */
+export class Relanzamiento {
+  private tope: ReturnType<typeof setTimeout> | null = null;
+  programar(fn: () => void, ms: number): void {
+    this.cancelar();
+    this.tope = setTimeout(() => {
+      this.tope = null;
+      fn();
+    }, ms);
+  }
+  cancelar(): void {
+    if (this.tope) clearTimeout(this.tope);
+    this.tope = null;
+  }
+  get pendiente(): boolean {
+    return this.tope !== null;
+  }
+}
+
+/** Error de arranque con un texto pensado para la persona: se muestra tal cual en el cuadro (ESC-13). */
+export class AvisoArranque extends Error {}
+
+/** Lo que dice el cuadro «Geeper no pudo abrir»: el texto del aviso si es uno de los esperados; si no, uno general. */
+export function textoErrorArranque(e: unknown): string {
+  if (e instanceof AvisoArranque) return e.message;
+  return "Algo falló al abrir Geeper.";
+}
+
+/** Origen (esquema, servidor y puerto) de una dirección, o null si no es una dirección válida. */
+function origen(u: string): string | null {
+  try {
+    const o = new URL(u).origin;
+    return o === "null" ? null : o;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * ¿`destino` es una página de Geeper (`base` = http://127.0.0.1:<puerto>)? Sin base todavía, nada lo es.
+ * Se compara el origen ya interpretado (SEG-07): `http://127.0.0.1:3300@otro.sitio/` es de otro.sitio.
+ */
 export function esDeGeeper(base: string, destino: string): boolean {
-  return base !== "" && (destino === base || destino.startsWith(`${base}/`) || destino.startsWith(`${base}?`));
+  if (base === "") return false;
+  const o = origen(base);
+  return o !== null && origen(destino) === o;
+}
+
+/** ¿Se puede pasar `destino` al navegador del sistema? Sólo páginas web: nada de file:, smb:, ms-… (SEG-07). */
+export function abrirFuera(destino: string): boolean {
+  try {
+    const { protocol } = new URL(destino);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Permisos del navegador que Geeper concede, sólo a sus propias páginas (SEG-07). Son los que usan Geeper
+ * y las apps Craft (comprobado en sus archivos): copiar y pegar, abrir y guardar archivos o carpetas
+ * (File System Access), ver las fuentes instaladas (WordCraft, FigCraft) y pantalla completa. Todo lo
+ * demás (cámara, micrófono, ubicación, avisos, MIDI, USB…) se niega.
+ */
+export const PERMISOS_GEEPER: ReadonlySet<string> = new Set(["clipboard-read", "clipboard-sanitized-write", "fileSystem", "local-fonts", "fullscreen"]);
+
+/** ¿Se concede `permiso` a la página `desde`? Sólo los de PERMISOS_GEEPER y sólo a páginas de Geeper. */
+export function concederPermiso(base: string, permiso: string, desde: string): boolean {
+  return PERMISOS_GEEPER.has(permiso) && esDeGeeper(base, desde);
 }
 
 /** Lo que se ve mientras arrancan la base, el servidor y el worker (sale al instante tras el doble clic). */
@@ -118,6 +188,14 @@ export function paginaAbriendo(): string {
 <body><div class="c"><div class="p"></div><div>Abriendo Geeper…</div></div></body></html>`;
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
+
+/**
+ * Plazos del apagado, de dentro hacia fuera (WRK-07, ESC-11): el worker espera hasta 12 s a que sus
+ * trabajos cortados queden «interrumpidos» (TOPE_APAGAR_MS en worker/sistema.ts); vigia.mjs le da 13 s
+ * antes de salir solo, y la carcasa (y `pnpm run dev:up`) recién a los 14 s remata al que siga vivo.
+ */
+export const PLAZO_VIGIA_MS = 13_000;
+export const PLAZO_APAGAR_MS = 14_000;
 
 /**
  * Cómo rematar un proceso que no salió solo a tiempo (ESC-11). En Windows, `taskkill /T /F` corta también

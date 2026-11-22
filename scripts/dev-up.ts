@@ -1,5 +1,6 @@
 /** pnpm run dev:up — la web (:3300) y el worker en una sola terminal. Ctrl+C apaga los dos. */
 import { spawn, type ChildProcess } from "node:child_process";
+import { PLAZO_APAGAR_MS } from "../escritorio/reglas";
 
 const hijos: { nombre: string; color: string; p: ChildProcess }[] = [];
 
@@ -38,10 +39,14 @@ function apagar() {
   if (apagando) return;
   apagando = true;
   for (const h of hijos) h.p.kill("SIGINT");
-  setTimeout(() => process.exit(0), 6000).unref();
+  // El worker se toma hasta 12 s para dejar «interrumpido» lo que corría (WRK-07): se le dan 14 s.
+  setTimeout(() => process.exit(0), PLAZO_APAGAR_MS).unref();
 }
 process.on("SIGINT", apagar);
 process.on("SIGTERM", apagar);
+// Cerrar la ventana de la terminal manda SIGHUP: sin atenderlo, dev:up moría al instante y dejaba al worker
+// sin apagar en orden (WRK-02).
+process.on("SIGHUP", apagar);
 
 lanzar("web", "36", ["exec", "next", "dev", "--hostname", "127.0.0.1", "--port", "3300"]);
 lanzar("worker", "35", ["exec", "tsx", "worker/index.ts"]);

@@ -26,7 +26,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:escritorio": "vitest run tests/escritorio.test.ts tests/plataforma.test.ts tests/gpu.test.ts tests/instalar-craft.test.ts tests/craft-web.test.ts tests/novedades.test.ts tests/estudio.test.ts tests/craft-escritorio.test.ts tests/python-utf8.test.ts",
+    "test:reales": "node scripts/pruebas-reales.mjs",
+    "test:escritorio": "vitest run tests/escritorio.test.ts tests/escritorio-armado.test.ts tests/escritorio-vigia.test.ts tests/escritorio-probar-app.test.ts tests/escritorio-carcasa.test.ts tests/plataforma.test.ts tests/gpu.test.ts tests/instalar-craft.test.ts tests/craft-web.test.ts tests/novedades.test.ts tests/estudio.test.ts tests/craft-escritorio.test.ts tests/python-utf8.test.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
@@ -34,7 +35,7 @@
     "@hyperframes/player": "0.9.27",
     "@prisma/adapter-better-sqlite3": "^7.10.1",
     "@prisma/client": "^7.10.1",
-    "better-sqlite3": "^13.2.0",
+    "better-sqlite3": "12.11.1",
     "fflate": "0.8.2",
     "next": "^16.4.6",
     "react": "^19.3.1",
@@ -43,7 +44,6 @@
   },
   "devDependencies": {
     "@electron/rebuild": "4.2.1",
-    "@eslint/eslintrc": "^3.3.7",
     "@tailwindcss/postcss": "^4.3.5",
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^24.19.2",
@@ -54,6 +54,7 @@
     "esbuild": "0.28.2",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.4.6",
+    "hyperframes": "0.9.27",
     "playwright-core": "^1.65.1",
     "prisma": "^7.10.1",
     "tailwindcss": "^4.3.5",

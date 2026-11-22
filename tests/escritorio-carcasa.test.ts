@@ -1,10 +1,23 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { MenuItemConstructorOptions } from "electron";
-import { comoTermino, esDeGeeper, paginaAbriendo, permitirReinicio, plantillaMenu, registrar, rotarRegistro } from "../escritorio/reglas";
+import {
+  abrirFuera,
+  AvisoArranque,
+  comoTermino,
+  concederPermiso,
+  esDeGeeper,
+  paginaAbriendo,
+  permitirReinicio,
+  plantillaMenu,
+  registrar,
+  Relanzamiento,
+  rotarRegistro,
+  textoErrorArranque,
+} from "../escritorio/reglas";
 
 describe("carcasa de escritorio: registros (ESC-14)", () => {
   it("guarda salida y errores completos y anota con qué código terminó, sin escribir tras cerrar", async () => {
@@ -98,5 +111,72 @@ describe("carcasa de escritorio: reinicios del worker (ESC-03)", () => {
     for (let i = 0; i < 5; i++) permitirReinicio(h, t0 + i);
     expect(permitirReinicio(h, t0 + 10 * 60_000 + 10)).toBe(true);
     expect(h).toEqual([t0 + 10 * 60_000 + 10]);
+  });
+});
+
+describe("carcasa de escritorio: relanzar el worker y avisos de arranque (ESC-13)", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("cancelar el relanzamiento programado evita un segundo worker", () => {
+    vi.useFakeTimers();
+    const r = new Relanzamiento();
+    const lanzar = vi.fn();
+    r.programar(lanzar, 3000);
+    expect(r.pendiente).toBe(true);
+    r.cancelar(); // detenerHijos() al «Volver a intentar» o al cerrar
+    vi.advanceTimersByTime(10_000);
+    expect(lanzar).not.toHaveBeenCalled();
+    expect(r.pendiente).toBe(false);
+  });
+
+  it("programar dos veces deja uno solo", () => {
+    vi.useFakeTimers();
+    const r = new Relanzamiento();
+    const primero = vi.fn();
+    const segundo = vi.fn();
+    r.programar(primero, 3000);
+    r.programar(segundo, 3000);
+    vi.advanceTimersByTime(3000);
+    expect(primero).not.toHaveBeenCalled();
+    expect(segundo).toHaveBeenCalledTimes(1);
+    expect(r.pendiente).toBe(false);
+  });
+
+  it("el cuadro muestra los avisos esperados tal cual y un texto general para lo demás", () => {
+    expect(textoErrorArranque(new AvisoArranque("Geeper tardó demasiado en arrancar."))).toBe("Geeper tardó demasiado en arrancar.");
+    const raro = Object.assign(new Error("spawn C:\\Program Files\\Geeper\\node.exe ENOENT"), { code: "ENOENT" });
+    expect(textoErrorArranque(raro)).toBe("Algo falló al abrir Geeper.");
+    expect(textoErrorArranque("cadena suelta")).toBe("Algo falló al abrir Geeper.");
+  });
+});
+
+describe("carcasa de escritorio: la ventana no se deja engañar (SEG-07)", () => {
+  const base = "http://127.0.0.1:3300";
+
+  it("compara el origen ya interpretado, no el comienzo del texto", () => {
+    expect(esDeGeeper(base, "http://127.0.0.1:3300@otro.sitio/")).toBe(false);
+    expect(esDeGeeper(base, "http://127.0.0.1:3300.otro.sitio/")).toBe(false);
+    expect(esDeGeeper(base, "https://127.0.0.1:3300/")).toBe(false);
+    expect(esDeGeeper(base, "http://localhost:3300/")).toBe(false);
+    expect(esDeGeeper(base, "no es una dirección")).toBe(false);
+    expect(esDeGeeper(base, "http://127.0.0.1:3300?x=1")).toBe(true);
+    expect(esDeGeeper(base, "http://127.0.0.1:3300/craft/photocraft/")).toBe(true);
+  });
+
+  it("al navegador del sistema sólo van páginas web", () => {
+    expect(abrirFuera("https://github.com/")).toBe(true);
+    expect(abrirFuera("http://ejemplo.com/a?b")).toBe(true);
+    for (const malo of ["file:///C:/Windows/System32/calc.exe", "smb://servidor/compartido", "ms-settings:privacy", "javascript:alert(1)", "mailto:a@b.c", "data:text/html,hola", "nada"])
+      expect(abrirFuera(malo)).toBe(false);
+  });
+
+  it("concede sólo los permisos que usan Geeper y las apps Craft, y sólo a sus páginas", () => {
+    for (const p of ["clipboard-read", "clipboard-sanitized-write", "fileSystem", "local-fonts", "fullscreen"]) {
+      expect(concederPermiso(base, p, `${base}/craft/wordcraft/`)).toBe(true);
+      expect(concederPermiso(base, p, "https://accounts.google.com/")).toBe(false);
+    }
+    for (const p of ["media", "geolocation", "notifications", "midi", "openExternal", "display-capture", "unknown"]) expect(concederPermiso(base, p, `${base}/`)).toBe(false);
+    // Antes de arrancar el servidor no hay páginas de Geeper.
+    expect(concederPermiso("", "clipboard-read", `${base}/`)).toBe(false);
   });
 });

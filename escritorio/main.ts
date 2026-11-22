@@ -17,9 +17,24 @@ import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
-import { app, BrowserWindow, dialog, Menu, shell } from "electron";
+import { app, BrowserWindow, dialog, Menu, session, shell } from "electron";
 import { esVueltaOAuth } from "./oauth";
-import { comoRematar, entornoHijos, esDeGeeper, paginaAbriendo, permitirReinicio, plantillaMenu, registrar, rotarRegistro } from "./reglas";
+import {
+  abrirFuera,
+  AvisoArranque,
+  comoRematar,
+  concederPermiso,
+  entornoHijos,
+  esDeGeeper,
+  paginaAbriendo,
+  permitirReinicio,
+  PLAZO_APAGAR_MS,
+  plantillaMenu,
+  registrar,
+  Relanzamiento,
+  rotarRegistro,
+  textoErrorArranque,
+} from "./reglas";
 
 const RAIZ = app.isPackaged ? path.join(process.resourcesPath, "app") : path.join(__dirname, "..", "escritorio-app");
 const hijos: { nombre: string; p: ChildProcess }[] = [];
@@ -71,7 +86,8 @@ function lanzar(nombre: string, script: string, env: NodeJS.ProcessEnv, cwd = RA
         avisarWorkerCaido();
         return;
       }
-      setTimeout(() => {
+      // Uno solo a la vez; detenerHijos() lo cancela (ESC-13: si no, al «Volver a intentar» quedaban dos).
+      relanzoWorker.programar(() => {
         if (saliendo) return;
         const nuevo = lanzar(nombre, script, env, cwd);
         const i = hijos.findIndex((h) => h.nombre === nombre);
@@ -90,6 +106,7 @@ function lanzar(nombre: string, script: string, env: NodeJS.ProcessEnv, cwd = RA
 }
 
 const reiniciosWorker: number[] = [];
+const relanzoWorker = new Relanzamiento();
 
 /** El worker cayó 5 veces en 10 min: la web sigue abierta, pero los trabajos no avanzan. */
 function avisarWorkerCaido(): void {
@@ -130,7 +147,7 @@ async function esperarServidor(u: string, ms = 60_000): Promise<void> {
   const fin = Date.now() + ms;
   while (Date.now() < fin) {
     const web = hijos.find((h) => h.nombre === "web")?.p;
-    if (web && web.exitCode !== null) throw new Error("Geeper se cerró mientras arrancaba.");
+    if (web && web.exitCode !== null) throw new AvisoArranque("Geeper se cerró mientras arrancaba.");
     try {
       // Con tope: un pedido colgado no debe comerse el minuto de espera.
       const r = await fetch(`${u}/api/media`, { signal: AbortSignal.timeout(2000) });
@@ -140,14 +157,14 @@ async function esperarServidor(u: string, ms = 60_000): Promise<void> {
     }
     await new Promise((r) => setTimeout(r, 300));
   }
-  throw new Error("Geeper tardó demasiado en arrancar.");
+  throw new AvisoArranque("Geeper tardó demasiado en arrancar.");
 }
 
 function correrHasta(script: string, env: NodeJS.ProcessEnv): Promise<void> {
   return new Promise((ok, mal) => {
     const p = spawn(process.execPath, [script], { cwd: RAIZ, env, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     registrar(p, log("preparar-db"));
-    p.on("exit", (c) => (c === 0 ? ok() : mal(new Error("No se pudo preparar la base de datos de Geeper."))));
+    p.on("exit", (c) => (c === 0 ? ok() : mal(new AvisoArranque("No se pudo preparar la base de datos de Geeper."))));
   });
 }
 
@@ -182,7 +199,7 @@ function crearVentana(): void {
   // Lo que sale de Geeper (GitHub, redes, «en otra pestaña») se abre en el navegador.
   ventana.webContents.setWindowOpenHandler(({ url: destino }) => {
     if (esDeGeeper(url, destino) && !destino.includes("/craft/")) return { action: "allow" };
-    if (/^https?:\/\//.test(destino)) void shell.openExternal(destino);
+    if (abrirFuera(destino)) void shell.openExternal(destino);
     return { action: "deny" };
   });
   ventana.webContents.on("will-navigate", (e, destino) => {
@@ -194,7 +211,7 @@ function crearVentana(): void {
     }
     if (!esDeGeeper(url, destino)) {
       e.preventDefault();
-      if (/^https?:\/\//.test(destino)) void shell.openExternal(destino);
+      if (abrirFuera(destino)) void shell.openExternal(destino);
     }
   });
   // Mientras arranca el servidor, «Abriendo Geeper…»; al responder se carga la dirección (mostrarGeeper).
@@ -251,7 +268,7 @@ function abrirLogin(inicio: string): void {
   login.webContents.on("will-redirect", guiar);
   login.webContents.setWindowOpenHandler(({ url: destino }) => {
     // Enlaces de ayuda o privacidad de la red: al navegador.
-    if (destino.startsWith("https://")) void shell.openExternal(destino);
+    if (destino.startsWith("https://") && abrirFuera(destino)) void shell.openExternal(destino);
     return { action: "deny" };
   });
   void login.loadURL(inicio);
@@ -293,11 +310,13 @@ async function preguntarTrasError(titulo: string, detalle: string, reintentar: s
 }
 
 /**
- * Detiene el servidor y el worker y espera a que salgan (hasta 6 s). Se les cierra la entrada estándar
- * (vigia.mjs lo toma como Ctrl+C: el worker marca lo que corría como interrumpido y suelta la GPU); al que
- * no salió a tiempo se lo remata, con sus hijos en Windows.
+ * Detiene el servidor y el worker y espera a que salgan (hasta 14 s: el worker se toma hasta 12 s, ver
+ * PLAZO_APAGAR_MS). Se les cierra la entrada estándar (vigia.mjs lo toma como Ctrl+C: el worker marca lo
+ * que corría como interrumpido y suelta la GPU); al que no salió a tiempo se lo remata, con sus hijos en
+ * Windows.
  */
 async function detenerHijos(): Promise<void> {
+  relanzoWorker.cancelar();
   const vivos = hijos.splice(0).filter((h) => h.p.exitCode === null && h.p.signalCode === null);
   await Promise.all(
     vivos.map(
@@ -308,7 +327,7 @@ async function detenerHijos(): Promise<void> {
             if (r && "comando" in r) spawn(r.comando, r.args, { stdio: "ignore", windowsHide: true }).on("error", () => h.p.kill());
             else if (r) h.p.kill(r.senal);
             ok();
-          }, 6000);
+          }, PLAZO_APAGAR_MS);
           h.p.once("exit", () => {
             clearTimeout(tope);
             ok();
@@ -328,7 +347,17 @@ if (!app.requestSingleInstanceLock()) {
       ventana.focus();
     }
   });
+  // Ninguna ventana puede meter un <webview> (otra web con más poderes dentro de Geeper) (SEG-07).
+  app.on("web-contents-created", (_e, wc) => {
+    wc.on("will-attach-webview", (ev) => ev.preventDefault());
+  });
   app.whenReady().then(async () => {
+    // Electron concede por defecto todo permiso que una página pida: sólo los que usan Geeper y las apps
+    // Craft, y sólo a sus páginas (SEG-07). Las ventanas de inicio de sesión de las redes no reciben ninguno.
+    session.defaultSession.setPermissionRequestHandler((wc, permiso, responder, detalles) =>
+      responder(concederPermiso(url, permiso, detalles.requestingUrl || wc.getURL())),
+    );
+    session.defaultSession.setPermissionCheckHandler((_wc, permiso, desde) => concederPermiso(url, permiso, desde));
     menu();
     // La ventana sale ya, con «Abriendo Geeper…»: el arranque puede tardar varios segundos.
     crearVentana();
@@ -338,12 +367,14 @@ if (!app.requestSingleInstanceLock()) {
         mostrarGeeper();
         return;
       } catch (e) {
+        // El detalle técnico, al registro; en el cuadro, sólo un texto pensado para la persona (ESC-13).
         console.error(e);
+        log("carcasa").end(`No pudo abrir: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`);
         saliendo = true; // que los procesos que se detienen ahora no avisen ni se relancen
         await detenerHijos();
         saliendo = false;
         reiniciosWorker.length = 0;
-        const que = await preguntarTrasError("Geeper no pudo abrir", e instanceof Error ? e.message : String(e), "Volver a intentar");
+        const que = await preguntarTrasError("Geeper no pudo abrir", textoErrorArranque(e), "Volver a intentar");
         if (que === "cerrar") {
           app.quit();
           return;
