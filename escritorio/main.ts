@@ -19,7 +19,20 @@ import net from "node:net";
 import path from "node:path";
 import { app, BrowserWindow, dialog, Menu, shell } from "electron";
 import { esVueltaOAuth } from "./oauth";
-import { comoRematar, entornoHijos, esDeGeeper, paginaAbriendo, permitirReinicio, PLAZO_APAGAR_MS, plantillaMenu, registrar, rotarRegistro } from "./reglas";
+import {
+  AvisoArranque,
+  comoRematar,
+  entornoHijos,
+  esDeGeeper,
+  paginaAbriendo,
+  permitirReinicio,
+  PLAZO_APAGAR_MS,
+  plantillaMenu,
+  registrar,
+  Relanzamiento,
+  rotarRegistro,
+  textoErrorArranque,
+} from "./reglas";
 
 const RAIZ = app.isPackaged ? path.join(process.resourcesPath, "app") : path.join(__dirname, "..", "escritorio-app");
 const hijos: { nombre: string; p: ChildProcess }[] = [];
@@ -71,7 +84,8 @@ function lanzar(nombre: string, script: string, env: NodeJS.ProcessEnv, cwd = RA
         avisarWorkerCaido();
         return;
       }
-      setTimeout(() => {
+      // Uno solo a la vez; detenerHijos() lo cancela (ESC-13: si no, al «Volver a intentar» quedaban dos).
+      relanzoWorker.programar(() => {
         if (saliendo) return;
         const nuevo = lanzar(nombre, script, env, cwd);
         const i = hijos.findIndex((h) => h.nombre === nombre);
@@ -90,6 +104,7 @@ function lanzar(nombre: string, script: string, env: NodeJS.ProcessEnv, cwd = RA
 }
 
 const reiniciosWorker: number[] = [];
+const relanzoWorker = new Relanzamiento();
 
 /** El worker cayó 5 veces en 10 min: la web sigue abierta, pero los trabajos no avanzan. */
 function avisarWorkerCaido(): void {
@@ -130,7 +145,7 @@ async function esperarServidor(u: string, ms = 60_000): Promise<void> {
   const fin = Date.now() + ms;
   while (Date.now() < fin) {
     const web = hijos.find((h) => h.nombre === "web")?.p;
-    if (web && web.exitCode !== null) throw new Error("Geeper se cerró mientras arrancaba.");
+    if (web && web.exitCode !== null) throw new AvisoArranque("Geeper se cerró mientras arrancaba.");
     try {
       // Con tope: un pedido colgado no debe comerse el minuto de espera.
       const r = await fetch(`${u}/api/media`, { signal: AbortSignal.timeout(2000) });
@@ -140,14 +155,14 @@ async function esperarServidor(u: string, ms = 60_000): Promise<void> {
     }
     await new Promise((r) => setTimeout(r, 300));
   }
-  throw new Error("Geeper tardó demasiado en arrancar.");
+  throw new AvisoArranque("Geeper tardó demasiado en arrancar.");
 }
 
 function correrHasta(script: string, env: NodeJS.ProcessEnv): Promise<void> {
   return new Promise((ok, mal) => {
     const p = spawn(process.execPath, [script], { cwd: RAIZ, env, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     registrar(p, log("preparar-db"));
-    p.on("exit", (c) => (c === 0 ? ok() : mal(new Error("No se pudo preparar la base de datos de Geeper."))));
+    p.on("exit", (c) => (c === 0 ? ok() : mal(new AvisoArranque("No se pudo preparar la base de datos de Geeper."))));
   });
 }
 
@@ -299,6 +314,7 @@ async function preguntarTrasError(titulo: string, detalle: string, reintentar: s
  * Windows.
  */
 async function detenerHijos(): Promise<void> {
+  relanzoWorker.cancelar();
   const vivos = hijos.splice(0).filter((h) => h.p.exitCode === null && h.p.signalCode === null);
   await Promise.all(
     vivos.map(
@@ -339,12 +355,14 @@ if (!app.requestSingleInstanceLock()) {
         mostrarGeeper();
         return;
       } catch (e) {
+        // El detalle técnico, al registro; en el cuadro, sólo un texto pensado para la persona (ESC-13).
         console.error(e);
+        log("carcasa").end(`No pudo abrir: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`);
         saliendo = true; // que los procesos que se detienen ahora no avisen ni se relancen
         await detenerHijos();
         saliendo = false;
         reiniciosWorker.length = 0;
-        const que = await preguntarTrasError("Geeper no pudo abrir", e instanceof Error ? e.message : String(e), "Volver a intentar");
+        const que = await preguntarTrasError("Geeper no pudo abrir", textoErrorArranque(e), "Volver a intentar");
         if (que === "cerrar") {
           app.quit();
           return;

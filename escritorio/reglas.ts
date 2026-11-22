@@ -104,6 +104,38 @@ export function permitirReinicio(historial: number[], ahora: number, max = 5, ve
   return true;
 }
 
+/**
+ * Un relanzamiento programado del worker (ESC-13). Programar otro cancela el anterior y `cancelar()` lo
+ * quita: si la app se reinicia (o se cierra) mientras espera, no queda un worker viejo por lanzarse además
+ * del nuevo.
+ */
+export class Relanzamiento {
+  private tope: ReturnType<typeof setTimeout> | null = null;
+  programar(fn: () => void, ms: number): void {
+    this.cancelar();
+    this.tope = setTimeout(() => {
+      this.tope = null;
+      fn();
+    }, ms);
+  }
+  cancelar(): void {
+    if (this.tope) clearTimeout(this.tope);
+    this.tope = null;
+  }
+  get pendiente(): boolean {
+    return this.tope !== null;
+  }
+}
+
+/** Error de arranque con un texto pensado para la persona: se muestra tal cual en el cuadro (ESC-13). */
+export class AvisoArranque extends Error {}
+
+/** Lo que dice el cuadro «Geeper no pudo abrir»: el texto del aviso si es uno de los esperados; si no, uno general. */
+export function textoErrorArranque(e: unknown): string {
+  if (e instanceof AvisoArranque) return e.message;
+  return "Algo falló al abrir Geeper.";
+}
+
 /** ¿`destino` es una página de Geeper (`base` = http://127.0.0.1:<puerto>)? Sin base todavía, nada lo es. */
 export function esDeGeeper(base: string, destino: string): boolean {
   return base !== "" && (destino === base || destino.startsWith(`${base}/`) || destino.startsWith(`${base}?`));

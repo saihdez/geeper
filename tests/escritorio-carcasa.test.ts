@@ -1,10 +1,21 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { MenuItemConstructorOptions } from "electron";
-import { comoTermino, esDeGeeper, paginaAbriendo, permitirReinicio, plantillaMenu, registrar, rotarRegistro } from "../escritorio/reglas";
+import {
+  AvisoArranque,
+  comoTermino,
+  esDeGeeper,
+  paginaAbriendo,
+  permitirReinicio,
+  plantillaMenu,
+  registrar,
+  Relanzamiento,
+  rotarRegistro,
+  textoErrorArranque,
+} from "../escritorio/reglas";
 
 describe("carcasa de escritorio: registros (ESC-14)", () => {
   it("guarda salida y errores completos y anota con qué código terminó, sin escribir tras cerrar", async () => {
@@ -98,5 +109,41 @@ describe("carcasa de escritorio: reinicios del worker (ESC-03)", () => {
     for (let i = 0; i < 5; i++) permitirReinicio(h, t0 + i);
     expect(permitirReinicio(h, t0 + 10 * 60_000 + 10)).toBe(true);
     expect(h).toEqual([t0 + 10 * 60_000 + 10]);
+  });
+});
+
+describe("carcasa de escritorio: relanzar el worker y avisos de arranque (ESC-13)", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("cancelar el relanzamiento programado evita un segundo worker", () => {
+    vi.useFakeTimers();
+    const r = new Relanzamiento();
+    const lanzar = vi.fn();
+    r.programar(lanzar, 3000);
+    expect(r.pendiente).toBe(true);
+    r.cancelar(); // detenerHijos() al «Volver a intentar» o al cerrar
+    vi.advanceTimersByTime(10_000);
+    expect(lanzar).not.toHaveBeenCalled();
+    expect(r.pendiente).toBe(false);
+  });
+
+  it("programar dos veces deja uno solo", () => {
+    vi.useFakeTimers();
+    const r = new Relanzamiento();
+    const primero = vi.fn();
+    const segundo = vi.fn();
+    r.programar(primero, 3000);
+    r.programar(segundo, 3000);
+    vi.advanceTimersByTime(3000);
+    expect(primero).not.toHaveBeenCalled();
+    expect(segundo).toHaveBeenCalledTimes(1);
+    expect(r.pendiente).toBe(false);
+  });
+
+  it("el cuadro muestra los avisos esperados tal cual y un texto general para lo demás", () => {
+    expect(textoErrorArranque(new AvisoArranque("Geeper tardó demasiado en arrancar."))).toBe("Geeper tardó demasiado en arrancar.");
+    const raro = Object.assign(new Error("spawn C:\\Program Files\\Geeper\\node.exe ENOENT"), { code: "ENOENT" });
+    expect(textoErrorArranque(raro)).toBe("Algo falló al abrir Geeper.");
+    expect(textoErrorArranque("cadena suelta")).toBe("Algo falló al abrir Geeper.");
   });
 });
