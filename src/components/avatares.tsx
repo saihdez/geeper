@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { escribirEstadoAsistente, leerEstadoAsistente, pedidoAvatar, puedeCrearAvatar, volverSeguro, type EstadoAsistente, type TextosAvatar } from "@/lib/asistente-avatar";
+import { cancelarAlSalir, escribirEstadoAsistente, leerEstadoAsistente, pedidoAvatar, puedeCrearAvatar, volverSeguro, type EstadoAsistente, type TextosAvatar } from "@/lib/asistente-avatar";
 import { Aviso, Barra, pedir, postJson, useSondeo } from "./comun";
 import { ElegirVozAvatar, type VozElegida } from "./elegir-voz-avatar";
 
@@ -226,7 +226,7 @@ function Crear({ datos, inicial, cerrar, alGuardar }: { datos: Datos; inicial: E
 
   /** Con las opciones dibujándose, «Cancelar» lo pregunta y para el trabajo (no deja la tarjeta ocupada a escondidas). */
   async function cancelar() {
-    if (pedido && avance && enCurso(avance.estado)) {
+    if (pedido && cancelarAlSalir(pedido, avance?.estado)) {
       if (!confirm("¿Dejar de dibujar? Se pierde lo que lleva.")) return;
       try {
         await postJson(`/api/trabajos/${pedido.trabajo}`, { accion: "cancelar" });

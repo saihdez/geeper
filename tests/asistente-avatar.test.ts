@@ -1,6 +1,6 @@
 /** UX-13: el asistente de avatares se retoma desde la URL y los retoques fallidos se ven en la biblioteca. */
 import { describe, expect, it, vi } from "vitest";
-import { enlaceAvatares, escribirEstadoAsistente, leerEstadoAsistente, pedidoAvatar, puedeCrearAvatar, retoquesVisibles, volverSeguro } from "@/lib/asistente-avatar";
+import { cancelarAlSalir, enlaceAvatares, escribirEstadoAsistente, leerEstadoAsistente, pedidoAvatar, puedeCrearAvatar, retoquesVisibles, volverSeguro } from "@/lib/asistente-avatar";
 
 describe("estado del asistente en la URL (UX-13)", () => {
   it("lee propuesta, trabajo y toma; rechaza lo que no tiene la forma esperada", () => {
@@ -17,6 +17,20 @@ describe("estado del asistente en la URL (UX-13)", () => {
     expect(new URLSearchParams(q).get("volver")).toBe("/proyectos/p1");
     expect(escribirEstadoAsistente(q, null)).toBe("?volver=%2Fproyectos%2Fp1");
     expect(escribirEstadoAsistente("?propuesta=ab&trabajo=t1", null)).toBe("");
+  });
+});
+
+describe("«Cancelar» del asistente (UX-13)", () => {
+  it("para el dibujo también antes de que llegue el primer avance", () => {
+    expect(cancelarAlSalir({ trabajo: "t1" }, undefined)).toBe(true);
+    expect(cancelarAlSalir({ trabajo: "t1" }, null)).toBe(true);
+    expect(cancelarAlSalir({ trabajo: "t1" }, "pendiente")).toBe(true);
+    expect(cancelarAlSalir({ trabajo: "t1" }, "corriendo")).toBe(true);
+  });
+  it("no toca un trabajo que ya terminó ni cuando no se pidió nada", () => {
+    expect(cancelarAlSalir({ trabajo: "t1" }, "hecho")).toBe(false);
+    expect(cancelarAlSalir({ trabajo: "t1" }, "fallido")).toBe(false);
+    expect(cancelarAlSalir(null, undefined)).toBe(false);
   });
 });
 
