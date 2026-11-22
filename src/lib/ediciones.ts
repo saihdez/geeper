@@ -524,3 +524,68 @@ export function limpiarAssets(p: Proyecto): Proyecto {
   for (const id of Object.keys(p.assets)) if (!usados.has(id)) delete p.assets[id];
   return p;
 }
+
+/*
+ * Voces del video (UX-12). «Regenerar voz de la escena» usa la voz ELEGIDA del proyecto (`p.voz`), que
+ * puede no ser la que suena en el resto: el video quedaba con dos voces y nadie lo avisaba. Esto sólo
+ * mira y avisa; no bloquea nada.
+ */
+
+/** Nombre comparable de una voz: «kokoro:ef_dora» (MPT) y «ef_dora» (Kokoro local) son la misma. */
+export function claveVoz(voz: string): string {
+  return voz.trim().toLowerCase().replace(/^kokoro:/, "");
+}
+
+/**
+ * Con qué voz suena cada escena (en el orden del video). `voz` es null si es una voz real (un clip, un
+ * audio propio) o si el asset no dice cuál es: ésas no cuentan para comparar.
+ */
+export function vocesDeEscenas(p: Proyecto): { escena: string; numero: number; voz: string | null }[] {
+  return pista(p, "voz").clips.map((c, i) => {
+    const a = p.assets[c.asset];
+    const sintetica = a && (a.source === "tts" || a.source === "mpt") && a.regenerar.origen !== "clip";
+    const voz = sintetica && typeof a.regenerar.voz === "string" && a.regenerar.voz.trim() ? claveVoz(a.regenerar.voz) : null;
+    return { escena: c.escena ?? "", numero: i + 1, voz };
+  });
+}
+
+/** Escenas que no suenan con la voz elegida del proyecto (para avisar que la voz elegida todavía no suena). */
+export function escenasConOtraVoz(p: Proyecto): { escena: string; numero: number; voz: string }[] {
+  const elegida = claveVoz(p.voz.voz);
+  return vocesDeEscenas(p).filter((x): x is { escena: string; numero: number; voz: string } => x.voz !== null && x.voz !== elegida);
+}
+
+const enLista = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} y ${xs[xs.length - 1]}`);
+
+/**
+ * Aviso antes de rehacer la voz de UNA escena: con la voz elegida, ¿queda distinta de las demás? Por
+ * ejemplo: «Esta escena quedará con la voz Álex y las otras 7 con Dora.» null si todo queda igual.
+ * `nombre`: cómo se llama cada voz en pantalla (de «em_alex» a «Álex»).
+ */
+export function avisoVozDeEscena(p: Proyecto, escena: string, nombre: (voz: string) => string = (v) => v): string | null {
+  const elegida = claveVoz(p.voz.voz);
+  const otras = vocesDeEscenas(p).filter((x) => x.escena !== escena && x.voz !== null);
+  const distintas = otras.filter((x) => x.voz !== elegida);
+  if (!distintas.length) return null;
+  const k = distintas.length;
+  const quienes = k === otras.length ? (k === 1 ? "la otra" : `las otras ${k}`) : k === 1 ? "otra escena" : `otras ${k} escenas`;
+  return `Esta escena quedará con la voz ${nombre(elegida)} y ${quienes} con ${enLista([...new Set(distintas.map((x) => nombre(x.voz!)))])}.`;
+}
+
+/**
+ * Aviso para la revisión final: «El video mezcla dos voces: Dora y Álex (escena 8).» Las escenas que se
+ * nombran son las que no tienen la voz más usada. null si todas suenan con la misma.
+ */
+export function avisoMezclaVoces(p: Proyecto, nombre: (voz: string) => string = (v) => v): string | null {
+  const con = vocesDeEscenas(p).filter((x): x is { escena: string; numero: number; voz: string } => x.voz !== null);
+  const cuenta = new Map<string, number>();
+  for (const x of con) cuenta.set(x.voz, (cuenta.get(x.voz) ?? 0) + 1);
+  if (cuenta.size < 2) return null;
+  const elegida = claveVoz(p.voz.voz);
+  // La más usada; si empatan, la elegida del proyecto.
+  const principal = [...cuenta.entries()].sort((a, b) => b[1] - a[1] || Number(b[0] === elegida) - Number(a[0] === elegida))[0]![0];
+  const resto = con.filter((x) => x.voz !== principal).map((x) => x.numero);
+  const cuantas = cuenta.size === 2 ? "dos" : String(cuenta.size);
+  const voces = enLista([principal, ...[...cuenta.keys()].filter((v) => v !== principal)].map(nombre));
+  return `El video mezcla ${cuantas} voces: ${voces} (${resto.length === 1 ? "escena" : "escenas"} ${enLista(resto.map(String))}).`;
+}
