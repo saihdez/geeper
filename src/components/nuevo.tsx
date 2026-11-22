@@ -30,7 +30,9 @@ export function Nuevo() {
           <span className="block text-xs text-tenue">Saca clips de un directo, VOD o grabación.</span>
         </Link>
       </div>
-      {modo === "web" ? <FormDemo /> : <FormNuevo />}
+      {/* Los dos quedan montados (UX-42): cambiar de tarjeta no borra lo que ya se escribió. */}
+      <div hidden={modo !== "tema"}><FormNuevo /></div>
+      <div hidden={modo !== "web"}><FormDemo /></div>
     </div>
   );
 }
