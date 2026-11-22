@@ -252,12 +252,14 @@ export function revisarSubtitulos(formato: Formato, grupos: Grupo[], finSubs: nu
 export async function hojaDeContacto(archivo: string, momentos: { t: number; nota: string }[], dirSalida: string, log: Registro) {
   await fs.rm(dirSalida, { recursive: true, force: true });
   await fs.mkdir(dirSalida, { recursive: true });
-  const fotos: { t: number; ruta: string; nota: string }[] = [];
-  for (const [i, m] of momentos.entries()) {
-    const ruta = path.join(dirSalida, `${String(i + 1).padStart(2, "0")}.jpg`);
-    await fotograma(archivo, m.t, ruta, 360);
-    fotos.push({ t: m.t, ruta, nota: m.nota });
-  }
+  // Cada fotograma es un ffmpeg con -ss rápido: se sacan a la vez (REN-11).
+  const fotos = await Promise.all(
+    momentos.map(async (m, i) => {
+      const ruta = path.join(dirSalida, `${String(i + 1).padStart(2, "0")}.jpg`);
+      await fotograma(archivo, m.t, ruta, 360);
+      return { t: m.t, ruta, nota: m.nota };
+    }),
+  );
   const cols = Math.min(6, fotos.length);
   const filas = Math.ceil(fotos.length / cols);
   const hoja = path.join(dirSalida, "hoja.jpg");
@@ -384,11 +386,19 @@ export function reglaRitmo(r: Ritmo | null | undefined): Regla | null {
 export async function correrQc(archivo: string, esp: Esperado, dirHoja: string, log: Registro): Promise<InformeQc> {
   const m = metricas(esp.formato, { plataformas: esp.plataformas });
   const fps = esp.fps ?? OBJETIVO.fps;
-  const info = await probar(archivo);
+  // Las mediciones leen el mismo archivo y no dependen entre sí: van a la vez, con la hoja de
+  // contacto (REN-11). Antes iban en serie: ~5 s por render, casi todo el re-render sin cambios.
+  const [info, s, fotogramas, dups, todosCongelados, hoja] = await Promise.all([
+    probar(archivo),
+    // Sonoridad (segunda medición, sobre el archivo ya corregido).
+    medirSonoridad(archivo, log),
+    contarFotogramas(archivo),
+    duplicados(archivo, esp.inicioTarjeta, fps),
+    congelados(archivo, esp.inicioTarjeta),
+    hojaDeContacto(archivo, esp.momentos, dirHoja, log),
+  ]);
   const reglas: Regla[] = [];
 
-  // Sonoridad (segunda medición, sobre el archivo ya corregido).
-  const s = await medirSonoridad(archivo, log);
   const lufs = Number(s.input_i);
   const tp = Number(s.input_tp);
   reglas.push({
@@ -407,7 +417,6 @@ export async function correrQc(archivo: string, esp: Esperado, dirHoja: string, 
   });
 
   // Integridad.
-  const fotogramas = await contarFotogramas(archivo);
   const esperados = Math.round(esp.total * fps);
   reglas.push({
     id: "resolucion", nombre: "Resolución", ok: info.ancho === m.W && info.alto === m.H,
@@ -426,9 +435,8 @@ export async function correrQc(archivo: string, esp: Esperado, dirHoja: string, 
     id: "fotogramas", nombre: "Fotogramas (caídos o de más)", ok: Math.abs(fotogramas - esperados) <= 2,
     medido: fotogramas, objetivo: `${esperados} ± 2`,
   });
-  const dups = await duplicados(archivo, esp.inicioTarjeta, fps);
   const ratio = dups.entrada ? 1 - dups.salida / dups.entrada : 0;
-  const cong = (await congelados(archivo, esp.inicioTarjeta)).filter((c) => c.dur >= OBJETIVO.maxCongelado);
+  const cong = todosCongelados.filter((c) => c.dur >= OBJETIVO.maxCongelado);
   reglas.push(...reglasDuplicados(ratio, cong, esp.duplicadosEsperados ?? 0, esp.duplicadosAviso === true));
 
   // Subtítulos.
@@ -475,7 +483,6 @@ export async function correrQc(archivo: string, esp: Esperado, dirHoja: string, 
   if (ampliacion) reglas.push(ampliacion);
   reglas.push(...(esp.extras ?? []));
 
-  const hoja = await hojaDeContacto(archivo, esp.momentos, dirHoja, log);
   return {
     aprobado: reglas.every((r) => r.ok || r.aviso),
     archivo,
