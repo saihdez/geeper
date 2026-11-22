@@ -1,5 +1,5 @@
 /**
- * Render de entrega de una versión: mezcla → compilar → hyperframes check → render → loudnorm
+ * Render de entrega de una versión: mezcla → compilar → hyperframes check y render (a la vez, REN-12) → loudnorm
  * (corrige) → QC (mide). Cada tramo es un paso con manifiesto: si se corta, al relanzar se saltan
  * los terminados.
  */
@@ -25,6 +25,7 @@ import { asegurarPicoReal, correrQc, duplicadosEsperados, ENTREGA, normalizarAud
 import { HYPERFRAMES_VERSION, dirProyecto } from "./rutas";
 import { correrHf } from "./hyperframes";
 import { leerCheck, type ResumenCheck } from "./render-check";
+import { checkALaVez, checkYRender } from "./render-paralelo";
 import { banderasRender, hayNvidia, renderConRespaldo } from "./render-gpu";
 import { SISTEMA } from "./plataforma";
 import { origenClip, reglaClip } from "./clips";
@@ -124,8 +125,16 @@ export async function renderEntregar(
     },
     final,
     async () => {
-      const check = await revisarHf(ctx, dir, dirBuild, p.formato, archivosComp, huella);
-      const gpu = await renderCrudo(ctx, fila.slug, dirBuild, crudo, p.fps, entradasCaptura(archivosComp, rutaMezcla), huella);
+      // REN-12: check y render a la vez; el check va en su propia copia (enlaces duros) para no
+      // compartir el estado `.hyperframes` con el render. Si el check trae errores, corta el render.
+      const aLaVez = checkALaVez();
+      const dirCheck = aLaVez ? `${dirBuild}-check` : dirBuild;
+      if (aLaVez) await escribirProyectoHf(dirCheck, comp);
+      const { check, render: gpu } = await checkYRender(
+        (signal) => revisarHf({ ...ctx, signal }, dir, dirCheck, p.formato, archivosComp, huella),
+        (signal) => renderCrudo({ ...ctx, signal }, fila.slug, dirBuild, crudo, p.fps, entradasCaptura(archivosComp, rutaMezcla), huella),
+        { signal: ctx.signal, aLaVez },
+      );
       // 5. Entrega: loudnorm en dos pasadas y, en la misma pasada, la codificación liviana del video (ENTREGA).
       // El sonido sale de la mezcla en WAV, no del crudo (REN-07).
       await ctx.etapa("Normalizando sonoridad", 0.8);
