@@ -18,7 +18,7 @@ import { SelectorEncuadre, type EncuadreV } from "./selector-encuadre";
 import { PanelOtroEditor } from "./panel-otro-editor";
 import { useAccionesProyecto } from "./acciones-proyecto";
 import { FranjaAviso, type MensajeEditor } from "./franja-aviso";
-import { correccionesVacias, errorSubtitulo } from "./editor-estado";
+import { correccionesVacias, errorSubtitulo, mismoContenido } from "./editor-estado";
 import { EdicionPorTexto, EfectosEscena, PanelAvanzado, PanelEstilo, type EfectosV, type EstiloV, type ExtrasV, type PalabraV } from "./edicion-avanzada";
 
 /** Miniatura de una escena (la misma que su tarjeta). */
@@ -67,7 +67,7 @@ interface Render {
 interface Vista {
   fila: {
     id: string; slug: string; nombre: string; tema: string; formato: string; plantilla: string; estado: string; versionActual: number;
-    versiones: { numero: number; nota: string; creado: string }[];
+    versiones: { numero: number; nota: string; creado: string; hash?: string | null }[];
     renders: Render[];
     trabajos: { tipo: string; estado: string }[];
     lote: { nombre: string } | null;
@@ -406,8 +406,11 @@ export function EditorProyecto({ id }: { id: string }) {
   if (!v) return <p className="text-tenue">Cargando…</p>;
   const { fila, p, escenas } = v;
   const render = fila.renders[0];
+  // UX-21: «al día» por contenido (hash), no por número de versión.
+  const alDia = (numero: number) => mismoContenido(fila.versiones, numero, fila.versionActual);
+  const renderAlDia = !!render && alDia(render.versionNumero);
   // Por defecto: el render si está al día; si hay cambios sin renderizar, la vista en vivo.
-  const modo = pestana ?? (render && render.versionNumero === fila.versionActual ? "render" : "vivo");
+  const modo = pestana ?? (renderAlDia ? "render" : "vivo");
   const activos = fila.trabajos.filter((t) => t.estado === "pendiente" || t.estado === "corriendo");
   const avisoRapidos = avisoSubtitulosRapidos(v.subtitulosRapidos);
   const textoMostrar = mostrarTxt ?? (p?.mostrar ?? []).map((m) => `${m.de}=${m.a}`).join("\n");
@@ -428,7 +431,9 @@ export function EditorProyecto({ id }: { id: string }) {
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Estado valor={fila.estado} />
+          {fila.estado === "entregado" && render && !renderAlDia
+            ? <span className="inline-block rounded-full bg-amber-800 px-2 py-0.5 text-xs font-medium text-amber-100">Con cambios sin exportar</span>
+            : <Estado valor={fila.estado} />}
           <button type="button" className="boton boton-primario" disabled={ocupado || !p} onClick={() => void renderizar()}>Renderizar (sin GPU para generar)</button>
         </div>
       </header>
@@ -484,7 +489,7 @@ export function EditorProyecto({ id }: { id: string }) {
                 <div className="flex flex-wrap items-center gap-2 text-sm">
                   <Estado valor={render.estado} />
                   <span className="text-tenue">v{render.versionNumero} · {render.perfil} · {segundos(render.duracion)} · render en {segundos(render.segundos)}</span>
-                  {render.versionNumero !== fila.versionActual && <span className="text-amber-300">Hay cambios sin renderizar</span>}
+                  {!renderAlDia && <span className="text-amber-300">Hay cambios sin renderizar</span>}
                   {render.estado === "aprobado"
                     ? <>
                         <a className="boton ml-auto" href={archivo(`${fila.slug}/${render.ruta}`, true)}>Descargar MP4</a>
@@ -559,7 +564,7 @@ export function EditorProyecto({ id }: { id: string }) {
 
       {p && !v.extras?.clip && <PanelPresentador proyectoId={id} escenas={escenas.map((e) => ({ id: e.id, numero: e.indice + 1, texto: e.texto }))} ocupado={ocupado} alCambiar={() => void recargar()} usarVoz={usarVoz} />}
 
-      {p && <PanelPortada proyectoId={id} nombre={fila.nombre} version={fila.versionActual} vertical={fila.formato === "9:16"} />}
+      {p && <PanelPortada proyectoId={id} nombre={fila.nombre} version={fila.versionActual} vertical={fila.formato === "9:16"} alDia={alDia} />}
 
       {render?.estado === "aprobado" ? (
         <PanelPublicar proyectoId={id} render={render} nombre={fila.nombre} tema={v.extras?.clip?.descripcion || fila.tema} publicaciones={fila.publicaciones} alCambiar={() => void recargar()} />
