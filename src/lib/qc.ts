@@ -84,6 +84,11 @@ export interface Esperado {
    * imágenes fijas sin movimiento): se suma al tope de duplicados. Ver `duplicadosEsperados`.
    */
   duplicadosEsperados?: number;
+  /**
+   * Clips de material ajeno: la proporción de cuadros repetidos sólo avisa; sigue bloqueando un
+   * congelado de 1 s o más (`reglasDuplicados`).
+   */
+  duplicadosAviso?: boolean;
 }
 
 /**
@@ -138,18 +143,29 @@ export const ENTREGA = {
 /**
  * Segunda pasada de loudnorm (lineal, con las medidas de la primera) a −14 LUFS / −2 dBTP y, en la
  * misma pasada, la codificación de entrega del video (ver ENTREGA).
+ *
+ * Con `audio` (REN-07) el sonido sale de ese archivo (la mezcla en WAV) y del render sólo se toma el
+ * video: así un cambio de audio no obliga a volver a capturar, y el sonido pasa una sola vez por AAC.
+ * El audio se rellena con silencio o se corta para que dure lo mismo que el video.
  */
-export async function normalizarAudio(entrada: string, salida: string, log: Registro, fps: number = OBJETIVO.fps): Promise<Sonoridad> {
-  const m = await medirSonoridad(entrada, log);
+export async function normalizarAudio(entrada: string, salida: string, log: Registro, fps: number = OBJETIVO.fps, audio?: string): Promise<Sonoridad> {
+  const m = await medirSonoridad(audio ?? entrada, log);
+  const fuente = audio
+    ? await (async () => {
+        const info = await probar(entrada);
+        const dur = Number(info.video?.duration) || info.duracion;
+        return ["-i", entrada, "-i", audio, "-map", "0:v:0", "-map", "1:a:0", "-t", dur.toFixed(3)];
+      })()
+    : ["-i", entrada, "-map", "0:v:0", "-map", "0:a:0"];
   await ffmpeg([
-    "-v", "error", "-i", entrada, "-map", "0:v:0", "-map", "0:a:0",
+    "-v", "error", ...fuente,
     "-c:v", "libx264", "-preset", ENTREGA.preset, "-crf", String(ENTREGA.crf), "-profile:v", "high",
     "-pix_fmt", "yuv420p", "-g", String(ENTREGA.gopSegundos * fps), "-fps_mode", "passthrough",
     "-maxrate", ENTREGA.maxrate, "-bufsize", ENTREGA.bufsize,
     "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-color_range", "tv",
     "-af",
     `loudnorm=I=${OBJETIVO.lufs}:TP=-2:LRA=11:measured_I=${m.input_i}:measured_TP=${m.input_tp}:` +
-      `measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true,aresample=48000`,
+      `measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true,aresample=48000${audio ? ",apad" : ""}`,
     // -aac_pns 0: el AAC nativo convierte pasajes suaves en chasquidos con PNS (truco de explainroo).
     "-c:a", "aac", "-b:a", `${ENTREGA.audioKbps}k`, "-aac_pns", "0", "-ar", "48000",
     "-movflags", "+faststart", "-f", "mp4", salida,
@@ -247,12 +263,14 @@ export function revisarSubtitulos(formato: Formato, grupos: Grupo[], finSubs: nu
 export async function hojaDeContacto(archivo: string, momentos: { t: number; nota: string }[], dirSalida: string, log: Registro) {
   await fs.rm(dirSalida, { recursive: true, force: true });
   await fs.mkdir(dirSalida, { recursive: true });
-  const fotos: { t: number; ruta: string; nota: string }[] = [];
-  for (const [i, m] of momentos.entries()) {
-    const ruta = path.join(dirSalida, `${String(i + 1).padStart(2, "0")}.jpg`);
-    await fotograma(archivo, m.t, ruta, 360);
-    fotos.push({ t: m.t, ruta, nota: m.nota });
-  }
+  // Cada fotograma es un ffmpeg con -ss rápido: se sacan a la vez (REN-11).
+  const fotos = await Promise.all(
+    momentos.map(async (m, i) => {
+      const ruta = path.join(dirSalida, `${String(i + 1).padStart(2, "0")}.jpg`);
+      await fotograma(archivo, m.t, ruta, 360);
+      return { t: m.t, ruta, nota: m.nota };
+    }),
+  );
   const cols = Math.min(6, fotos.length);
   const filas = Math.ceil(fotos.length / cols);
   const hoja = path.join(dirSalida, "hoja.jpg");
@@ -330,6 +348,39 @@ export function reglaAmpliacion(lista: Ampliacion[] | undefined): Regla | null {
   };
 }
 
+/**
+ * Fotogramas repetidos y congelados antes de la tarjeta. En un proyecto propio, pasarse de la
+ * proporción bloquea. En un clip de material ajeno (`enClip`), el video original puede moverse poco
+ * (fotos con voz, diapositivas, pantalla en pausa) y al entrar achicado con fondo borroso se repiten
+ * más cuadros: la proporción sólo avisa y lo que bloquea es un congelado de 1 s o más (REN-02).
+ */
+export function reglasDuplicados(ratio: number, cong: { inicio: number; dur: number }[], esperadoDup: number, enClip: boolean): Regla[] {
+  const topeDup = Math.min(1, OBJETIVO.maxDuplicados + esperadoDup);
+  const proporcion = Number(ratio.toFixed(3));
+  const delMaterial = esperadoDup ? { delMaterial: Number(esperadoDup.toFixed(3)) } : {};
+  const tope = `≤ ${Math.round(topeDup * 100)} %${esperadoDup ? ` (${OBJETIVO.maxDuplicados * 100} % + lo que ya repite el material)` : ""}`;
+  const sinCongelados = `sin congelados de ≥ ${OBJETIVO.maxCongelado} s`;
+  if (!enClip) {
+    return [{
+      id: "duplicados", nombre: "Fotogramas duplicados (antes de la tarjeta final)", ok: ratio <= topeDup && cong.length === 0,
+      medido: { proporcion, congelados: cong, ...delMaterial },
+      objetivo: `${tope} y ${sinCongelados}`,
+    }];
+  }
+  return [
+    {
+      id: "duplicados", nombre: "Imagen congelada (antes de la tarjeta final)", ok: cong.length === 0,
+      medido: { congelados: cong }, objetivo: sinCongelados,
+      detalle: cong.map((c) => `Congelada ${c.dur.toFixed(1)} s desde el segundo ${c.inicio.toFixed(1)}`).join("\n") || undefined,
+    },
+    {
+      id: "duplicados-material", nombre: "Partes con poco movimiento", ok: ratio <= topeDup, aviso: true,
+      medido: { proporcion, ...delMaterial }, objetivo: `${tope} (aviso: el video original puede moverse poco)`,
+      detalle: ratio <= topeDup ? undefined : "Hay partes donde la imagen casi no se mueve. Si tu video original es así, está bien.",
+    },
+  ];
+}
+
 /** Ritmo: qué parte de los cortes cae en un pulso de la música. Informativo (aviso). */
 export function reglaRitmo(r: Ritmo | null | undefined): Regla | null {
   if (!r || r.cortes === 0) return null;
@@ -346,11 +397,19 @@ export function reglaRitmo(r: Ritmo | null | undefined): Regla | null {
 export async function correrQc(archivo: string, esp: Esperado, dirHoja: string, log: Registro): Promise<InformeQc> {
   const m = metricas(esp.formato, { plataformas: esp.plataformas });
   const fps = esp.fps ?? OBJETIVO.fps;
-  const info = await probar(archivo);
+  // Las mediciones leen el mismo archivo y no dependen entre sí: van a la vez, con la hoja de
+  // contacto (REN-11). Antes iban en serie: ~5 s por render, casi todo el re-render sin cambios.
+  const [info, s, fotogramas, dups, todosCongelados, hoja] = await Promise.all([
+    probar(archivo),
+    // Sonoridad (segunda medición, sobre el archivo ya corregido).
+    medirSonoridad(archivo, log),
+    contarFotogramas(archivo),
+    duplicados(archivo, esp.inicioTarjeta, fps),
+    congelados(archivo, esp.inicioTarjeta),
+    hojaDeContacto(archivo, esp.momentos, dirHoja, log),
+  ]);
   const reglas: Regla[] = [];
 
-  // Sonoridad (segunda medición, sobre el archivo ya corregido).
-  const s = await medirSonoridad(archivo, log);
   const lufs = Number(s.input_i);
   const tp = Number(s.input_tp);
   reglas.push({
@@ -369,7 +428,6 @@ export async function correrQc(archivo: string, esp: Esperado, dirHoja: string, 
   });
 
   // Integridad.
-  const fotogramas = await contarFotogramas(archivo);
   const esperados = Math.round(esp.total * fps);
   reglas.push({
     id: "resolucion", nombre: "Resolución", ok: info.ancho === m.W && info.alto === m.H,
@@ -388,16 +446,9 @@ export async function correrQc(archivo: string, esp: Esperado, dirHoja: string, 
     id: "fotogramas", nombre: "Fotogramas (caídos o de más)", ok: Math.abs(fotogramas - esperados) <= 2,
     medido: fotogramas, objetivo: `${esperados} ± 2`,
   });
-  const dups = await duplicados(archivo, esp.inicioTarjeta, fps);
   const ratio = dups.entrada ? 1 - dups.salida / dups.entrada : 0;
-  const esperadoDup = esp.duplicadosEsperados ?? 0;
-  const topeDup = Math.min(1, OBJETIVO.maxDuplicados + esperadoDup);
-  const cong = (await congelados(archivo, esp.inicioTarjeta)).filter((c) => c.dur >= OBJETIVO.maxCongelado);
-  reglas.push({
-    id: "duplicados", nombre: "Fotogramas duplicados (antes de la tarjeta final)", ok: ratio <= topeDup && cong.length === 0,
-    medido: { proporcion: Number(ratio.toFixed(3)), congelados: cong, ...(esperadoDup ? { delMaterial: Number(esperadoDup.toFixed(3)) } : {}) },
-    objetivo: `≤ ${Math.round(topeDup * 100)} %${esperadoDup ? ` (${OBJETIVO.maxDuplicados * 100} % + lo que ya repite el material)` : ""} y sin congelados de ≥ ${OBJETIVO.maxCongelado} s`,
-  });
+  const cong = todosCongelados.filter((c) => c.dur >= OBJETIVO.maxCongelado);
+  reglas.push(...reglasDuplicados(ratio, cong, esp.duplicadosEsperados ?? 0, esp.duplicadosAviso === true));
 
   // Subtítulos.
   const sub = revisarSubtitulos(esp.formato, esp.grupos, esp.inicioTarjeta, esp.plataformas);
@@ -443,7 +494,6 @@ export async function correrQc(archivo: string, esp: Esperado, dirHoja: string, 
   if (ampliacion) reglas.push(ampliacion);
   reglas.push(...(esp.extras ?? []));
 
-  const hoja = await hojaDeContacto(archivo, esp.momentos, dirHoja, log);
   return {
     aprobado: reglas.every((r) => r.ok || r.aviso),
     archivo,

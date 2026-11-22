@@ -80,6 +80,29 @@ describe("instalador de apps Craft", () => {
     expect((await bajar("https://x/y", 3, 1)).status).toBe(404);
     expect(n).toBe(1);
   });
+
+  it("bajar avisa el avance por trozos mientras descarga (TER-03)", async () => {
+    vi.stubGlobal("fetch", async () => {
+      const trozos = [new Uint8Array(3_000_000), new Uint8Array(2_000_000)];
+      const cuerpo = new ReadableStream<Uint8Array>({
+        pull(c) {
+          const t = trozos.shift();
+          if (t) c.enqueue(t);
+          else c.close();
+        },
+      });
+      return new Response(cuerpo, { headers: { "content-length": "5000000" } });
+    });
+    const avances: [number, number][] = [];
+    const r = await bajar("https://x/y", 3, 1, (b, t) => avances.push([b, t]));
+    expect((await r.arrayBuffer()).byteLength).toBe(5_000_000);
+    expect(avances[0]).toEqual([0, 5_000_000]);
+    expect(avances.at(-1)).toEqual([5_000_000, 5_000_000]);
+    expect(avances.length).toBeGreaterThanOrEqual(3);
+    const { estadoDescarga } = await import("@/lib/instalar-craft");
+    expect(estadoDescarga(40e6, 158e6)).toMatchObject({ progreso: 40 / 158, detalle: "Descargando 40 de 158 MB…" });
+    expect(estadoDescarga(40e6, 0).detalle).toBe("Descargando 40 MB…");
+  });
 });
 
 describe("carpeta raíz del archivo", () => {

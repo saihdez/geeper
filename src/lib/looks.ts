@@ -155,6 +155,19 @@ export async function lutDe(c: AjustesColor, niveles: Niveles | null, log?: Regi
   return destino;
 }
 
+/**
+ * Filtro lut3d y carpeta desde la que correr ffmpeg (ESC-09). La ruta absoluta no va dentro del filtro:
+ * en Windows lleva «C:» y barras invertidas, que el analizador de filtros de ffmpeg toma como
+ * separador y como escape. ffmpeg corre en la carpeta de la LUT y el filtro nombra sólo el archivo
+ * (`<hash>.cube`, letras y números).
+ */
+export function filtroLut(lut: string): { filtro: string; cwd: string } {
+  const corte = Math.max(lut.lastIndexOf("/"), lut.lastIndexOf("\\"));
+  const nombre = lut.slice(corte + 1);
+  if (!/^[\w.-]+$/.test(nombre)) throw new Error(`Nombre de LUT inesperado: ${nombre}`);
+  return { filtro: `lut3d=file=${nombre}`, cwd: corte >= 0 ? lut.slice(0, corte) || lut.slice(0, 1) : "." };
+}
+
 /** Niveles automáticos de un asset, guardados por su hash (leer 3 fotogramas cuesta ~0,3 s por clip). */
 async function nivelesDe(a: Asset, origen: string, dirProyecto: string): Promise<Niveles | null> {
   const cache = path.join(dirProyecto, "assets", "color", `niveles-${a.hash.slice(0, 16)}-v${VERSION_COLOR}.json`);
@@ -195,13 +208,13 @@ export async function prepararColor(p: Proyecto, dirProyecto: string, c: Ajustes
       await fs.mkdir(path.dirname(destino), { recursive: true });
       // Temporal único: el render y la vista previa pueden preparar el mismo clip a la vez.
       const tmp = `${destino}.tmp-${process.pid}-${Math.random().toString(36).slice(2, 8)}${ext}`;
-      const filtro = `lut3d=file='${lut.replace(/'/g, "'\\''")}'`;
+      const { filtro, cwd } = filtroLut(lut);
       try {
         if (a.tipo === "video") {
           // CPU (libx264): la GPU es de un trabajo a la vez. Un keyframe por segundo, como pide la vista previa.
-          await ffmpeg(["-v", "error", "-i", origen, "-map", "0:v:0", "-map", "0:a?", "-vf", filtro, "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", "-g", "30", "-c:a", "copy", "-movflags", "+faststart", tmp], log);
+          await correr(FFMPEG, ["-hide_banner", "-nostdin", "-y", "-v", "error", "-i", path.resolve(origen), "-map", "0:v:0", "-map", "0:a?", "-vf", filtro, "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", "-g", "30", "-c:a", "copy", "-movflags", "+faststart", path.resolve(tmp)], { log, cwd });
         } else {
-          await ffmpeg(["-v", "error", "-i", origen, "-vf", filtro, "-frames:v", "1", tmp], log);
+          await correr(FFMPEG, ["-hide_banner", "-nostdin", "-y", "-v", "error", "-i", path.resolve(origen), "-vf", filtro, "-frames:v", "1", path.resolve(tmp)], { log, cwd });
         }
         await fs.rename(tmp, destino);
       } finally {
@@ -219,6 +232,6 @@ export async function muestraLook(imagen: string, c: AjustesColor, salida: strin
     await ffmpeg(["-v", "error", "-i", imagen, "-vf", "scale=360:-2", "-frames:v", "1", "-q:v", "4", salida]);
     return;
   }
-  const lut = await lutDe(c, null);
-  await correr(FFMPEG, ["-hide_banner", "-nostdin", "-y", "-v", "error", "-i", imagen, "-vf", `scale=360:-2,lut3d=file='${lut.replace(/'/g, "'\\''")}'`, "-frames:v", "1", "-q:v", "4", salida]);
+  const { filtro, cwd } = filtroLut(await lutDe(c, null));
+  await correr(FFMPEG, ["-hide_banner", "-nostdin", "-y", "-v", "error", "-i", path.resolve(imagen), "-vf", `scale=360:-2,${filtro}`, "-frames:v", "1", "-q:v", "4", path.resolve(salida)], { cwd });
 }
