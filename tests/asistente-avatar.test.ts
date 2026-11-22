@@ -1,6 +1,6 @@
 /** UX-13: el asistente de avatares se retoma desde la URL y los retoques fallidos se ven en la biblioteca. */
 import { describe, expect, it, vi } from "vitest";
-import { escribirEstadoAsistente, leerEstadoAsistente, retoquesVisibles } from "@/lib/asistente-avatar";
+import { escribirEstadoAsistente, leerEstadoAsistente, pedidoAvatar, puedeCrearAvatar, retoquesVisibles } from "@/lib/asistente-avatar";
 
 describe("estado del asistente en la URL (UX-13)", () => {
   it("lee propuesta, trabajo y toma; rechaza lo que no tiene la forma esperada", () => {
@@ -17,6 +17,21 @@ describe("estado del asistente en la URL (UX-13)", () => {
     expect(new URLSearchParams(q).get("volver")).toBe("/proyectos/p1");
     expect(escribirEstadoAsistente(q, null)).toBe("?volver=%2Fproyectos%2Fp1");
     expect(escribirEstadoAsistente("?propuesta=ab&trabajo=t1", null)).toBe("");
+  });
+});
+
+describe("un texto por modo (UX-23)", () => {
+  const textos = { palabras: "Mujer de unos 30 años, pelo castaño recogido", foto: "" };
+  it("la descripción escrita no se cuela en «Desde una foto»", () => {
+    expect(pedidoAvatar({ conFoto: true, textos, estilo: "realista", fondo: "liso" })).toEqual({ descripcion: "", estilo: "realista", fondo: "liso" });
+    expect(pedidoAvatar({ conFoto: true, textos: { ...textos, foto: " con camisa azul " }, estilo: "anime", fondo: "casa", luz: "ventana" })).toEqual({ descripcion: "con camisa azul", estilo: "anime", fondo: "casa", luz: "ventana" });
+    expect(pedidoAvatar({ conFoto: false, textos, estilo: "realista", fondo: "liso", look: "" }).descripcion).toBe(textos.palabras);
+  });
+
+  it("con foto basta la foto y el permiso; con palabras, una descripción de verdad", () => {
+    expect(puedeCrearAvatar(true, textos, true, true)).toBe(true);
+    expect(puedeCrearAvatar(true, textos, true, false)).toBe(false);
+    expect(puedeCrearAvatar(false, { palabras: "corto", foto: "con lentes y traje azul" }, false, false)).toBe(false);
   });
 });
 

@@ -54,3 +54,24 @@ export function retoquesVisibles<T extends TrabajoRetoque>(trabajos: T[], actual
   }
   return out;
 }
+
+/** Lo escrito en cada modo del paso 1, por separado: la descripción no se cuela en «Desde una foto» (UX-23). */
+export interface TextosAvatar {
+  palabras: string;
+  foto: string;
+}
+
+/** El pedido que se manda al crear (función pura): sólo con el texto del modo elegido. */
+export function pedidoAvatar(o: { conFoto: boolean; textos: TextosAvatar; estilo: string; fondo: string; luz?: string; look?: string }) {
+  return {
+    descripcion: (o.conFoto ? o.textos.foto : o.textos.palabras).trim(),
+    estilo: o.estilo,
+    fondo: o.fondo,
+    ...(o.luz ? { luz: o.luz } : {}),
+    ...(o.look ? { look: o.look } : {}),
+  };
+}
+
+/** Lo mínimo para «Describirlo con palabras»; con foto el texto es opcional. */
+export const puedeCrearAvatar = (conFoto: boolean, textos: TextosAvatar, hayFoto: boolean, consiento: boolean) =>
+  conFoto ? hayFoto && consiento : textos.palabras.trim().length >= 8;

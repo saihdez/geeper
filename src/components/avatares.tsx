@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
-import { escribirEstadoAsistente, leerEstadoAsistente, type EstadoAsistente } from "@/lib/asistente-avatar";
+import { useEffect, useMemo, useState } from "react";
+import { escribirEstadoAsistente, leerEstadoAsistente, pedidoAvatar, puedeCrearAvatar, type EstadoAsistente, type TextosAvatar } from "@/lib/asistente-avatar";
 import { Aviso, Barra, pedir, postJson, useSondeo } from "./comun";
 import { ElegirVozAvatar, type VozElegida } from "./elegir-voz-avatar";
 
@@ -124,11 +124,18 @@ function Crear({ datos, inicial, cerrar }: { datos: Datos; inicial: EstadoAsiste
   const [paso, setPaso] = useState<1 | 2 | 3>(inicial ? 2 : 1);
   const [conFoto, setConFoto] = useState(false);
   const [estilo, setEstilo] = useState("realista");
-  const [descripcion, setDescripcion] = useState("");
+  // Un texto por modo (UX-23): lo escrito para «Describirlo» no viaja como cambio sobre la foto de alguien.
+  const [textos, setTextos] = useState<TextosAvatar>({ palabras: "", foto: "" });
+  const descripcion = conFoto ? textos.foto : textos.palabras;
+  const setDescripcion = (v: string) => setTextos((t) => (conFoto ? { ...t, foto: v } : { ...t, palabras: v }));
   const [fondo, setFondo] = useState("liso");
   const [luz, setLuz] = useState("");
   const [look, setLook] = useState("");
   const [foto, setFoto] = useState<File | null>(null);
+  const vistaFoto = useMemo(() => (foto ? URL.createObjectURL(foto) : null), [foto]);
+  useEffect(() => () => {
+    if (vistaFoto) URL.revokeObjectURL(vistaFoto);
+  }, [vistaFoto]);
   const [consiento, setConsiento] = useState(false);
   const [pedido, setPedido] = useState<{ propuesta: string; trabajo: string } | null>(inicial ? { propuesta: inicial.propuesta, trabajo: inicial.trabajo } : null);
   const [avance, setAvance] = useState<Avance | null>(null);
@@ -171,14 +178,14 @@ function Crear({ datos, inicial, cerrar }: { datos: Datos; inicial: EstadoAsiste
     };
   }, [pedido]);
 
-  const puede = conFoto ? !!foto && consiento : descripcion.trim().length >= 8;
+  const puede = puedeCrearAvatar(conFoto, textos, !!foto, consiento);
 
   async function empezar() {
     setError(null);
     setEnviando(true);
     try {
       const f = new FormData();
-      f.set("pedido", JSON.stringify({ descripcion, estilo, fondo, ...(luz ? { luz } : {}), ...(look ? { look } : {}) }));
+      f.set("pedido", JSON.stringify(pedidoAvatar({ conFoto, textos, estilo, fondo, luz, look })));
       if (conFoto && foto) {
         f.set("foto", foto);
         f.set("consiento", consiento ? "si" : "no");
@@ -268,11 +275,17 @@ function Crear({ datos, inicial, cerrar }: { datos: Datos; inicial: EstadoAsiste
           {conFoto ? (
             <div className="space-y-2">
               <p className="text-sm font-medium">Foto de frente, con la cara bien visible</p>
-              <label className="boton cursor-pointer">
-                {foto ? "Cambiar la foto" : "Elegir una foto"}
-                <input type="file" accept=".png,.jpg,.jpeg,.webp" className="sr-only" onChange={(ev) => setFoto(ev.target.files?.[0] ?? null)} />
-              </label>
-              {foto && <p className="text-xs text-tenue">Elegida: {foto.name}</p>}
+              <div className="flex flex-wrap items-center gap-3">
+                {vistaFoto && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={vistaFoto} alt="La foto que elegiste" className="h-24 w-24 rounded-lg object-cover" />
+                )}
+                <label className="boton cursor-pointer">
+                  {foto ? "Cambiar la foto" : "Elegir una foto"}
+                  <input type="file" accept=".png,.jpg,.jpeg,.webp" className="sr-only" onChange={(ev) => setFoto(ev.target.files?.[0] ?? null)} />
+                </label>
+                {foto && <span className="text-xs text-tenue">Mírala: ¿se ve bien la cara, de frente?</span>}
+              </div>
               <label className="flex items-start gap-2 text-sm">
                 <input type="checkbox" className="mt-1" checked={consiento} onChange={(ev) => setConsiento(ev.target.checked)} />
                 <span>{datos.consentimiento}</span>
