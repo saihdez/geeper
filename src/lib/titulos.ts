@@ -90,6 +90,12 @@ export function motivoFallo(stderr: string): string {
   return "La IA local no respondió.";
 }
 
+/**
+ * `docker exec … ollama run` para los títulos. `--keepalive 0s`: el modelo sale de la tarjeta al responder
+ * (si no, quedaba 5 min con 7–9 GB tomados y el candado ya suelto, WEB-02), como en ganchos.ts.
+ */
+export const argsOllamaTitulos = () => ["exec", "-i", CONTENEDOR_LLM, "ollama", "run", MODELO_TITULOS, "--format", "json", "--nowordwrap", "--keepalive", "0s"];
+
 export async function proponerTitulos(o: { nombre: string; tema: string; guion: string; formato: string }): Promise<Propuesta> {
   const respaldo = (motivo: string): Propuesta => ({ titulos: titulosSugeridos(o.nombre, o.tema), fuente: "sugeridos", motivo });
   let candado;
@@ -103,7 +109,7 @@ export async function proponerTitulos(o: { nombre: string; tema: string; guion: 
     // Con el candado en la mano: si un corte dejó apagada la IA de MPT, se enciende aquí (GPU-02).
     const ia = await encenderIaMpt({ contenedores: [CONTENEDOR_LLM] });
     if (ia.faltan.length) return respaldo("La IA local (MoneyPrinterTurbo) no está instalada en esta computadora.");
-    const r = await correr("docker", ["exec", "-i", CONTENEDOR_LLM, "ollama", "run", MODELO_TITULOS, "--format", "json", "--nowordwrap"], {
+    const r = await correr("docker", argsOllamaTitulos(), {
       entrada: promptTitulos(o),
       timeout: 120_000,
       permitirFallo: true,
