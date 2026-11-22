@@ -2,7 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { agruparTrabajos, MAX_TERMINADOS } from "@/components/lista-trabajos";
+import { agruparTrabajos, cercaDelFinal, MAX_TERMINADOS } from "@/components/lista-trabajos";
 
 describe("Trabajos agrupado (UX-41)", () => {
   it("en curso, esperando, necesitan atención y terminados, sin perder ninguno y en el mismo orden", () => {
@@ -24,5 +24,12 @@ describe("Trabajos agrupado (UX-41)", () => {
     expect(s).toContain("Ver más (");
     expect(s).toContain("haceCuanto(t.creado");
     expect(s).toContain("el.scrollTop = el.scrollHeight"); // el registro se abre por el final
+    expect(s).toContain("if (el && pegado.current)"); // y no baja a quien subió a leer
+  });
+
+  it("el registro sigue el final sólo si la persona no subió a leer", () => {
+    expect(cercaDelFinal({ scrollHeight: 1000, scrollTop: 600, clientHeight: 384 })).toBe(true); // a 16 px del final
+    expect(cercaDelFinal({ scrollHeight: 1000, scrollTop: 200, clientHeight: 384 })).toBe(false); // subió a leer
+    expect(cercaDelFinal({ scrollHeight: 300, scrollTop: 0, clientHeight: 300 })).toBe(true); // cabe entero
   });
 });
