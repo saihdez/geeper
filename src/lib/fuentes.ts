@@ -79,6 +79,7 @@ const FALLOS_YTDLP: [RegExp, string][] = [
   [/video unavailable|has been removed|removed by the uploader|account .*terminated|does not exist|HTTP Error 404/i, "Ese video ya no existe o lo quitaron. Revisa que el enlace esté bien copiado."],
   [/unsupported url|is not a valid url|no video formats found|unable to extract/i, "No reconozco ese enlace. Copia el enlace completo desde la página del video (YouTube, Twitch, Kick…)."],
   [/is live|live event will begin|premieres in/i, "Ese video todavía no está publicado (es un directo o un estreno). Espera a que termine y usa la grabación."],
+  [/HTTP Error 403|Forbidden/i, "La página no dejó bajar ese video. Espera unos minutos y vuelve a intentar; si sigue igual, usa otro video."],
   [/getaddrinfo|name or service not known|temporary failure in name resolution|network is unreachable|timed out|connection (?:reset|refused)|unable to download webpage/i, "No pude conectarme a la página del video. Revisa tu internet y vuelve a intentar."],
   [/no space left on device/i, "El disco se llenó mientras bajaba el video. Libera espacio y vuelve a intentar."],
 ];

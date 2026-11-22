@@ -22,6 +22,7 @@ describe("fallos al abrir un enlace (UX-03)", () => {
     expect(explicarFalloYtdlp("ERROR: Unable to download webpage: <urlopen error [Errno -3] Temporary failure in name resolution>")).toMatch(/internet/);
     expect(explicarFalloYtdlp("ERROR: Sign in to confirm you’re not a bot")).toMatch(/robot/);
     expect(explicarFalloYtdlp("/venv/bin/python: No module named yt_dlp")).toMatch(/le falta la herramienta/);
+    expect(explicarFalloYtdlp("ERROR: Unable to download webpage: HTTP Error 403: Forbidden")).toMatch(/no dejó bajar/);
     expect(explicarFalloYtdlp("algo rarísimo")).toBe(FALLO_ENLACE);
   });
 
