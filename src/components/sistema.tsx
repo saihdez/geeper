@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Aviso, Cargando, pedir } from "./comun";
 import { InstalarHerramienta } from "./instalar-herramienta";
 import { InstalarWan2gp } from "./instalar-wan2gp";
+import { LiberarEspacio } from "./liberar-espacio";
 import { Novedades } from "./novedades";
 import { PrepararEstudio } from "./preparar-estudio";
 
@@ -99,6 +100,7 @@ export function Sistema() {
       <PrepararEstudio alTerminar={() => void recargar()} />
       <AvisoPrivados alCambiar={() => void recargar()} />
       {datos?.respaldo && <CopiaSeguridad respaldo={datos.respaldo} />}
+      <LiberarEspacio />
       {error && <Aviso tipo="error">{error}</Aviso>}
       {!datos && !error && <Cargando>Revisando… puede tardar unos segundos.</Cargando>}
       <ul className="space-y-2">

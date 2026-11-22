@@ -1,6 +1,9 @@
 import { strFromU8, unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { aOtio, rutasParaWindows } from "@/lib/otio";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { PanelOtroEditor } from "@/components/panel-otro-editor";
 import { carpetaVisible, paqueteEditor } from "@/lib/paquete-editor";
 import { proyectoDePrueba } from "./fixtures";
 
@@ -31,5 +34,17 @@ describe("paquete para otro editor", () => {
     expect(carpetaVisible("/home/yo/x", undefined)).toBe("/home/yo/x");
     const zip = unzipSync(paqueteEditor(proyectoDePrueba(), "p", "/home/yo/x", ""));
     expect(urls(JSON.parse(strFromU8(zip["p.otio"]!))).every((u) => u.includes("file:///home/yo/x"))).toBe(true);
+  });
+
+  it("UX-40: la guía pide abrirlo en esta computadora con Geeper abierto", () => {
+    const guia = strFromU8(unzipSync(paqueteEditor(proyectoDePrueba(), "p", "/home/yo/x", "Ubuntu-24.04"))["LEEME.txt"]!);
+    expect(guia).toContain("Deja Geeper abierto mientras editas.");
+    expect(guia).toContain("Abre el paquete en esta misma computadora");
+  });
+
+  it("UX-40: la página dice que el paquete no trae los videos ni los audios", () => {
+    const html = renderToStaticMarkup(createElement(PanelOtroEditor, { proyectoId: "x", version: 2 }));
+    expect(html).toContain("El paquete trae el montaje (qué va dónde) y los subtítulos");
+    expect(html).toContain("Los videos, la voz y la música se quedan en esta computadora");
   });
 });

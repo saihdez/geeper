@@ -1,12 +1,12 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { OBJETIVOS } from "@/lib/anuncios/catalogo";
 import type { Brief } from "@/lib/anuncios/esquema";
 import { Aviso, postJson } from "../comun";
 import { OBJETIVO_SIMPLE, QUE } from "./textos";
-import { Ayuda } from "./ui";
+import { Ayuda, Campo } from "./ui";
 
 /** Cada red con su ubicación vertical por defecto (la más común para videos cortos). */
 const REDES: { id: string; nombre: string; detalle: string; ubicacion: Brief["ubicaciones"][number] }[] = [
@@ -39,6 +39,14 @@ export function Asistente() {
     { titulo: "¿Qué le ofreces a quien lo vea?", ok: oferta.trim().length >= 3 && (!destino || /^https?:\/\/\S+\.\S+/.test(destino)) },
   ];
   const actual = pasos[paso]!;
+  const titulo = useRef<HTMLHeadingElement>(null);
+  const primerRender = useRef(true);
+  // A11-14: al pasar a un paso sin campo de texto (2 y 3) el foco va al título, para no recorrer la barra otra vez.
+  // Los pasos 1 y 4 ya ponen el cursor en su primer campo con autoFocus.
+  useEffect(() => {
+    if (primerRender.current) { primerRender.current = false; return; }
+    if (paso === 1 || paso === 2) titulo.current?.focus();
+  }, [paso]);
 
   async function crear() {
     setCreando(true);
@@ -73,14 +81,14 @@ export function Asistente() {
     <div className="mx-auto max-w-2xl space-y-6">
       <div className="flex items-center justify-between gap-3">
         <Link href="/anuncios" className="text-sm text-tenue hover:text-white">← Anuncios</Link>
-        <span className="text-sm text-tenue tabular-nums">Paso {paso + 1} de {pasos.length}</span>
+        <span className="text-sm text-tenue tabular-nums" aria-live="polite">Paso {paso + 1} de {pasos.length}</span>
       </div>
       <div className="flex gap-1.5" aria-hidden>
         {pasos.map((p, i) => <div key={p.titulo} className={`h-1.5 flex-1 rounded ${i <= paso ? "bg-cyan-500" : "bg-slate-800"}`} />)}
       </div>
 
       <form onSubmit={siguiente} className="tarjeta space-y-5 p-6">
-        <h1 className="text-2xl font-bold tracking-tight">{actual.titulo}</h1>
+        <h1 ref={titulo} tabIndex={-1} className="text-2xl font-bold tracking-tight focus:outline-none">{actual.titulo}</h1>
 
         {paso === 0 && (
           <div className="space-y-4">
@@ -133,15 +141,15 @@ export function Asistente() {
 
         {paso === 3 && (
           <div className="space-y-4">
-            <label className="block">
-              <span className="etiqueta">Lo que ofreces, con sus condiciones <Ayuda texto={QUE.oferta} de="oferta" /></span>
+            <Campo etiqueta="Lo que ofreces, con sus condiciones" que={QUE.oferta}>
               <textarea autoFocus className="campo min-h-24 text-base" value={oferta} maxLength={600} onChange={(e) => setOferta(e.target.value)} placeholder="Ej.: primera bolsa con 20 % de descuento, envío gratis a todo el país" />
-            </label>
-            <label className="block">
-              <span className="etiqueta">¿A qué página lleva el anuncio? (opcional) <Ayuda texto={QUE.destino} de="página de destino" /></span>
-              <input className="campo text-base" type="url" inputMode="url" value={destino} maxLength={500} onChange={(e) => setDestino(e.target.value)} placeholder="https://tu-tienda.com" />
+            </Campo>
+            <div>
+              <Campo etiqueta="¿A qué página lleva el anuncio? (opcional)" que={QUE.destino}>
+                <input className="campo text-base" type="url" inputMode="url" value={destino} maxLength={500} onChange={(e) => setDestino(e.target.value)} placeholder="https://tu-tienda.com" />
+              </Campo>
               {destino && !/^https?:\/\/\S+\.\S+/.test(destino) && <span className="mt-1 block text-xs text-amber-300">Escribe la dirección completa, empezando con https://</span>}
-            </label>
+            </div>
             <label className="block">
               <span className="etiqueta">Nombre de la campaña (opcional)</span>
               <input className="campo" value={nombre} maxLength={120} onChange={(e) => setNombre(e.target.value)} placeholder={`${marca || producto || "Mi campaña"} · ${new Date().toLocaleDateString("es", { month: "long" })}`} />

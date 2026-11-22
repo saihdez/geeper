@@ -20,6 +20,29 @@ interface Player extends HTMLElement {
   duration: number;
   ready: boolean;
   seek(t: number): void;
+  play(): void;
+  pause(): void;
+}
+
+/** Un salto pedido desde fuera: «muéstrame cómo quedó la escena que empieza en `segundo`». `vez` cambia en cada pedido. */
+export interface IrA {
+  segundo: number;
+  vez: number;
+}
+
+/**
+ * UX-37: tramo que se reproduce al guardar un cambio de escena: desde 1 s antes de que empiece y durante 3 s,
+ * sin salirse del video.
+ */
+export function tramoDeEscena(inicio: number, duracion: number): { desde: number; hasta: number } {
+  const fin = Number.isFinite(duracion) && duracion > 0 ? duracion : Infinity;
+  const desde = Math.min(Math.max(0, Number.isFinite(inicio) ? inicio - 1 : 0), Number.isFinite(fin) ? Math.max(0, fin - 0.1) : Infinity);
+  return { desde, hasta: Math.min(desde + 3, fin) };
+}
+
+/** Texto mientras se prepara la versión nueva (antes no se decía nada y se veía la anterior). */
+export function textoPreparando(hayVistaAnterior: boolean): string {
+  return hayVistaAnterior ? "Actualizando la vista previa…" : "Preparando la vista previa…";
 }
 
 /**
@@ -32,13 +55,27 @@ export function tiempoAlVolver(antes: number, duracion: number): number {
   return Math.min(antes, Math.max(0, duracion - 0.1));
 }
 
-export function VistaEnVivo({ proyectoId, version }: { proyectoId: string; version: number }) {
+export function VistaEnVivo({ proyectoId, version, irA }: { proyectoId: string; version: number; irA?: IrA }) {
   const [vista, setVista] = useState<Vista | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [listo, setListo] = useState(false);
   const caja = useRef<HTMLDivElement>(null);
   /** Último segundo visto: sobrevive al cambio de versión, que monta un player nuevo. */
   const tiempo = useRef(0);
+  /** Último salto ya aplicado (UX-37): cada pedido se aplica una vez, en el player de la versión al día. */
+  const aplicado = useRef(0);
+  /** UX-37: cuando la vista sale de la pantalla se muestra en pequeño, fija abajo a la derecha (el mismo player). */
+  const lugar = useRef<HTMLDivElement>(null);
+  const [fuera, setFuera] = useState(false);
+  const [sinFlotante, setSinFlotante] = useState(false);
+
+  useEffect(() => {
+    const el = lugar.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const obs = new IntersectionObserver(([e]) => setFuera(Boolean(e && !e.isIntersecting && e.boundingClientRect.top < 0)), { threshold: 0 });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [vista, listo]);
 
   useEffect(() => {
     // El elemento se registra sólo en el navegador.
@@ -66,7 +103,18 @@ export function VistaEnVivo({ proyectoId, version }: { proyectoId: string; versi
     const el = caja.current?.querySelector("hyperframes-player") as Player | null | undefined;
     if (!el) return;
     const desde = tiempo.current;
+    let corte: ReturnType<typeof setTimeout> | undefined;
+    // Sólo se salta en el player de la versión recién guardada, no en el anterior que sigue a la vista.
+    const s = irA && irA.vez !== aplicado.current && vista?.version === version ? irA : null;
     const alListo = () => {
+      if (s) {
+        aplicado.current = s.vez;
+        const { desde: d, hasta } = tramoDeEscena(s.segundo, el.duration);
+        el.seek(d);
+        el.play();
+        corte = setTimeout(() => el.pause(), Math.max(0, hasta - d) * 1000);
+        return;
+      }
       const t = tiempoAlVolver(desde, el.duration);
       if (t > 0) el.seek(t);
     };
@@ -77,17 +125,27 @@ export function VistaEnVivo({ proyectoId, version }: { proyectoId: string; versi
     else el.addEventListener("ready", alListo, { once: true });
     el.addEventListener("timeupdate", alAvanzar);
     return () => {
+      if (corte) clearTimeout(corte);
       el.removeEventListener("ready", alListo);
       el.removeEventListener("timeupdate", alAvanzar);
     };
-  }, [vista, listo]);
+  }, [vista, listo, version, irA]);
 
   if (error) return <Aviso tipo="error">No se pudo preparar la vista previa: {error}</Aviso>;
-  if (!vista || !listo) return <p className="text-sm text-tenue">Preparando la vista previa…</p>;
+  if (!vista || !listo) return <p className="text-sm text-tenue" role="status">{textoPreparando(false)}</p>;
   const vertical = vista.alto > vista.ancho;
+  const actualizando = vista.version !== version;
+  const flotante = fuera && !sinFlotante;
   return (
     <div className="space-y-2">
-      <div ref={caja} className={`mx-auto w-full overflow-hidden rounded bg-black ${vertical ? "max-w-sm" : ""}`} style={{ aspectRatio: `${vista.ancho} / ${vista.alto}` }}>
+      {actualizando && <p className="text-sm text-amber-300" role="status">{textoPreparando(true)}</p>}
+      {/* El lugar guarda el alto de la vista para que la página no salte cuando el player pasa a flotar. */}
+      <div ref={lugar} className={`mx-auto w-full ${vertical ? "max-w-sm" : ""}`} style={{ aspectRatio: `${vista.ancho} / ${vista.alto}` }}>
+      <div ref={caja}
+        className={flotante
+          ? `fixed bottom-4 right-4 z-40 overflow-hidden rounded bg-black shadow-xl ring-1 ring-white/20 ${vertical ? "w-32 sm:w-40" : "w-56 sm:w-72"}`
+          : "h-full w-full overflow-hidden rounded bg-black"}
+        style={flotante ? { aspectRatio: `${vista.ancho} / ${vista.alto}` } : undefined}>
         {createElement("hyperframes-player", {
           key: `${vista.ruta}-${vista.version}`,
           src: `${archivo(vista.ruta)}?v=${vista.version}`,
@@ -96,6 +154,12 @@ export function VistaEnVivo({ proyectoId, version }: { proyectoId: string; versi
           controls: true,
           style: { display: "block", width: "100%", height: "100%" },
         })}
+        {flotante && (
+          <button type="button" aria-label="Ocultar la vista pequeña" title="Ocultar la vista pequeña"
+            className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-sm text-white hover:bg-black"
+            onClick={() => setSinFlotante(true)}>×</button>
+        )}
+      </div>
       </div>
       <p className="text-xs text-tenue">
         En vivo · versión {vista.version} · {segundos(vista.duracion)}. Es la composición sin renderizar: el QC y la descarga son del render.

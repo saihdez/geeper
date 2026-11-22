@@ -2,6 +2,10 @@
 import Link from "next/link";
 import { QUE_NO_LLEGA_FILMCRAFT } from "@/lib/que-no-llega";
 
+/** Lo que de verdad trae el .zip para Resolve (UX-40): no lleva los videos ni los audios. */
+export const PAQUETE_TRAE =
+  "El paquete trae el montaje (qué va dónde) y los subtítulos, con una guía paso a paso. Los videos, la voz y la música se quedan en esta computadora: ábrelo aquí mismo.";
+
 /** «Terminar en otro editor»: abre el proyecto en FilmCraft (la de Media), ya cargado. */
 export function PanelOtroEditor({ proyectoId, version }: { proyectoId: string; version: number }) {
   return (
@@ -25,7 +29,8 @@ export function PanelOtroEditor({ proyectoId, version }: { proyectoId: string; v
       <p className="text-xs text-tenue">
         Lo que guardes o exportes en FilmCraft queda en la carpeta del proyecto (editor/), pero no cambia el proyecto de
         Geeper. ¿Usas DaVinci Resolve?{" "}
-        <a className="underline" href={`/api/proyectos/${proyectoId}/editor`} download>Descarga el paquete para Resolve</a>.
+        <a className="underline" href={`/api/proyectos/${proyectoId}/editor`} download>Descarga el paquete para Resolve</a>.{" "}
+        {PAQUETE_TRAE}
       </p>
     </section>
   );
