@@ -19,6 +19,7 @@ import net from "node:net";
 import path from "node:path";
 import { app, BrowserWindow, dialog, Menu, shell } from "electron";
 import { esVueltaOAuth } from "./oauth";
+import { permitirReinicio } from "./reglas";
 
 const RAIZ = app.isPackaged ? path.join(process.resourcesPath, "app") : path.join(__dirname, "..", "escritorio-app");
 const hijos: { nombre: string; p: ChildProcess }[] = [];
@@ -62,14 +63,44 @@ function lanzar(nombre: string, script: string, env: NodeJS.ProcessEnv, cwd = RA
     salida.write(`--- terminó (${codigo}) ---\n`);
     if (saliendo) return;
     if (nombre === "worker") {
-      // Como dev-up: si el worker muere solo, se vuelve a lanzar (al arrancar marca lo interrumpido).
-      setTimeout(() => !saliendo && hijos.push({ nombre, p: lanzar(nombre, script, env, cwd) }), 3000);
+      // Como dev-up: si el worker muere solo, se vuelve a lanzar (al arrancar marca lo interrumpido),
+      // hasta 5 veces en 10 min. Si sigue cayendo, se avisa en vez de relanzarlo sin fin.
+      if (!permitirReinicio(reiniciosWorker, Date.now())) {
+        avisarWorkerCaido();
+        return;
+      }
+      setTimeout(() => {
+        if (saliendo) return;
+        const nuevo = lanzar(nombre, script, env, cwd);
+        const i = hijos.findIndex((h) => h.nombre === nombre);
+        if (i >= 0) hijos[i] = { nombre, p: nuevo };
+        else hijos.push({ nombre, p: nuevo });
+      }, 3000);
     } else {
       dialog.showErrorBox("Geeper se detuvo", `El servidor de Geeper terminó (código ${codigo}). Mira ${path.join(dirLogs(), `${nombre}.log`)}.`);
       app.quit();
     }
   });
   return p;
+}
+
+const reiniciosWorker: number[] = [];
+
+/** El worker cayó 5 veces en 10 min: la web sigue abierta, pero los trabajos no avanzan. */
+function avisarWorkerCaido(): void {
+  const opciones = {
+    type: "warning" as const,
+    title: "Geeper no puede procesar trabajos",
+    message: "Geeper no puede procesar trabajos.",
+    detail: "Ciérralo y vuelve a abrirlo. Si vuelve a pasar, abre la carpeta de registros y mándasela a quien te ayuda.",
+    buttons: ["Abrir la carpeta de registros", "Entendido"],
+    defaultId: 1,
+    cancelId: 1,
+  };
+  const r = ventana ? dialog.showMessageBox(ventana, opciones) : dialog.showMessageBox(opciones);
+  void r.then(({ response }) => {
+    if (response === 0) void shell.openPath(dirLogs());
+  });
 }
 
 /**
