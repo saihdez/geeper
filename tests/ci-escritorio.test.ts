@@ -18,3 +18,19 @@ describe("CI de los instaladores (ESC-08)", () => {
     expect(flujo).toMatch(/permissions:\s*\n\s+contents: read/);
   });
 });
+
+describe("instalador (ESC-06)", () => {
+  const raiz = path.join(__dirname, "..", "escritorio");
+  const config = fs.readFileSync(path.join(raiz, "electron-builder.yml"), "utf8");
+  it("Windows instala en un solo paso, por usuario, sin preguntar carpeta", () => {
+    expect(config).toMatch(/oneClick: true/);
+    expect(config).toMatch(/perMachine: false/);
+    expect(config).not.toMatch(/allowToChangeInstallationDirectory/);
+  });
+  it("lleva icono propio: un PNG de 1024 px en la carpeta de recursos del build", () => {
+    expect(config).toMatch(/buildResources: \.\.\/escritorio\/recursos-build/);
+    const png = fs.readFileSync(path.join(raiz, "recursos-build", "icon.png"));
+    expect(png.subarray(1, 4).toString()).toBe("PNG");
+    expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1024, 1024]);
+  });
+});

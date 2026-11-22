@@ -21,10 +21,10 @@ win:
     - target: nsis
       arch: [x64]
 nsis:
-  # Instalación por usuario (sin permisos de administrador), con acceso directo en el escritorio.
-  oneClick: false
+  # Un solo paso, por usuario (sin permisos de administrador ni preguntas), con acceso directo en el
+  # escritorio. Instalar una versión nueva encima la actualiza.
+  oneClick: true
   perMachine: false
-  allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   shortcutName: Geeper
   deleteAppDataOnUninstall: false
