@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Aviso, Estado, archivo, postJson, useSondeo } from "./comun";
-import type { CuentaInfo, DatosCuentas, RedInfo } from "./cuentas";
+import { textoVpn, type CuentaInfo, type DatosCuentas, type RedInfo } from "./cuentas";
 import { arreglar, bloquea, LIMITES, revisarTexto, type Problema, type TextoPublicacion } from "@/lib/redes/revision-texto";
 
 export interface PublicacionV {
@@ -265,7 +265,7 @@ export function PanelPublicar({ proyectoId, render, nombre, tema, publicaciones,
       <h2 id="publicar-titulo" className="font-medium">Publicar en redes</h2>
       {error && !datos && <Aviso tipo="error">{error}</Aviso>}
       {!datos && !error && <p className="text-sm text-tenue">Cargando cuentas…</p>}
-      {datos && !datos.vpn.ok && <Aviso tipo="alerta">{datos.vpn.detalle}. Se puede encolar: los trabajos esperan al VPN antes de subir.</Aviso>}
+      {datos && !datos.vpn.ok && <Aviso tipo="alerta">{textoVpn(datos.vpn)}. Se puede encolar: antes de subir, Geeper vuelve a medir y espera al VPN.</Aviso>}
       {datos && conectadas.length === 0 && (
         <p className="text-sm text-tenue">
           No hay cuentas conectadas que admitan el formato {render.perfil}. <Link className="text-acento hover:underline" href="/cuentas">Conectar una cuenta</Link>

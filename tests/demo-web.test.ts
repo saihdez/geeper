@@ -130,7 +130,7 @@ describe("demo web (ideas de cap-demo)", () => {
 
   it("compone un Hyperframes válido: video temporizado dentro de un contenedor sin tiempo", () => {
     const r = registro();
-    const html = componerDemo({ registro: r, montaje: planDemo(r), video: "assets/toma.mp4", fondo: gradienteMarca(r.acento, r.fondoPagina) });
+    const html = componerDemo({ registro: r, montaje: planDemo(r), video: "assets/toma.mp4", fondo: gradienteMarca(r.acento, r.fondoPagina), gsap: "assets/gsap/dist/gsap.min.js" });
     expect(html).toContain('data-composition-id="main"');
     expect(html.match(/<video /g)).toHaveLength(2);
     expect(html).toMatch(/<div id="tarjeta">/);

@@ -3,16 +3,8 @@
  * comprueba que la palabra queda tachada y la versión sube; después «Restaurar».
  * Uso: GEEPER_URL=http://localhost:3300 pnpm tsx scripts/ui/editar-texto.ts <proyectoId>
  */
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { rutaChrome } from "../../src/lib/navegador";
 import { chromium } from "playwright-core";
-
-function chrome(): string {
-  const raiz = path.join(os.homedir(), ".cache", "hyperframes", "chrome", "chrome-headless-shell");
-  const v = fs.readdirSync(raiz).sort().pop()!;
-  return path.join(raiz, v, "chrome-headless-shell-linux64", "chrome-headless-shell");
-}
 
 async function version(base: string, id: string): Promise<number> {
   const r = (await (await fetch(`${base}/api/proyectos/${id}`)).json()) as { fila: { versionActual: number } };
@@ -23,7 +15,7 @@ async function main() {
   const [id] = process.argv.slice(2);
   if (!id) throw new Error("Falta el id del proyecto");
   const base = process.env.GEEPER_URL ?? "http://localhost:3300";
-  const navegador = await chromium.launch({ executablePath: chrome() });
+  const navegador = await chromium.launch({ executablePath: rutaChrome() });
   const pagina = await navegador.newPage({ viewport: { width: 1440, height: 1000 } });
   const errores: string[] = [];
   pagina.on("pageerror", (e) => errores.push(e.message));

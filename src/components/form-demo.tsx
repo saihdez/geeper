@@ -1,7 +1,7 @@
 "use client";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { MAX_CARACTERES_DEMO, segundosEstimados } from "@/lib/demo-web";
+import { leerBorradorDemo, MAX_CARACTERES_DEMO, segundosEstimados } from "@/lib/demo-web";
 import { Aviso, postJson, useSondeo } from "./comun";
 
 interface Plantilla {
@@ -25,21 +25,36 @@ function Muestra({ estilo, vertical }: { estilo: "3d" | "plano"; vertical: boole
   );
 }
 
+/** Lo que falta para poder enviar, en palabras de la persona (UX-31): va debajo del botón apagado. */
+export function faltaDemo(o: { url: string; linkOk: boolean; largo: number; plantilla: string }): string[] {
+  const falta: string[] = [];
+  if (!o.url.trim()) falta.push("el link de la página");
+  else if (!o.linkOk) falta.push("un link completo");
+  if (o.largo < 3) falta.push("lo que dice la voz");
+  if (!o.plantilla) falta.push("el estilo del canal");
+  return falta;
+}
+
 export function FormDemo() {
   const router = useRouter();
+  const params = useSearchParams();
   const { datos } = useSondeo<{ plantillas: Plantilla[] }>("/api/plantillas", 60_000);
-  const [url, setUrl] = useState("");
-  const [formato, setFormato] = useState<"9:16" | "16:9">("9:16");
-  const [estilo, setEstilo] = useState<"3d" | "plano">("3d");
-  const [texto, setTexto] = useState("");
-  const [plantilla, setPlantilla] = useState("");
-  const [propio, setPropio] = useState(false);
+  // «Cambiar el link» de un video que falló vuelve aquí con lo que se había escrito (UX-17).
+  const [borrador] = useState(() => leerBorradorDemo(params));
+  const [url, setUrl] = useState(borrador.url ?? "");
+  const [formato, setFormato] = useState<"9:16" | "16:9">(borrador.formato ?? "9:16");
+  const [estilo, setEstilo] = useState<"3d" | "plano">(borrador.estilo ?? "3d");
+  const [texto, setTexto] = useState(borrador.texto ?? "");
+  const [plantilla, setPlantilla] = useState(borrador.plantilla ?? "");
+  const [propio, setPropio] = useState(borrador.propio ?? false);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const seg = segundosEstimados(texto);
   const largo = texto.trim().length;
-  const plantillaElegida = plantilla || datos?.plantillas[0]?.slug || "";
+  const plantillaElegida = (plantilla && (!datos || datos.plantillas.some((p) => p.slug === plantilla)) ? plantilla : datos?.plantillas[0]?.slug) || "";
   const linkOk = /^(https?:\/\/)?[^\s/]+\.[^\s]{2,}/i.test(url.trim());
+  const linkMal = !linkOk && url.trim().length > 0;
+  const faltan = faltaDemo({ url, linkOk, largo, plantilla: plantillaElegida });
 
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
@@ -64,7 +79,9 @@ export function FormDemo() {
       <section>
         <h2 className="mb-2 font-medium">1. ¿Qué página quieres mostrar?</h2>
         <label className="etiqueta" htmlFor="demo-url">Link de la página (cópialo de la barra de tu navegador)</label>
-        <input id="demo-url" className="campo" inputMode="url" autoComplete="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://tuproducto.com" required />
+        <input id="demo-url" className="campo" inputMode="url" autoComplete="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://tuproducto.com" required
+          aria-invalid={linkMal || undefined} aria-describedby={linkMal ? "demo-url-error" : undefined} style={linkMal ? { borderColor: "#f87171" } : undefined} />
+        {linkMal && <p id="demo-url-error" className="mt-1 text-xs text-red-400">Ese link no parece completo (ejemplo: https://tuproducto.com).</p>}
         <label className="mt-2 flex items-start gap-2 text-sm">
           <input type="checkbox" className="mt-1" checked={propio} onChange={(e) => setPropio(e.target.checked)} />
           <span>Es mi sitio (o tengo permiso para mostrarlo).
@@ -80,7 +97,7 @@ export function FormDemo() {
             <legend className="etiqueta">Forma del video</legend>
             <div className="flex flex-wrap gap-2">
               {([["9:16", "Vertical (TikTok, Reels, Shorts)"], ["16:9", "Horizontal (YouTube, web)"]] as const).map(([f, nombre]) => (
-                <label key={f} className={`boton cursor-pointer ${formato === f ? "boton-primario" : ""}`}>
+                <label key={f} className="opcion">
                   <input type="radio" name="demo-formato" value={f} checked={formato === f} onChange={() => setFormato(f)} className="sr-only" />
                   {nombre}
                 </label>
@@ -99,7 +116,7 @@ export function FormDemo() {
           <legend className="etiqueta">Movimiento</legend>
           <div className="grid gap-3 sm:grid-cols-2">
             {([["3d", "Cinematográfico", "La página flota en perspectiva y la cámara se acerca a lo importante."], ["plano", "Sencillo", "La página de frente; se acerca cada vez que se hace clic."]] as const).map(([v, nombre, desc]) => (
-              <label key={v} className={`tarjeta cursor-pointer p-2 ${estilo === v ? "ring-2 ring-cyan-600" : ""}`}>
+              <label key={v} className="opcion-tarjeta p-2">
                 <input type="radio" name="demo-estilo" value={v} checked={estilo === v} onChange={() => setEstilo(v)} className="sr-only" />
                 <Muestra estilo={v} vertical={formato === "9:16"} />
                 <span className="mt-2 block text-sm font-medium">{nombre}</span>
@@ -121,11 +138,11 @@ export function FormDemo() {
       </section>
 
       {error && <Aviso tipo="error">{error}</Aviso>}
-      <div className="flex flex-wrap items-center gap-3">
-        <button className="boton boton-primario" disabled={enviando || !linkOk || largo < 3 || !plantillaElegida}>
+      <div className="space-y-1">
+        <button className="boton boton-primario" disabled={enviando || faltan.length > 0} aria-describedby={faltan.length ? "demo-falta" : undefined}>
           {enviando ? "Creando…" : "Crear video de la página"}
         </button>
-        {!linkOk && url.trim() && <span className="text-xs text-red-400">Ese link no parece completo (ejemplo: https://tuproducto.com).</span>}
+        {faltan.length > 0 && <p id="demo-falta" className="text-xs text-amber-300">Para continuar falta: {faltan.join(" · ")}.</p>}
       </div>
       <p className="text-xs text-tenue">Después puedes cambiar el texto, la voz o el formato desde el proyecto, como en cualquier otro video. No usa la tarjeta de video.</p>
     </form>

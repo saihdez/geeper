@@ -85,7 +85,7 @@ async function preparar(proyectoId: string): Promise<VistaPrevia> {
   const total = duracionEscenas(p) + plantilla.datos.tarjetaFinal.duracion;
   const dirVista = path.join(dir, "build", `vista-${p.formato.replace(":", "x")}`);
   const sello = path.join(dirVista, "sello.json");
-  const clave = JSON.stringify({ numero, compilador: VERSION_COMPILADOR, plantilla: plantilla.datos, runtime: 2 });
+  const clave = JSON.stringify({ numero, compilador: VERSION_COMPILADOR, plantilla: plantilla.datos, runtime: 3 });
   const resultado: VistaPrevia = {
     ruta: path.relative(dirDatos(), path.join(dirVista, "index.html")),
     version: numero,

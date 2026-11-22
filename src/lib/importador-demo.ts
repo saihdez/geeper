@@ -1,5 +1,6 @@
 /**
  * «Nuevo → Desde una página web» (F4): de un link y lo que se quiere decir a un proyecto normal.
+ *  0. que el link abra (hasta 10 s): un link mal escrito se descubre antes de esperar la voz,
  *  1. la voz primero (Kokoro de la plantilla), que da la duración exacta,
  *  2. la demo de la página con esa duración (demo-web-toma.ts: toma + tarjeta 3D o plana),
  *  3. geeper.json: escenas cortadas en pausas, la imagen de la demo en `sincro: "voz"` (recortar
@@ -10,17 +11,14 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describirAsset, guardarProyecto, registrarAssetsEnDb, crearCarpetas } from "./almacen";
-import type { EstiloDemo, FormatoDemo, Historia, RegistroDemo } from "./demo-web";
-import { renderDemo, tomarDemo } from "./demo-web-toma";
+import { MAX_CARACTERES_DEMO, type EstiloDemo, type FormatoDemo, type Historia, type RegistroDemo } from "./demo-web";
+import { probarLink, renderDemo, tomarDemo } from "./demo-web-toma";
 import { SCHEMA_VERSION, validarProyecto, type Asset, type Escena, type Proyecto } from "./esquema";
 import { huellaFfmpeg, probar } from "./media";
 import { paso, type Contexto } from "./pasos";
 import type { DatosPlantilla } from "./plantillas";
 import { sintetizarAsset } from "./regenerar";
 import { segmentar } from "./segmentar";
-
-import { MAX_CARACTERES_DEMO } from "./demo-web";
-export { MAX_CARACTERES_DEMO, segundosEstimados } from "./demo-web";
 
 export interface DatosDemo {
   proyectoId: string;
@@ -42,6 +40,9 @@ export async function importarDemo(ctx: Contexto & { signal?: AbortSignal; etapa
   if (!texto) throw new Error("Escribe qué quieres que diga el video.");
   if (texto.length > MAX_CARACTERES_DEMO) throw new Error(`El texto es muy largo (${texto.length} caracteres; hasta ${MAX_CARACTERES_DEMO}, unos 45 s).`);
   if (!/^https?:\/\//i.test(d.url)) throw new Error("El link tiene que empezar con https://");
+  // 0. Que el link abra (hasta 10 s), antes de esperar la voz (UX-17).
+  await ctx.etapa?.("Probando que la página abre", 0.05);
+  await probarLink(d.url, { log: ctx.log, signal: ctx.signal });
   await crearCarpetas(d.slug);
 
   // 1. Voz.

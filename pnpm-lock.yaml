@@ -13,7 +13,7 @@ importers:
         version: 0.9.27(@types/node@24.19.2)
       '@hyperframes/player':
         specifier: 0.9.27
-        version: 0.9.27
+        version: 0.9.27(@types/node@24.19.2)
       '@prisma/adapter-better-sqlite3':
         specifier: ^7.10.1
         version: 7.10.1
@@ -26,6 +26,9 @@ importers:
       fflate:
         specifier: 0.8.2
         version: 0.8.2
+      gsap:
+        specifier: 3.15.0
+        version: 3.15.0
       next:
         specifier: ^16.4.6
         version: 16.4.6(@babel/core@7.29.13)(@types/node@24.19.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -2573,6 +2576,9 @@ packages:
   graphmatch@1.1.1:
     resolution: {integrity: sha512-5ykVn/EXM1hF0XCaWh05VbYvEiOL2lY1kBxZtaYsyvjp7cmWOU1XsAdfQBwClraEofXDT197lFbXOEVMHpvQOg==}
 
+  gsap@3.15.0:
+    resolution: {integrity: sha512-dMW4CWBTUK1AEEDeZc1g4xpPGIrSf9fJF960qbTZmN/QwZIWY5wgliS6JWl9/25fpTGJrMRtSjGtOmPnfjZB+A==}
+
   has-bigints@1.1.0:
     resolution: {integrity: sha512-R3pbpkcIqv2Pm3dUwgjclDRVmWpTJW2DcMzcIhEXEx1oh/CEMObMm3KLmRJOdvhM7o4uQBnwr8pzRK2sJWIqfg==}
     engines: {node: '>= 0.4'}
@@ -4620,10 +4626,11 @@ snapshots:
     transitivePeerDependencies:
       - canvas
 
-  '@hyperframes/player@0.9.27':
+  '@hyperframes/player@0.9.27(@types/node@24.19.2)':
     dependencies:
       '@hyperframes/core': 0.9.27(@types/node@24.19.2)
     transitivePeerDependencies:
+      - '@types/node'
       - canvas
 
   '@hyperframes/studio-server@0.9.27(@types/node@24.19.2)':
@@ -6926,6 +6933,8 @@ snapshots:
   grammex@3.1.13: {}
 
   graphmatch@1.1.1: {}
+
+  gsap@3.15.0: {}
 
   has-bigints@1.1.0: {}
 

@@ -33,7 +33,6 @@ export const IDIOMAS = {
 export type IdiomaDestino = keyof typeof IDIOMAS;
 /** «Portugués (Brasil)» → «portugués (Brasil)»: sólo la inicial. */
 const enMinuscula = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
-export const IDIOMAS_DESTINO = Object.keys(IDIOMAS) as IdiomaDestino[];
 export const IdiomaTraduccion = z.enum(["es", "en", "pt", "fr", "it"]);
 
 /** Nombre del idioma de origen para el LLM (el de `p.voz.idioma`). */

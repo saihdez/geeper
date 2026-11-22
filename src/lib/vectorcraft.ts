@@ -14,7 +14,7 @@ import { VECTORCRAFT_CLI, VECTORCRAFT_VERSION } from "./rutas";
 import { esVector } from "./formatos-vector";
 import { revisarSvg } from "./svg";
 
-export { EXT_VECTOR, esVector } from "./formatos-vector";
+export { esVector } from "./formatos-vector";
 
 const FALTA =
   "Para usar archivos de Illustrator, PDF, EPS o Affinity hace falta VectorCraft: instálalo en Sistema con «Instalar con un clic». O exporta el logo como SVG o PNG desde tu programa de diseño.";

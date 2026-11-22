@@ -2,9 +2,7 @@
  * Toma y render de la demo de producto (ver demo-web.ts). Lo usan `scripts/demo-web.ts` y el trabajo
  * «demo.crear» del worker. Chromium headless + screencast de CDP; el tratamiento es Hyperframes.
  */
-import fs from "node:fs";
 import fsp from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import {
   acentoDe,
@@ -21,10 +19,11 @@ import {
   type Montaje,
   type RegistroDemo,
 } from "./demo-web";
+import { gsapParaProyecto } from "./gsap-local";
 import { correrHf } from "./hyperframes";
 import { ffmpeg, fotograma, probar } from "./media";
 import type { Registro } from "./proceso";
-import { CACHE_HF } from "./rutas";
+import { abrirNavegador, rutaChrome } from "./navegador";
 
 const espera = (ms: number, signal?: AbortSignal) =>
   new Promise<void>((ok, mal) => {
@@ -36,23 +35,45 @@ const espera = (ms: number, signal?: AbortSignal) =>
     }, { once: true });
   });
 
-/** El Chrome headless que ya baja Hyperframes (en desarrollo o en la app de escritorio); si no, el de Playwright. */
-function chrome(): string | undefined {
-  for (const base of [path.join(os.homedir(), ".cache", "hyperframes"), CACHE_HF]) {
-    try {
-      const raiz = path.join(base, "chrome", "chrome-headless-shell");
-      const v = fs.readdirSync(raiz).sort().pop()!;
-      for (const sub of ["chrome-headless-shell-linux64", "chrome-headless-shell-win64", "chrome-headless-shell-mac-arm64", "chrome-headless-shell-mac-x64"]) {
-        for (const exe of ["chrome-headless-shell", "chrome-headless-shell.exe"]) {
-          const ruta = path.join(raiz, v, sub, exe);
-          if (fs.existsSync(ruta)) return ruta;
-        }
-      }
-    } catch {
-      /* no está en esta carpeta */
+/** Códigos de red con los que el link no puede abrir (mal escrito, el sitio no existe o no contesta). */
+const SIN_SITIO = new Set(["ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED", "ECONNRESET", "EHOSTUNREACH", "ENETUNREACH", "ERR_INVALID_URL"]);
+
+/** Mensaje simple cuando la página no abre; el detalle técnico va aparte (registro del trabajo). */
+export const noAbre = (url: string) => `No se pudo abrir ${url}: revisa que el link esté bien escrito y que la página abra en tu navegador.`;
+
+/**
+ * Prueba en hasta 10 s que el link abre, antes de hacer la voz (UX-17): un link mal escrito se
+ * descubre en segundos y no después de esperar la voz. Sólo corta si el sitio no existe o no contesta;
+ * si responde con error (muchos sitios rechazan a los robots) o tarda, avisa en el registro y sigue:
+ * la grabación con el navegador puede funcionar igual.
+ */
+export async function probarLink(
+  url: string,
+  op: { log?: Registro; signal?: AbortSignal; timeoutMs?: number; fetch?: typeof fetch } = {},
+): Promise<void> {
+  const log = op.log ?? (() => {});
+  const plazo = AbortSignal.timeout(op.timeoutMs ?? 10_000);
+  const signal = op.signal ? AbortSignal.any([op.signal, plazo]) : plazo;
+  try {
+    const r = await (op.fetch ?? fetch)(url, { method: "GET", redirect: "follow", signal, headers: { accept: "text/html,*/*" } });
+    await r.body?.cancel().catch(() => {});
+    if (!r.ok) log(`Aviso: la página respondió ${r.status}; se intenta grabar igual (algunos sitios rechazan a los robots).`);
+  } catch (e) {
+    if (op.signal?.aborted) throw new Error("Cancelado");
+    const err = e as Error & { cause?: { code?: string; message?: string }; code?: string };
+    const codigo = err.cause?.code ?? err.code;
+    const detalle = [err.message, err.cause?.message].filter(Boolean).join(": ");
+    if (plazo.aborted || err.name === "TimeoutError") {
+      log(`Aviso: la página tardó más de ${Math.round((op.timeoutMs ?? 10_000) / 1000)} s en contestar; se intenta grabar igual.`);
+      return;
     }
+    if (codigo && SIN_SITIO.has(codigo)) {
+      log(`Detalle técnico: ${detalle}`);
+      throw new Error(noAbre(url));
+    }
+    // Otro error (certificado, protocolo…): se avisa y el navegador lo intenta igual.
+    log(`Aviso: no se pudo probar el link (${detalle}); se intenta grabar igual.`);
   }
-  return undefined;
 }
 
 export interface OpcionesToma {
@@ -83,7 +104,7 @@ export async function tomarDemo(url: string, dir: string, op: OpcionesToma): Pro
   await fsp.mkdir(dirCuadros, { recursive: true });
   // Sin la bandera, el screencast del Chrome headless sale en píxeles CSS (1280 de ancho) y la tarjeta
   // se reescala borrosa; con ella, a la escala pedida (medido: 1280 → 1920).
-  const nav = await pw.chromium.launch({ executablePath: chrome(), args: [`--force-device-scale-factor=${escala}`] });
+  const nav = await abrirNavegador(() => pw.chromium.launch({ executablePath: rutaChrome(), args: [`--force-device-scale-factor=${escala}`] }));
   const cerrar = () => void nav.close().catch(() => {});
   signal?.addEventListener("abort", cerrar, { once: true });
   try {
@@ -94,7 +115,9 @@ export async function tomarDemo(url: string, dir: string, op: OpcionesToma): Pro
     try {
       await page.goto(url, { waitUntil: "load", timeout: 60_000 });
     } catch (e) {
-      throw new Error(`No se pudo abrir ${url}: revisa que el link esté bien escrito y que la página abra en tu navegador (${e instanceof Error ? e.message.split("\n")[0] : e}).`);
+      // «(page.goto: net::ERR_NAME_NOT_RESOLVED at …)» sólo en el registro, no en el mensaje (UX-17).
+      log(`Detalle técnico: ${e instanceof Error ? e.message.split("\n")[0] : e}`);
+      throw new Error(noAbre(url));
     }
     await dormir(2600);
 
@@ -310,7 +333,13 @@ export async function renderDemo(dir: string, r: RegistroDemo, op: OpcionesRende
   await fsp.mkdir(path.join(build, "assets"), { recursive: true });
   const toma = path.join(dir, "toma.mp4");
   await fsp.link(toma, path.join(build, "assets", "toma.mp4")).catch(() => fsp.copyFile(toma, path.join(build, "assets", "toma.mp4")));
-  await fsp.writeFile(path.join(build, "index.html"), componerDemo({ registro: r, montaje, video: "assets/toma.mp4", fondo }));
+  // GSAP de node_modules, sin internet (REN-10).
+  const gsap = gsapParaProyecto();
+  if (gsap.archivo) {
+    await fsp.mkdir(path.dirname(path.join(build, gsap.src)), { recursive: true });
+    await fsp.copyFile(gsap.archivo, path.join(build, gsap.src));
+  }
+  await fsp.writeFile(path.join(build, "index.html"), componerDemo({ registro: r, montaje, video: "assets/toma.mp4", fondo, gsap: gsap.src }));
   await fsp.writeFile(
     path.join(build, "hyperframes.json"),
     JSON.stringify({ $schema: "https://hyperframes.heygen.com/schema/hyperframes.json", paths: { blocks: "compositions", components: "compositions/components", assets: "assets" }, media: { autoProxy: true } }, null, 2),

@@ -57,12 +57,6 @@ export async function escribirAtomico(destino: string, contenido: string | Buffe
   await fs.rename(tmp, destino);
 }
 
-/** Mueve un archivo terminado a su nombre final (rename atómico). */
-export async function publicar(tmp: string, destino: string): Promise<void> {
-  await fs.mkdir(path.dirname(destino), { recursive: true });
-  await fs.rename(tmp, destino);
-}
-
 /** Resuelve una ruta relativa dentro de una base, rechazando escapes. */
 export function dentroDe(base: string, relativa: string): string {
   const abs = path.resolve(base, relativa);

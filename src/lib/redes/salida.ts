@@ -120,6 +120,31 @@ export function juzgar(a: AjustesRed, s: Salida | null): Veredicto {
   };
 }
 
+/** La última salida medida (en memoria o guardada en `Sistema`), sin salir a internet. */
+export async function ultimaSalida(): Promise<Salida | null> {
+  if (memoria) return memoria.salida;
+  const f = await db.sistema.findUnique({ where: { clave: CLAVES.salida } });
+  if (!f) return null;
+  try {
+    return JSON.parse(f.valor) as Salida;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * El aviso del VPN con la última medida guardada, sin medir (WEB-09): para pintar la barra de Cuentas
+ * y el panel de publicar, que se refrescan cada 30–60 s. La medida trae su hora (`salida.medido`).
+ * Se mide sólo en «Medir ahora» (/api/red), al conectar una cuenta y antes de publicar.
+ */
+export async function verificarSinMedir(): Promise<Veredicto> {
+  const a = await leerAjustes();
+  const s = await ultimaSalida();
+  const v = juzgar(a, s);
+  if (!s && v.estado === "sin_dato") return { ...v, detalle: "Todavía no se midió la salida a internet: toca «Medir ahora» en Cuentas" };
+  return v;
+}
+
 /** ¿Se puede llamar a una red ahora? */
 export async function verificarSalida(forzar = false): Promise<Veredicto> {
   const a = await leerAjustes();

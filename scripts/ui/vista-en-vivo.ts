@@ -4,23 +4,17 @@
  * capturas. Falla si hay errores de consola o si el player no llega a estar listo.
  */
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
+import { rutaChrome } from "../../src/lib/navegador";
 import { chromium } from "playwright-core";
 
 const BASE = process.env.GEEPER_URL ?? "http://localhost:3300";
-
-function chrome(): string {
-  const raiz = path.join(os.homedir(), ".cache", "hyperframes", "chrome", "chrome-headless-shell");
-  const v = fs.readdirSync(raiz).sort().pop()!;
-  return path.join(raiz, v, "chrome-headless-shell-linux64", "chrome-headless-shell");
-}
 
 async function main() {
   const [id, salida = "/tmp/vista-en-vivo"] = process.argv.slice(2);
   if (!id) throw new Error("Falta el id del proyecto");
   fs.mkdirSync(salida, { recursive: true });
-  const nav = await chromium.launch({ executablePath: chrome() });
+  const nav = await chromium.launch({ executablePath: rutaChrome() });
   const pag = await nav.newPage({ viewport: { width: 1440, height: 1000 } });
   const errores: string[] = [];
   // Los ERR_ABORTED de los videos al saltar son normales (el navegador cancela lecturas por rango).

@@ -11,7 +11,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { ajusteDe, posicionCara, sigueCara } from "./caras";
 import { bezier, CURVAS, cssFusion, easeDe, esMascara, filtroEfectos, mascaraTransicion, scriptEfectos, svgDefs, unirFiltro, type Efecto, type EncuadreGsap, type Grano } from "./efectos";
-import { aplicarEstilo, pista, pistasLibres, type Asset, type Clip, type Encuadre, type Proyecto, type Texto, type Transicion } from "./esquema";
+import { aplicarEstilo, pistasLibres, type Asset, type Clip, type Encuadre, type Proyecto, type Texto, type Transicion } from "./esquema";
 import { ANCHO_CARACTER, caracteresPorLinea, dentro, metricas, PADDING_PASTILLA, type Caja, type Metricas } from "./formatos";
 import { duracionEscenas, escenasEnLinea, intervalos, opcionesDe, todosLosGrupos, type EscenaEnLinea, type Grupo } from "./linea";
 import { zonasDelVideo } from "./caras-zonas";
@@ -21,6 +21,7 @@ import type { DatosPlantilla } from "./plantillas";
 import { logoPermitido } from "./plantillas-rutas";
 import { lineas, lineasDePalabras } from "./subtitulos";
 import { textoSobre } from "./colores-marca";
+import { gsapParaProyecto } from "./gsap-local";
 
 export const VERSION_COMPILADOR = "compilador-hf-v3";
 
@@ -70,8 +71,6 @@ export interface Anim {
   ease?: string;
 }
 
-/** Decide cubrir/contener (vive en caras.ts para que la vista previa del encuadre use el mismo cálculo). */
-export { ajusteDe };
 
 const ENCUADRE_BASE: Encuadre = { escala: 1, x: 0, y: 0 };
 const mezclarEncuadre = (a: Encuadre, b: Encuadre, k: number): Record<string, number> => ({
@@ -213,6 +212,9 @@ export function compilar(
   const total = inicioTarjeta + plantilla.tarjetaFinal.duracion;
   const grupos = todosLosGrupos(p);
   const archivos: Record<string, string> = { "assets/mezcla.wav": rutaMezcla };
+  // GSAP de node_modules, sin internet (REN-10).
+  const gsap = gsapParaProyecto();
+  if (gsap.archivo) archivos[gsap.src] = gsap.archivo;
   const anims: Anim[] = [];
   const enlazar = (a: Asset) => {
     const fuente = sustitutos[a.id] ?? path.join(dirProyecto, a.ruta);
@@ -454,7 +456,7 @@ export function compilar(
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=${W}, height=${H}" />
     <!-- Generado por Geeper (${VERSION_COMPILADOR}) desde geeper.json: no editar a mano. -->
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <script src="${gsap.src}"></script>
     <style>
       :root {
         --tinta: ${c.tinta};
@@ -576,6 +578,7 @@ export async function escribirProyectoHf(dirBuild: string, comp: Compilado): Pro
   await fs.mkdir(path.join(dirBuild, "assets"), { recursive: true });
   for (const [rel, abs] of Object.entries(comp.archivos)) {
     const destino = path.join(dirBuild, rel);
+    await fs.mkdir(path.dirname(destino), { recursive: true });
     try {
       await fs.link(abs, destino);
     } catch {
@@ -596,9 +599,3 @@ export async function escribirProyectoHf(dirBuild: string, comp: Compilado): Pro
     ),
   );
 }
-
-export function pistaMusica(p: Proyecto): Clip | undefined {
-  return p.pistas.find((x) => x.id === "musica")?.clips[0];
-}
-
-export { pista };

@@ -73,18 +73,6 @@ export function duracionEscenas(p: Proyecto): number {
   return ENTRADA + escenasEnLinea(p).reduce((s, e) => s + e.duracion, 0);
 }
 
-/**
- * Tiempo de la línea final para un instante del asset de voz de la escena. Si cae en un recorte, va al
- * borde del tramo siguiente (o al final del anterior si no hay siguiente).
- */
-export function aLinea(e: Pick<EscenaEnLinea, "inicio" | "duracion" | "tramos">, t: number): number {
-  for (const x of e.tramos) {
-    if (t < x.inicio) return e.inicio + x.enEscena;
-    if (t <= x.fin) return e.inicio + x.enEscena + (t - x.inicio);
-  }
-  return e.inicio + e.duracion;
-}
-
 /** El tramo que contiene `t` (o -1 si cae en un recorte o fuera del clip). */
 export function tramoDe(tramos: Tramo[], t: number): number {
   return tramos.findIndex((x) => t >= x.inicio - 1e-6 && t <= x.fin + 1e-6);

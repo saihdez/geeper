@@ -43,6 +43,14 @@ const ESTADO_VPN: Record<Vpn["estado"], { texto: string; color: string }> = {
 
 const fecha = (s: string) => new Date(s).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" });
 
+/**
+ * El aviso del VPN con la hora de la medida: la lista de cuentas ya no mide en cada refresco (WEB-09),
+ * así que la medida puede ser de hace un rato.
+ */
+export function textoVpn(vpn: Pick<Vpn, "detalle" | "salida">): string {
+  return `${vpn.detalle}${vpn.salida?.medido ? ` · medido ${fecha(vpn.salida.medido)}` : ""}`;
+}
+
 function FormAjustes({ inicial, alGuardar }: { inicial: Ajustes; alGuardar: (v: { ajustes: Ajustes; vpn: Vpn }) => void }) {
   const [a, setA] = useState(inicial);
   const [guardando, setGuardando] = useState(false);
@@ -121,7 +129,7 @@ function BarraVpn({ ajustes, vpn, alCambiar }: { ajustes: Ajustes; vpn: Vpn; alC
           <button type="button" className="boton" aria-expanded={abierto} aria-controls="vpn-ajustes" onClick={() => setAbierto(!abierto)}>Ajustes</button>
         </div>
       </div>
-      <p className="text-sm text-tenue">{actual.detalle}{actual.salida?.medido ? ` · medido ${fecha(actual.salida.medido)}` : ""}</p>
+      <p className="text-sm text-tenue">{textoVpn(actual)}</p>
       {error && <Aviso tipo="error">{error}</Aviso>}
       {abierto && (
         <div id="vpn-ajustes">
