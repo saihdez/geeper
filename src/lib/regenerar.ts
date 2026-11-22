@@ -3,9 +3,9 @@
  * whisper. Sólo se rehace lo que cambió: la síntesis y la alineación son pasos con manifiesto.
  */
 import path from "node:path";
-import { describirAsset, guardarProyecto, registrarAssetsEnDb } from "./almacen";
+import { describirAsset, guardarEncima, leerGuardado, registrarAssetsEnDb } from "./almacen";
 import { sha256Texto } from "./archivos";
-import { pista, validarProyecto, type Escena, type Palabra, type Proyecto } from "./esquema";
+import { pista, validarProyecto, type Asset, type Escena, type Palabra, type Proyecto } from "./esquema";
 import { tiemposDeVoz } from "./importador";
 import { limpiarAssets } from "./ediciones";
 import { LICENCIAS } from "./licencias";
@@ -87,6 +87,93 @@ function conservarCorrecciones(e: Escena, nuevas: Palabra[]): Escena["correccion
   return igual ? e.correcciones : [];
 }
 
+/** Lo que dijo la voz nueva de cada escena (para comprobar al guardar que no cambió mientras tanto). */
+export interface Dicho {
+  escena: string;
+  palabras: string[];
+}
+
+const cambio = (que: string) =>
+  new Error(`Mientras se hacía la voz nueva ${que}: no la puse para no borrar tu cambio. Vuelve a pedir la voz.`);
+
+/** Pone la voz nueva de UNA escena sobre `base` (la versión de ahora). Lanza si la escena cambió. */
+export function ponerVozEscena(base: Proyecto, dicho: Dicho, asset: Asset, palabras: Palabra[]): Proyecto {
+  const p = structuredClone(base);
+  const e = p.escenas[dicho.escena];
+  const voz = pista(p, "voz").clips;
+  const visual = pista(p, "visual").clips;
+  const i = voz.findIndex((c) => c.escena === dicho.escena);
+  if (!e || i < 0) throw cambio("se quitó la escena");
+  if (tokens(textoADecir(e)).join(" ") !== dicho.palabras.join(" ")) throw cambio(`cambió lo que dice la escena ${i + 1}`);
+  const j = visual.findIndex((c) => c.escena === dicho.escena);
+  const k = j >= 0 ? j : i;
+  p.assets[asset.id] = asset;
+  const dur = asset.duracion!;
+  voz[i] = { ...voz[i]!, asset: asset.id, rango: { inicio: 0, duracion: dur } };
+  visual[k] = { ...visual[k]!, rango: { inicio: visual[k]!.rango.inicio, duracion: dur } };
+  e.correcciones = conservarCorrecciones(e, palabras);
+  e.palabras = palabras;
+  e.texto = palabras.map((w) => w.texto).join(" ");
+  // Los recortes eran tiempos de la voz anterior: la nueva ya no dice lo recortado.
+  e.recortes = [];
+  return validarProyecto(limpiarAssets(p));
+}
+
+/**
+ * Dónde termina cada escena en la voz del guion completo: a mitad de la pausa entre la última palabra de
+ * una y la primera de la siguiente. `cuentas`: cuántas palabras dice cada escena.
+ */
+export function repartirGuion(palabras: Palabra[], cuentas: number[], dur: number): { limites: number[]; tramos: Palabra[][] } {
+  let k = 0;
+  const limites: number[] = [0];
+  const tramos: Palabra[][] = [];
+  for (const [j, n] of cuentas.entries()) {
+    tramos.push(palabras.slice(k, k + n));
+    k += n;
+    if (j < cuentas.length - 1) {
+      const ultima = palabras[k - 1];
+      const siguiente = palabras[k];
+      const corte = ultima && siguiente ? (ultima.fin + Math.max(ultima.fin, siguiente.inicio)) / 2 : limites[limites.length - 1]!;
+      limites.push(Math.max(limites[limites.length - 1]! + 0.05, corte));
+    }
+  }
+  limites.push(dur);
+  return { limites, tramos };
+}
+
+/** Pone la voz nueva del guion completo sobre `base` (la versión de ahora). Lanza si el guion cambió. */
+export function ponerVozGuion(base: Proyecto, dichos: Dicho[], asset: Asset, palabras: Palabra[]): Proyecto {
+  const p = structuredClone(base);
+  const orden = escenasEnLinea(p);
+  const distinta = orden.findIndex((x, j) => x.escena.id !== dichos[j]?.escena || tokens(textoADecir(x.escena)).join(" ") !== dichos[j]!.palabras.join(" "));
+  if (orden.length !== dichos.length || distinta >= 0) throw cambio(distinta >= 0 ? `cambió la escena ${distinta + 1}` : "cambiaron las escenas");
+  const cuentas = dichos.map((d) => d.palabras.length);
+  const total = cuentas.reduce((a, b) => a + b, 0);
+  if (palabras.length !== total) throw new Error(`La alineación devolvió ${palabras.length} palabras y el guion tiene ${total}`);
+  p.assets[asset.id] = asset;
+  const voz = pista(p, "voz").clips;
+  const visual = pista(p, "visual").clips;
+  const { limites, tramos } = repartirGuion(palabras, cuentas, asset.duracion!);
+  orden.forEach((x, j) => {
+    const ini = limites[j]!;
+    const fin = Math.max(ini + 0.05, limites[j + 1]!);
+    voz[j] = { ...voz[j]!, asset: asset.id, rango: { inicio: ini, duracion: fin - ini } };
+    visual[j] = { ...visual[j]!, rango: { inicio: visual[j]!.rango.inicio, duracion: fin - ini } };
+    const e = p.escenas[x.escena.id]!;
+    e.correcciones = conservarCorrecciones(e, tramos[j]!);
+    e.palabras = tramos[j]!;
+    e.texto = tramos[j]!.map((w) => w.texto).join(" ");
+    e.recortes = [];
+  });
+  p.guion.texto = dichos.map((d) => d.palabras.join(" ")).join(" ");
+  return validarProyecto(limpiarAssets(p));
+}
+
+/**
+ * Voz nueva de una escena (`escenaId`) o del guion completo (null). Se genera con lo que dice `original`
+ * y, al terminar, se pone sobre la versión de AHORA (SEG-05): lo que la persona editó mientras tanto
+ * (30–50 s) se conserva. Si cambió justo lo que dice la voz, no se guarda y se avisa.
+ */
 export async function regenerarVoz(
   ctx: Contexto & { signal?: AbortSignal },
   proyectoId: string,
@@ -98,67 +185,34 @@ export async function regenerarVoz(
   if (voz.some((c) => p.assets[c.asset]?.regenerar.origen === "clip")) {
     throw new Error("Este proyecto es un clip: la voz es la del creador y no se regenera. Corrige subtítulos o recorta palabras.");
   }
-  const visual = pista(p, "visual").clips;
-
+  // Lo guardado al empezar: si nadie guarda nada mientras tanto, se pone sobre `original` (traducir pasa
+  // una copia con cambios suyos todavía sin guardar).
+  const guardada = await leerGuardado(proyectoId);
+  let aplicar: (base: Proyecto) => Proyecto;
   if (escenaId) {
     const e = p.escenas[escenaId];
     if (!e) throw new Error(`No existe la escena ${escenaId}`);
-    const texto = tokens(textoADecir(e)).join(" ");
-    if (!texto) throw new Error("La escena no tiene texto para decir");
-    const { asset, palabras } = await sintetizarAsset(ctx, p, texto);
-    p.assets[asset.id] = asset;
-    const i = voz.findIndex((c) => c.escena === escenaId);
-    const dur = asset.duracion!;
-    voz[i] = { ...voz[i]!, asset: asset.id, rango: { inicio: 0, duracion: dur } };
-    visual[i] = { ...visual[i]!, rango: { inicio: visual[i]!.rango.inicio, duracion: dur } };
-    e.correcciones = conservarCorrecciones(e, palabras);
-    e.palabras = palabras;
-    e.texto = palabras.map((w) => w.texto).join(" ");
-    // Los recortes eran tiempos de la voz anterior: la nueva ya no dice lo recortado.
-    e.recortes = [];
+    const dicho = { escena: escenaId, palabras: tokens(textoADecir(e)) };
+    if (!dicho.palabras.length) throw new Error("La escena no tiene texto para decir");
+    const { asset, palabras } = await sintetizarAsset(ctx, p, dicho.palabras.join(" "));
+    aplicar = (base) => ponerVozEscena(base, dicho, asset, palabras);
   } else {
     // Guion completo: el texto de las escenas actuales (sin lo recortado), en orden. Cada escena
     // conserva su tramo de palabras.
-    const orden = escenasEnLinea(p);
-    const textos = orden.map((x) => tokens(textoADecir(x.escena)));
-    const cuentas = textos.map((t) => t.length);
-    const texto = textos.map((t) => t.join(" ")).join(" ");
-    const { asset, palabras } = await sintetizarAsset(ctx, p, texto);
-    if (palabras.length !== cuentas.reduce((a, b) => a + b, 0)) {
-      throw new Error(`La alineación devolvió ${palabras.length} palabras y el guion tiene ${cuentas.reduce((a, b) => a + b, 0)}`);
-    }
-    p.assets[asset.id] = asset;
-    const dur = asset.duracion!;
-    let k = 0;
-    const limites: number[] = [0];
-    const tramos: Palabra[][] = [];
-    for (const [j, n] of cuentas.entries()) {
-      tramos.push(palabras.slice(k, k + n));
-      k += n;
-      if (j < cuentas.length - 1) {
-        const ultima = palabras[k - 1];
-        const siguiente = palabras[k];
-        const corte = ultima && siguiente ? (ultima.fin + Math.max(ultima.fin, siguiente.inicio)) / 2 : limites[limites.length - 1]!;
-        limites.push(Math.max(limites[limites.length - 1]! + 0.05, corte));
-      }
-    }
-    limites.push(dur);
-    orden.forEach((x, j) => {
-      const ini = limites[j]!;
-      const fin = Math.max(ini + 0.05, limites[j + 1]!);
-      voz[j] = { ...voz[j]!, asset: asset.id, rango: { inicio: ini, duracion: fin - ini } };
-      visual[j] = { ...visual[j]!, rango: { inicio: visual[j]!.rango.inicio, duracion: fin - ini } };
-      const e = p.escenas[x.escena.id]!;
-      e.correcciones = conservarCorrecciones(e, tramos[j]!);
-      e.palabras = tramos[j]!;
-      e.texto = tramos[j]!.map((w) => w.texto).join(" ");
-      e.recortes = [];
-    });
-    p.guion.texto = texto;
+    const dichos = escenasEnLinea(p).map((x) => ({ escena: x.escena.id, palabras: tokens(textoADecir(x.escena)) }));
+    const { asset, palabras } = await sintetizarAsset(ctx, p, dichos.map((d) => d.palabras.join(" ")).join(" "));
+    aplicar = (base) => ponerVozGuion(base, dichos, asset, palabras);
   }
-  const final = validarProyecto(limpiarAssets(p));
-  const nuevo = Object.values(final.assets).find((a) => a.source === "tts" && pista(final, "voz").clips.some((c) => c.asset === a.id));
-  const version = await guardarProyecto(proyectoId, final, escenaId ? `Voz regenerada: escena ${escenaId}` : "Voz regenerada: guion completo");
+  // Antes de guardar, sobre la copia del trabajo: un error propio (p. ej. la alineación) sale tal cual.
+  const nuevo = aplicar(p);
+  let final = nuevo;
+  const version = await guardarEncima(
+    proyectoId,
+    escenaId ? `Voz regenerada: escena ${escenaId}` : "Voz regenerada: guion completo",
+    (base) => (final = aplicar(base)),
+    { guardada, copia: p },
+  );
   await registrarAssetsEnDb(proyectoId, final);
-  return { version, asset: nuevo?.id ?? "" };
+  const id = Object.values(nuevo.assets).find((a) => a.source === "tts" && pista(nuevo, "voz").clips.some((c) => c.asset === a.id))?.id;
+  return { version, asset: id ?? "" };
 }

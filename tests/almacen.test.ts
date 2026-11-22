@@ -99,4 +99,17 @@ describe("guardarEncima: un trabajo largo no pisa lo editado mientras tanto (SEG
     expect(await db.version.count({ where: { proyectoId: "p2" } })).toBe(antes.versionActual);
     expect((await leerProyecto("p2"))!.escenas.e02!.texto).toBe("Generado por el trabajo.");
   });
+
+  it("con «partida»: si nadie guardó, aplica sobre la copia del trabajo; si alguien guardó, sobre lo de ahora", async () => {
+    const { guardarProyecto, guardarEncima, leerGuardado, leerProyecto } = await import("@/lib/almacen");
+    const guardada = (await leerGuardado("p2"))!;
+    const copia = { ...structuredClone(guardada), nombre: "Copia del trabajo (sin guardar)" };
+    await guardarEncima("p2", "sin cambios", (b) => b, { guardada, copia });
+    expect((await leerProyecto("p2"))!.nombre).toBe("Copia del trabajo (sin guardar)");
+
+    const otra = (await leerGuardado("p2"))!;
+    await guardarProyecto("p2", { ...otra, nombre: "La persona lo cambió" }, "editado");
+    await guardarEncima("p2", "con cambios", (b) => b, { guardada: otra, copia: { ...otra, nombre: "Copia vieja" } });
+    expect((await leerProyecto("p2"))!.nombre).toBe("La persona lo cambió");
+  });
 });
