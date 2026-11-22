@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Aviso, Barra, Estado, archivo, pedir, postJson, segundos, useSondeo } from "./comun";
 import { ACCEPT_IMAGEN, esVector } from "@/lib/formatos-vector";
+import { explicarError } from "@/lib/textos";
 import { avisoSubtitulosRapidos, explicarRegla, LIMITES_SUBTITULOS, porQueFalla, resumirQc, type FraseQc, type SubtitulosRapidos } from "@/lib/qc-explicado";
 import { VistaEnVivo } from "./vista-en-vivo";
 import { ListaTrabajos } from "./lista-trabajos";
@@ -18,7 +19,7 @@ import { SelectorEncuadre, type EncuadreV } from "./selector-encuadre";
 import { PanelOtroEditor } from "./panel-otro-editor";
 import { useAccionesProyecto } from "./acciones-proyecto";
 import { FranjaAviso, type MensajeEditor } from "./franja-aviso";
-import { avisoGuardado, avisoRitmo, correccionesVacias, enLista, haceCuanto, mensajeSinCambios, opcionesRitmo, versionParaDeshacer, errorSubtitulo, escenasConOtraVoz, estaActivo, estadoCreacion, mismoContenido, pasoRender, preguntaVozEscena, renderEnCurso, verTrabajos, TEXTO_RITMO_GUARDADO, type TrabajoV, type VocesV } from "./editor-estado";
+import { avisoGuardado, renderFallido, avisoRitmo, correccionesVacias, enLista, haceCuanto, mensajeSinCambios, opcionesRitmo, versionParaDeshacer, errorSubtitulo, escenasConOtraVoz, estaActivo, estadoCreacion, mismoContenido, pasoRender, preguntaVozEscena, renderEnCurso, verTrabajos, TEXTO_RITMO_GUARDADO, type TrabajoV, type VocesV } from "./editor-estado";
 import { Plegable } from "./plegable";
 import { EdicionPorTexto, EfectosEscena, PanelAvanzado, PanelEstilo, type EfectosV, type EstiloV, type ExtrasV, type PalabraV } from "./edicion-avanzada";
 
@@ -469,6 +470,7 @@ export function EditorProyecto({ id }: { id: string }) {
   const modo = pestana ?? (renderAlDia ? "render" : "vivo");
   const activos = fila.trabajos.filter(estaActivo);
   const enCurso = renderEnCurso(fila.trabajos);
+  const fallo = enCurso ? null : renderFallido(fila.trabajos, render);
   /** Otro trabajo en marcha que no es el render (ése ya tiene su franja). */
   const otroActivo = activos.find((t) => t !== enCurso) ?? null;
   const deshacer = versionParaDeshacer(fila.versiones, fila.versionActual);
@@ -520,6 +522,12 @@ export function EditorProyecto({ id }: { id: string }) {
           </div>
           <Barra valor={enCurso.progreso ?? 0} etiqueta="Avance del video" />
           {render?.segundos ? <p className="text-xs text-tenue">La última vez tardó {segundos(render.segundos)}. Puedes seguir editando o cerrar esta página.</p> : null}
+        </div>
+      ) : fallo ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-red-900 bg-red-950/30 px-3 py-2 text-sm" role="alert">
+          <p className="min-w-0 flex-1">No se pudo crear el video. {explicarError(fallo.error).simple}</p>
+          <button type="button" className="boton py-1" disabled={ocupado}
+            onClick={() => void hacer(() => postJson(`/api/trabajos/${fallo.id}`, { accion: "relanzar" }), "Listo: lo estamos intentando otra vez.")}>Volver a intentar</button>
         </div>
       ) : render && renderAlDia && qc ? (
         <div className={`flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm ${qc.estado === "falta" ? "border-red-900 bg-red-950/30" : "border-emerald-800 bg-emerald-950/40"}`}>

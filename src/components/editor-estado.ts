@@ -61,6 +61,17 @@ export function avisoGuardado(trabajos: TrabajoV[]): { texto: string; ofrecerCre
 /** UX-19: el ritmo de la voz no cambia el video hasta que se vuelva a decir el guion. */
 export const TEXTO_RITMO_GUARDADO = "Listo: el ritmo cuenta la próxima vez que se diga el guion.";
 
+/**
+ * UX-10: el último render que falló o se cortó, si es más nuevo que el último video guardado (si falla
+ * antes de guardar, no queda fila Render y arriba no se decía nada). Uno cancelado por la persona no cuenta.
+ */
+export function renderFallido(trabajos: TrabajoV[], ultimoRender?: { creado: string } | null): TrabajoV | null {
+  const t = trabajos.find((x) => x.tipo === "render.entregar");
+  if (!t || (t.estado !== "fallido" && t.estado !== "interrumpido")) return null;
+  if (ultimoRender && t.creado && new Date(t.creado).getTime() <= new Date(ultimoRender.creado).getTime()) return null;
+  return t;
+}
+
 /** UX-10: el paso del render en palabras de quien no sabe de video. */
 export function pasoRender(t: Pick<TrabajoV, "estado" | "etapa">): string {
   if (t.estado === "pendiente") return "esperando su turno";
