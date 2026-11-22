@@ -106,6 +106,14 @@ async function ytdlp(args: string[], log?: Registro, signal?: AbortSignal) {
   }
 }
 
+/**
+ * UX-24: si lo que ya se bajó es más corto que lo que ahora se pide (se bajó con el tope de 90 min y
+ * ahora se quiere revisar todo), hay que volver a bajarlo. Margen de 30 s por redondeos del corte.
+ */
+export function faltaPorBajar(bajado: number, total: number, maxSegundos: number): boolean {
+  return bajado + 30 < Math.min(total, maxSegundos);
+}
+
 /** Trae (o reutiliza) la fuente. `maxMinutos` limita lo que se baja de un VOD largo. */
 export async function traerFuente(src: string, o: { maxMinutos?: number; log?: Registro; signal?: AbortSignal } = {}): Promise<Fuente> {
   const id = idFuente(src);
@@ -153,10 +161,14 @@ export async function traerFuente(src: string, o: { maxMinutos?: number; log?: R
   }
 
   const video = path.join(dir, "fuente.mp4");
+  const max = (o.maxMinutos ?? 90) * 60;
+  if ((await existe(video)) && faltaPorBajar(await probar(video).then((m) => m.duracion, () => 0), info.duracion, max)) {
+    o.log?.(`Lo bajado es más corto que lo pedido (${o.maxMinutos ?? 90} min): se baja otra vez`);
+    await fs.rm(video, { force: true });
+  }
   if (!(await existe(video))) {
     o.log?.(`Bajando ${info.url} (≤ 1080p)`);
     const args = ["-f", "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080]/b", "--merge-output-format", "mp4", "-o", path.join(dir, ".fuente.%(ext)s")];
-    const max = (o.maxMinutos ?? 90) * 60;
     if (info.duracion > max) {
       args.push("--download-sections", `*0-${max}`);
       o.log?.(`El VOD dura ${(info.duracion / 60).toFixed(0)} min: se bajan los primeros ${o.maxMinutos ?? 90} (usa --max-minutos para más)`);

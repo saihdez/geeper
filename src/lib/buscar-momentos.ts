@@ -31,7 +31,17 @@ export interface ResultadoMomentos {
   opciones: OpcionesMomentos;
   idioma: string;
   candidatos: Candidato[];
+  /** Segundos que se revisaron: menos que la duración si el video pasa del tope (UX-24). */
+  revisado?: number;
   creado: string;
+}
+
+/** Tope por omisión de lo que se baja y se revisa de un video largo (minutos). */
+export const MAX_MINUTOS = 90;
+
+/** Hasta dónde se revisó una fuente: lo guardado o, en análisis viejos, el tope de entonces. */
+export function revisadoDe(duracion: number, revisado?: number | null): number {
+  return revisado ?? Math.min(duracion, MAX_MINUTOS * 60);
 }
 
 /** Aire alrededor de cada momento en la vista previa (s). */
@@ -43,7 +53,7 @@ export async function buscarMomentos(pe: PedidoMomentos, log: Registro = () => {
   const o: OpcionesMomentos = { top: pe.top ?? OPCIONES_MOMENTOS.top, min: pe.min ?? OPCIONES_MOMENTOS.min, max: pe.max ?? OPCIONES_MOMENTOS.max };
   if (!(o.max >= o.min && o.min >= 3)) throw new Error("Duración inválida: min ≥ 3 s y max ≥ min");
   const idioma = pe.idioma ?? "es";
-  const maxMinutos = pe.maxMinutos ?? 90;
+  const maxMinutos = pe.maxMinutos ?? MAX_MINUTOS;
   const f = await traerFuente(pe.src, { maxMinutos, log, signal });
   log(`Fuente ${f.id}: «${f.info.titulo}» de ${f.info.canal ?? "?"} (${(f.info.duracion / 60).toFixed(1)} min)`);
   const db = await dbPorSegundo(f.video, maxMinutos * 60);
@@ -95,7 +105,7 @@ export async function buscarMomentos(pe: PedidoMomentos, log: Registro = () => {
   log(`Vistas previas listas (${cands.length}).`);
 
   const r: ResultadoMomentos = {
-    fuente: f.id, info: f.info, opciones: o, idioma,
+    fuente: f.id, info: f.info, opciones: o, idioma, revisado: n,
     candidatos: [...cands].sort((a, b) => b.puntaje - a.puntaje),
     creado: new Date().toISOString(),
   };
@@ -124,6 +134,8 @@ export interface FuenteListada {
   info: InfoFuente;
   candidatos: Candidato[] | null;
   idioma: string | null;
+  /** Segundos revisados (ver `revisadoDe`). */
+  revisado: number;
   creado: string | null;
 }
 
@@ -139,7 +151,7 @@ export async function listarFuentes(): Promise<FuenteListada[]> {
       const rc = path.join(base, id, "candidatos.json");
       const r = (await existe(rc)) ? (JSON.parse(await fs.readFile(rc, "utf8")) as ResultadoMomentos) : null;
       const t = (await fs.stat(r ? rc : path.join(base, id, "info.json"))).mtimeMs;
-      out.push({ id, info, candidatos: r?.candidatos ?? null, idioma: r?.idioma ?? null, creado: r?.creado ?? null, t });
+      out.push({ id, info, candidatos: r?.candidatos ?? null, idioma: r?.idioma ?? null, revisado: revisadoDe(info.duracion, r?.revisado), creado: r?.creado ?? null, t });
     } catch {
       /* fuente a medias: se ignora */
     }

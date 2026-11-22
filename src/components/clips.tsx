@@ -17,6 +17,8 @@ interface Fuente {
   info: { url: string; titulo: string; canal: string | null; plataforma: string | null; duracion: number };
   candidatos: Candidato[] | null;
   idioma: string | null;
+  /** Segundos que se revisaron (menos que la duración si el video pasa del tope). */
+  revisado?: number;
 }
 interface TrabajoM {
   id: string; estado: string; etapa: string; progreso: number; error: string | null;
@@ -362,13 +364,35 @@ function Paso2({ f, elegir, volver }: { f: Fuente; elegir: (n: number) => void; 
   const orden = [...cands].sort((a, b) => b.puntaje - a.puntaje);
   const sinVista = cands.some((c) => !c.vista);
   const [reanalizando, setReanalizando] = useState(false);
+  const [errorTodo, setErrorTodo] = useState<string | null>(null);
+  const corto = revisadoParcial(f);
+  async function revisarTodo() {
+    setReanalizando(true);
+    setErrorTodo(null);
+    try {
+      await postJson("/api/clips/momentos", { src: f.info.url, idioma: f.idioma ?? "es", maxMinutos: Math.min(600, Math.ceil(f.info.duracion / 60) + 1) });
+      volver(); // el paso 1 enseña el avance
+    } catch (err) {
+      setErrorTodo(err instanceof Error ? err.message : String(err));
+      setReanalizando(false);
+    }
+  }
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-baseline gap-3">
         <h2 className="text-lg font-medium">{f.info.titulo}</h2>
-        <span className="text-sm text-tenue">{f.info.canal ?? "Video tuyo"} · {mmss(f.info.duracion)}</span>
+        <span className="text-sm text-tenue">{f.info.canal ?? "Video tuyo"} · {segundos(f.info.duracion)}</span>
         <button type="button" className="boton ml-auto" onClick={volver}>← Elegir otro video</button>
       </div>
+      {corto && (
+        <Aviso tipo="info">
+          <p>Este video dura {segundos(f.info.duracion)}: revisé sólo {corto}. Los momentos de después no salen en la lista.</p>
+          <button type="button" className="boton mt-2" disabled={reanalizando} onClick={() => void revisarTodo()}>
+            {reanalizando ? "Pidiendo…" : "Revisar todo el video (tarda más y ocupa más espacio)"}
+          </button>
+          {errorTodo && <p className="mt-1 text-red-300">{errorTodo}</p>}
+        </Aviso>
+      )}
       {cands.length === 0 ? (
         <Aviso tipo="alerta">No encontré momentos en este video. Suele pasar si es más corto que un clip o si casi no tiene sonido.</Aviso>
       ) : (
@@ -400,6 +424,14 @@ function Paso2({ f, elegir, volver }: { f: Fuente; elegir: (n: number) => void; 
       </ul>
     </div>
   );
+}
+
+/** UX-24: «la primera hora y media» si de un video largo se revisó sólo una parte; si no, null. */
+export function revisadoParcial(f: Pick<Fuente, "info" | "revisado">): string | null {
+  const revisado = f.revisado ?? Math.min(f.info.duracion, 90 * 60);
+  if (f.info.duracion - revisado < 60) return null;
+  if (Math.abs(revisado - 5400) < 30) return "la primera hora y media";
+  return `los primeros ${segundos(revisado)}`;
 }
 
 /** Miniatura que, al darle play, reproduce sólo el momento (dentro de la vista previa con aire). */
