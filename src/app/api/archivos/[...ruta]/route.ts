@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { dentroDe } from "@/lib/archivos";
+import { servible } from "@/lib/archivos-servibles";
 import { dirDatos } from "@/lib/rutas";
 import { CSP_SVG, esSvg } from "@/lib/svg";
 
@@ -14,7 +15,10 @@ const TIPOS: Record<string, string> = {
   ".webp": "image/webp", ".csv": "text/csv; charset=utf-8", ".srt": "application/x-subrip; charset=utf-8",
 };
 
-/** Sirve archivos de ~/geeper-data (con Range para los videos). Sólo lectura, sin salir de la carpeta. */
+/**
+ * Sirve archivos de ~/geeper-data (con Range para los videos). Sólo lectura, sin salir de la carpeta y
+ * sólo de las carpetas de proyectos y de medios (archivos-servibles.ts): nunca claves, respaldos ni la base.
+ */
 export async function GET(req: Request, ctx: { params: Promise<{ ruta: string[] }> }) {
   const { ruta } = await ctx.params;
   let abs: string;
@@ -23,7 +27,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ ruta: string[] 
   } catch {
     return new Response("Ruta inválida", { status: 400 });
   }
-  if (abs.endsWith(".db") || abs.includes(`${path.sep}.`)) return new Response("No", { status: 403 });
+  if (!(await servible(dirDatos(), path.relative(dirDatos(), abs)))) return new Response("Ese archivo no se puede abrir desde aquí.", { status: 403 });
   let st;
   try {
     st = await fs.stat(abs);
