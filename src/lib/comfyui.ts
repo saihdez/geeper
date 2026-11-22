@@ -319,7 +319,7 @@ export interface Servidor {
  * `nodos`: argumentos de nodos extra (argsNodos de nodos-comfy.ts). Por defecto no carga ninguno:
  * el código de la comunidad sólo corre cuando el workflow lo pide y la persona lo permitió.
  */
-export async function arrancarComfyui(op: { puerto: number; gpuSolo?: boolean; log?: (l: string) => void; signal?: AbortSignal; dir?: string; python?: string; nodos?: string[] }): Promise<Servidor> {
+export async function arrancarComfyui(op: { puerto: number; gpuSolo?: boolean; arranqueMs?: number; log?: (l: string) => void; signal?: AbortSignal; dir?: string; python?: string; nodos?: string[] }): Promise<Servidor> {
   const dir = op.dir ?? COMFYUI_DIR;
   const python = op.python ?? COMFYUI_PYTHON;
   const falta = faltaComfyui(dir, python);
@@ -333,8 +333,12 @@ export async function arrancarComfyui(op: { puerto: number; gpuSolo?: boolean; l
   hijo.once("close", () => (salio = true));
   anotarProceso(hijo, "ComfyUI");
   let salida = "";
+  // Con gpu-solo, el plazo de arranque cuenta desde que tiene la tarjeta («gpu-solo: pausados»), no desde
+  // que hace fila: si la tarjeta lleva más de 5 min ocupada, el workflow sólo esperaba su turno (GPU-08).
+  let desde: number | null = conGpuSolo ? null : Date.now();
   const leer = (d: Buffer) => {
     const t = d.toString();
+    if (desde === null && t.includes("gpu-solo: pausados")) desde = Date.now();
     salida = (salida + t).slice(-200_000);
     for (const l of t.split(/\r?\n/)) if (l.trim()) op.log?.(l.trimEnd());
   };
@@ -355,8 +359,10 @@ export async function arrancarComfyui(op: { puerto: number; gpuSolo?: boolean; l
     matarArbol(hijo, { graciaMs: 8000, patronDuro: conGpuSolo ? patronComando(python) : undefined });
     await cerrado;
   };
-  const limite = Date.now() + 5 * 60_000;
-  while (Date.now() < limite) {
+  const ARRANQUE_MS = op.arranqueMs ?? 5 * 60_000;
+  // Tope de la fila por si gpu-solo nunca avisa: una hora.
+  const topeFila = Date.now() + 60 * 60_000;
+  while (desde === null ? Date.now() < topeFila : Date.now() < desde + ARRANQUE_MS) {
     if (op.signal?.aborted) {
       await detener();
       throw new Error("Cancelado");
