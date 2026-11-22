@@ -66,7 +66,7 @@ export function Ayuda({ texto, de }: { texto: string; de: string }) {
         aria-expanded={abierta}
         aria-controls={id}
         aria-label={`Qué significa «${de}»`}
-        className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-500 text-[0.65rem] leading-none text-slate-300 hover:border-cyan-400 hover:text-white"
+        className="ml-1 inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-500 text-xs leading-none text-slate-300 hover:border-cyan-400 hover:text-white"
       >
         ?
       </button>

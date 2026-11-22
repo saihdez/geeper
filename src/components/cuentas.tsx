@@ -242,11 +242,11 @@ function SeccionRed({ red, cuentas, vpn, bloqueada, alCambiar, avisar }: {
         // Exigido por las políticas para desarrolladores de los Servicios de API de YouTube.
         <p className="text-xs text-tenue">
           Geeper usa los Servicios de API de YouTube. Al conectar un canal aceptas los{" "}
-          <a className="text-acento hover:underline" href="https://www.youtube.com/t/terms" target="_blank" rel="noreferrer">Términos del Servicio de YouTube</a>
+          <a className="text-acento underline" href="https://www.youtube.com/t/terms" target="_blank" rel="noreferrer">Términos del Servicio de YouTube</a>
           {" "}y la{" "}
-          <a className="text-acento hover:underline" href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">Política de Privacidad de Google</a>.
+          <a className="text-acento underline" href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">Política de Privacidad de Google</a>.
           {" "}Puedes revocar el acceso cuando quieras con «Desconectar» o desde la{" "}
-          <a className="text-acento hover:underline" href="https://security.google.com/settings/security/permissions" target="_blank" rel="noreferrer">configuración de seguridad de Google</a>.
+          <a className="text-acento underline" href="https://security.google.com/settings/security/permissions" target="_blank" rel="noreferrer">configuración de seguridad de Google</a>.
         </p>
       )}
       {red.configurada && !vpn.ok && <p className="text-xs text-amber-300">No se puede conectar ahora: {vpn.detalle}</p>}
