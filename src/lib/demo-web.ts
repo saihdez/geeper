@@ -382,6 +382,8 @@ export interface OpcionesComposicion {
   video: string;
   fondo: { desde: string; hasta: string };
   fps?: number;
+  /** `src` del script de GSAP: la copia local dentro del proyecto (gsap-local.ts), sin internet. */
+  gsap: string;
 }
 
 const f3 = (n: number) => n.toFixed(3);
@@ -453,7 +455,7 @@ export function componerDemo(o: OpcionesComposicion): string {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=${W}, height=${H}" />
     <!-- Generado por Geeper (demo-web.ts): no editar a mano. -->
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <script src="${o.gsap}"></script>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body { width: ${W}px; height: ${H}px; overflow: hidden; background: ${o.fondo.hasta}; }

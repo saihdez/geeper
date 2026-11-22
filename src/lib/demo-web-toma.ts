@@ -19,6 +19,7 @@ import {
   type Montaje,
   type RegistroDemo,
 } from "./demo-web";
+import { gsapParaProyecto } from "./gsap-local";
 import { correrHf } from "./hyperframes";
 import { ffmpeg, fotograma, probar } from "./media";
 import type { Registro } from "./proceso";
@@ -289,7 +290,13 @@ export async function renderDemo(dir: string, r: RegistroDemo, op: OpcionesRende
   await fsp.mkdir(path.join(build, "assets"), { recursive: true });
   const toma = path.join(dir, "toma.mp4");
   await fsp.link(toma, path.join(build, "assets", "toma.mp4")).catch(() => fsp.copyFile(toma, path.join(build, "assets", "toma.mp4")));
-  await fsp.writeFile(path.join(build, "index.html"), componerDemo({ registro: r, montaje, video: "assets/toma.mp4", fondo }));
+  // GSAP de node_modules, sin internet (REN-10).
+  const gsap = gsapParaProyecto();
+  if (gsap.archivo) {
+    await fsp.mkdir(path.dirname(path.join(build, gsap.src)), { recursive: true });
+    await fsp.copyFile(gsap.archivo, path.join(build, gsap.src));
+  }
+  await fsp.writeFile(path.join(build, "index.html"), componerDemo({ registro: r, montaje, video: "assets/toma.mp4", fondo, gsap: gsap.src }));
   await fsp.writeFile(
     path.join(build, "hyperframes.json"),
     JSON.stringify({ $schema: "https://hyperframes.heygen.com/schema/hyperframes.json", paths: { blocks: "compositions", components: "compositions/components", assets: "assets" }, media: { autoProxy: true } }, null, 2),

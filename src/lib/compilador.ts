@@ -21,6 +21,7 @@ import type { DatosPlantilla } from "./plantillas";
 import { logoPermitido } from "./plantillas-rutas";
 import { lineas, lineasDePalabras } from "./subtitulos";
 import { textoSobre } from "./colores-marca";
+import { gsapParaProyecto } from "./gsap-local";
 
 export const VERSION_COMPILADOR = "compilador-hf-v3";
 
@@ -185,6 +186,9 @@ export function compilar(original: Proyecto, plantilla: DatosPlantilla, rutaMezc
   const total = inicioTarjeta + plantilla.tarjetaFinal.duracion;
   const grupos = todosLosGrupos(p);
   const archivos: Record<string, string> = { "assets/mezcla.wav": rutaMezcla };
+  // GSAP de node_modules, sin internet (REN-10).
+  const gsap = gsapParaProyecto();
+  if (gsap.archivo) archivos[gsap.src] = gsap.archivo;
   const anims: Anim[] = [];
   const enlazar = (a: Asset) => {
     const fuente = sustitutos[a.id] ?? path.join(dirProyecto, a.ruta);
@@ -421,7 +425,7 @@ export function compilar(original: Proyecto, plantilla: DatosPlantilla, rutaMezc
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=${W}, height=${H}" />
     <!-- Generado por Geeper (${VERSION_COMPILADOR}) desde geeper.json: no editar a mano. -->
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <script src="${gsap.src}"></script>
     <style>
       :root {
         --tinta: ${c.tinta};
@@ -542,6 +546,7 @@ export async function escribirProyectoHf(dirBuild: string, comp: Compilado): Pro
   await fs.mkdir(path.join(dirBuild, "assets"), { recursive: true });
   for (const [rel, abs] of Object.entries(comp.archivos)) {
     const destino = path.join(dirBuild, rel);
+    await fs.mkdir(path.dirname(destino), { recursive: true });
     try {
       await fs.link(abs, destino);
     } catch {
