@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { AppCraft, GrupoCraft } from "@/lib/craft-web";
-import { Aviso, Barra, pedir, useSondeo } from "./comun";
+import { Aviso, Barra, Cargando, pedir, useSondeo } from "./comun";
 
 interface EstadoInstalacion {
   fase: "inactiva" | "descargando" | "verificando" | "descomprimiendo" | "lista" | "error";
@@ -64,7 +64,7 @@ export function Media() {
       </div>
       {error && <Aviso tipo="error">No se pudo leer la lista: {error}</Aviso>}
       {msg && <Aviso tipo="error">{msg}</Aviso>}
-      {!datos && !error && <p className="text-sm text-tenue">Cargando…</p>}
+      {!datos && !error && <Cargando>Cargando las apps…</Cargando>}
       {datos && GRUPOS.map((g, i) => (
         <section key={g} aria-labelledby={`grupo-${i}`}>
           <h2 id={`grupo-${i}`} className="mb-2 font-medium">{g}</h2>

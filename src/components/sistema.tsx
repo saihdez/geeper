@@ -1,7 +1,7 @@
 "use client";
 import { AvisoPrivados } from "./aviso-privados";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Aviso, pedir } from "./comun";
+import { Aviso, Cargando, pedir } from "./comun";
 import { InstalarPhotocraft } from "./instalar-photocraft";
 import { InstalarHerramienta } from "./instalar-herramienta";
 import { InstalarWan2gp } from "./instalar-wan2gp";
@@ -68,7 +68,7 @@ export function Sistema() {
       <PrepararEstudio alTerminar={() => void recargar()} />
       <AvisoPrivados alCambiar={() => void recargar()} />
       {error && <Aviso tipo="error">{error}</Aviso>}
-      {!datos && !error && <p className="text-tenue">Revisando… puede tardar unos segundos.</p>}
+      {!datos && !error && <Cargando>Revisando… puede tardar unos segundos.</Cargando>}
       <ul className="space-y-2">
         {datos?.chequeos.map((c) => {
           const e = estadoChequeo(c);

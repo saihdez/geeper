@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Aviso, postJson, useSondeo } from "./comun";
+import { Aviso, Cargando, postJson, useSondeo } from "./comun";
 import { EditorPlantilla, type FilaPlantilla } from "./editor-plantilla";
 import { AparienciaPlantilla } from "./apariencia-plantilla";
 
@@ -66,7 +66,8 @@ export function Plantillas() {
         <p className="text-sm text-tenue">El aspecto de tus videos: marca, logo, colores, letra y cierre. Cambiar una plantilla no toca los videos ya hechos; se aplica cuando vuelves a renderizarlos.</p>
       </div>
       {error && <Aviso tipo="error">{error}</Aviso>}
-      {!datos && <p className="text-sm text-tenue">Cargando…</p>}
+      {!datos && <Cargando>Cargando tus plantillas…</Cargando>}
+      {datos?.plantillas.length === 0 && <p className="text-sm text-tenue">No hay plantillas todavía.</p>}
       {datos?.plantillas.map((p) => (
         <div key={p.slug} className="tarjeta space-y-4 p-4">
           <Resumen p={p} abierta={abierta === p.slug} alEditar={() => { setColor(null); setAbierta(p.slug); }} alDuplicar={() => setCopia({ base: p.slug, nombre: nombreCopia(p.nombre) })} alColor={() => { setAbierta(null); setColor(color === p.slug ? null : p.slug); }} />

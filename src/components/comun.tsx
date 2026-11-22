@@ -127,3 +127,8 @@ export function Aviso({ tipo = "info", children }: { tipo?: "info" | "error" | "
   const c = { info: "border-sky-800 bg-sky-950/50", error: "border-red-800 bg-red-950/50", ok: "border-emerald-800 bg-emerald-950/50", alerta: "border-amber-700 bg-amber-950/50" }[tipo];
   return <div className={`rounded-lg border px-3 py-2 text-sm ${c}`} role={tipo === "error" ? "alert" : "status"}>{children}</div>;
 }
+
+/** «Cargando…» igual en todas las pantallas, y anunciado al lector de pantalla. */
+export function Cargando({ children = "Cargando…" }: { children?: React.ReactNode }) {
+  return <p className="text-sm text-tenue" role="status">{children}</p>;
+}
