@@ -24,6 +24,7 @@ import { cortesDe, medirRitmo, type Ritmo } from "./pulsos";
 import { asegurarPicoReal, correrQc, duplicadosEsperados, ENTREGA, normalizarAudio, TOPES_PICO, type InformeQc } from "./qc";
 import { HYPERFRAMES_VERSION, dirProyecto } from "./rutas";
 import { correrHf } from "./hyperframes";
+import { leerCheck, type ResumenCheck } from "./render-check";
 import { banderasRender, hayNvidia, renderConRespaldo } from "./render-gpu";
 import { SISTEMA } from "./plataforma";
 import { origenClip, reglaClip } from "./clips";
@@ -43,23 +44,6 @@ export interface ResultadoRender {
   aprobado: boolean;
   gpu: boolean;
   segundos: number;
-}
-
-interface ResumenCheck {
-  ok: boolean;
-  errores: number;
-  avisos: number;
-  resumen: string;
-}
-
-function contarHallazgos(v: unknown, acc: { errores: string[]; avisos: number }) {
-  if (Array.isArray(v)) v.forEach((x) => contarHallazgos(x, acc));
-  else if (v && typeof v === "object") {
-    const o = v as Record<string, unknown>;
-    if (o.severity === "error") acc.errores.push(`${String(o.code ?? "")}: ${String(o.message ?? "")}`.slice(0, 300));
-    else if (o.severity === "warning") acc.avisos++;
-    Object.values(o).forEach((x) => contarHallazgos(x, acc));
-  }
 }
 
 export async function versionDeProyecto(proyectoId: string, numero?: number): Promise<{ numero: number; p: Proyecto }> {
@@ -147,8 +131,9 @@ export async function renderEntregar(
       await ctx.etapa("Normalizando sonoridad", 0.8);
       await paso(ctx, "entrega.loudnorm", { archivos: [crudo, rutaMezcla], params: { lufs: -14, tp: -2, entrega: ENTREGA, fps: p.fps, pico: TOPES_PICO, audio: "mezcla" }, motor: huella }, [final], async ([tmp]) => {
         const medido = await normalizarAudio(crudo, tmp!, ctx.log, p.fps, rutaMezcla);
-        // El AAC sube el pico real: si pasa de −1 dBTP, limitador a 192 kHz y otra vez (hasta 4).
-        const pico = await asegurarPicoReal(tmp!, ctx.log);
+        // El AAC sube el pico real: si pasa de −1 dBTP, limitador a 192 kHz y otra vez (hasta 4), partiendo
+        // otra vez de la mezcla en WAV para no pasar el sonido dos veces por AAC (REN-07).
+        const pico = await asegurarPicoReal(tmp!, ctx.log, { audio: rutaMezcla, medido });
         return { antes: medido, pico };
       });
       return { check, gpu };
@@ -260,16 +245,10 @@ async function revisarHf(ctx: CtxRender, dir: string, dirBuild: string, formato:
       const r = await correrHf(["check", "--json", "--no-cache", "--no-craft"], {
         cwd: dirBuild, env: ENV_HF, permitirFallo: true, signal: ctx.signal, timeout: 15 * 60_000,
       });
-      await fs.writeFile(tmp!, r.stdout || "{}");
-      let j: { ok?: boolean } = {};
-      try {
-        j = JSON.parse(r.stdout) as { ok?: boolean };
-      } catch {
-        /* salida no JSON */
-      }
-      const acc = { errores: [] as string[], avisos: 0 };
-      contarHallazgos(j, acc);
-      const res = { ok: j.ok === true, errores: acc.errores.length, avisos: acc.avisos, resumen: acc.errores.slice(0, 5).join("\n") };
+      // WRK-12: sin JSON con `ok` booleano se lanza aquí dentro, para que no se guarde el manifiesto.
+      if (r.codigo !== 0) ctx.log(`hyperframes check salió con código ${r.codigo}`);
+      const res = leerCheck(r.stdout);
+      await fs.writeFile(tmp!, r.stdout);
       ctx.log(`check: ${res.ok ? "ok" : "con problemas"}, ${res.errores} errores, ${res.avisos} avisos`);
       return res;
     },
@@ -288,9 +267,15 @@ async function renderCrudo(ctx: CtxRender, slug: string, dirBuild: string, crudo
     [crudo],
     async ([tmp]) => {
       // NVENC sólo con NVIDIA: en macOS el render va por CPU (VideoToolbox queda para cuando se pruebe en un Mac).
-      // Con GEEPER_RENDER_DETECTAR_NVIDIA=1 (REN-03) tampoco se pide en un equipo sin NVIDIA (render-gpu.ts).
+      // Con la detección de REN-03 (por defecto en Windows) tampoco se pide en un equipo sin NVIDIA (render-gpu.ts).
       const nvidia = await hayNvidia(SISTEMA);
       const candado = !nvidia ? null : await tomarGpu(`render ${slug}`, { esperar: false, signal: ctx.signal });
+      let suelto = false;
+      const soltar = () => {
+        if (suelto) return;
+        suelto = true;
+        candado?.liberar();
+      };
       let gpu = candado !== null;
       ctx.log(gpu ? "GPU libre: render con NVENC (gpu-lock tomado)" : SISTEMA === "mac" ? "macOS: render con CPU (libx264)" : !nvidia ? "Sin tarjeta NVIDIA: render con CPU (libx264)" : "GPU ocupada: render con CPU (libx264), sin esperar");
       try {
@@ -298,9 +283,9 @@ async function renderCrudo(ctx: CtxRender, slug: string, dirBuild: string, crudo
           const b = banderasRender(conGpu, SISTEMA);
           const args = ["render", "--output", tmp!, "--quality", "delivery", "--fps", String(fps), "--quiet", ...b.args];
           await correrHf(args, { cwd: dirBuild, env: { ...ENV_HF, ...b.env }, log: ctx.log, signal: ctx.signal, timeout: 60 * 60_000 });
-        }, ctx.log, process.env, ctx.signal);
+        }, ctx.log, process.env, ctx.signal, soltar);
       } finally {
-        candado?.liberar();
+        soltar();
       }
       return { gpu };
     },

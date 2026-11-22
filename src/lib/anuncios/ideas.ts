@@ -109,20 +109,27 @@ with urllib.request.urlopen(r, timeout=170) as resp:
     print(json.load(resp)["message"]["content"])
 `;
 
+/** Cuerpo de /api/chat de Ollama para las ideas (WEB-02). */
+export function cuerpoIdeas(d: DatosCampana, modelo: string) {
+  const { sistema, usuario } = construirPrompt(d);
+  return {
+    model: modelo,
+    stream: false,
+    format: "json",
+    // Sin «pensar en voz alta» (como ganchos.ts y titulos.ts): tarda y ensucia el JSON.
+    think: false,
+    // Libera la VRAM al terminar: los trabajos de video la necesitan.
+    keep_alive: 0,
+    options: { temperature: 0.8 },
+    messages: [{ role: "system", content: sistema }, { role: "user", content: usuario }],
+  };
+}
+
 export async function pedirIdeas(d: DatosCampana): Promise<string> {
   const candado = await tomarGpu("ideas de anuncios (Ollama)", { esperar: false });
   if (!candado) throw new Error("La GPU está ocupada (generando o renderizando). Prueba de nuevo cuando termine.");
   try {
-    const { sistema, usuario } = construirPrompt(d);
-    const cuerpo = {
-      model: await modeloLocal(),
-      stream: false,
-      format: "json",
-      // Libera la VRAM al terminar: los trabajos de video la necesitan.
-      keep_alive: 0,
-      options: { temperature: 0.8 },
-      messages: [{ role: "system", content: sistema }, { role: "user", content: usuario }],
-    };
+    const cuerpo = cuerpoIdeas(d, await modeloLocal());
     const r = await correr("docker", ["exec", "-i", MPT_CONTENEDOR, "python", "-c", PUENTE], { entrada: JSON.stringify(cuerpo), timeout: 180_000, permitirFallo: true });
     if (r.codigo !== 0) {
       const causa = /docker API|daemon|dockerDesktop|cannot find the file|no puede encontrar/i.test(r.stderr) ? "Docker Desktop no está abierto. Ábrelo, espera a que arranque MPT y vuelve a intentar"

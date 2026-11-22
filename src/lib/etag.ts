@@ -39,3 +39,8 @@ export function rangoVigente(req: Request, st: Pick<Stats, "size" | "mtimeMs" | 
   const fecha = Date.parse(ir);
   return !Number.isNaN(fecha) && Math.floor(st.mtimeMs / 1000) * 1000 === fecha;
 }
+
+/** 304 sin cuerpo con los validadores y las cabeceras de caché que llevaría la respuesta entera. */
+export function noModificado(st: Pick<Stats, "size" | "mtimeMs" | "mtime">, extra: Record<string, string> = {}): Response {
+  return new Response(null, { status: 304, headers: { ...extra, ...cabecerasValidador(st) } });
+}

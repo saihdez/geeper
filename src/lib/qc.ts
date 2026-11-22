@@ -140,6 +140,12 @@ export const ENTREGA = {
   audioKbps: 192,
 } as const;
 
+/** Filtro de la segunda pasada de loudnorm (lineal, con las medidas de la primera). */
+export function filtroLoudnorm(m: Sonoridad): string {
+  return `loudnorm=I=${OBJETIVO.lufs}:TP=-2:LRA=11:measured_I=${m.input_i}:measured_TP=${m.input_tp}:` +
+    `measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true`;
+}
+
 /**
  * Segunda pasada de loudnorm (lineal, con las medidas de la primera) a −14 LUFS / −2 dBTP y, en la
  * misma pasada, la codificación de entrega del video (ver ENTREGA).
@@ -163,9 +169,7 @@ export async function normalizarAudio(entrada: string, salida: string, log: Regi
     "-pix_fmt", "yuv420p", "-g", String(ENTREGA.gopSegundos * fps), "-fps_mode", "passthrough",
     "-maxrate", ENTREGA.maxrate, "-bufsize", ENTREGA.bufsize,
     "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-color_range", "tv",
-    "-af",
-    `loudnorm=I=${OBJETIVO.lufs}:TP=-2:LRA=11:measured_I=${m.input_i}:measured_TP=${m.input_tp}:` +
-      `measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true,aresample=48000${audio ? ",apad" : ""}`,
+    "-af", `${filtroLoudnorm(m)},aresample=48000${audio ? ",apad" : ""}`,
     // -aac_pns 0: el AAC nativo convierte pasajes suaves en chasquidos con PNS (truco de explainroo).
     "-c:a", "aac", "-b:a", `${ENTREGA.audioKbps}k`, "-aac_pns", "0", "-ar", "48000",
     "-movflags", "+faststart", "-f", "mp4", salida,
@@ -176,30 +180,56 @@ export async function normalizarAudio(entrada: string, salida: string, log: Regi
 /** Topes del limitador en cada reintento de pico real (dBTP), del más suave al más firme. */
 export const TOPES_PICO = [-1.5, -1.8, -2.1, -2.4] as const;
 
+/** De dónde rehacer el audio al limitar el pico (REN-07): la mezcla en WAV y lo que midió loudnorm. */
+export interface FuentePico {
+  audio: string;
+  medido: Sonoridad;
+}
+
+/**
+ * Argumentos de ffmpeg de un reintento del limitador. Sin `fuente`, recodifica el AAC del archivo (pasa
+ * dos veces por AAC). Con `fuente`, vuelve a partir del WAV con la misma segunda pasada de loudnorm y el
+ * limitador detrás: el sonido pasa una sola vez por AAC. El video siempre se copia sin tocar.
+ */
+export function argsLimitador(archivo: string, salida: string, tope: number, fuente?: FuentePico, duracion?: number): string[] {
+  const lineal = Math.pow(10, tope / 20).toFixed(4);
+  const limitador = `aresample=192000,alimiter=limit=${lineal}:attack=1:release=50:level=disabled,aresample=48000`;
+  const entrada = fuente
+    ? ["-i", archivo, "-i", fuente.audio, "-map", "0:v:0", "-map", "1:a:0", ...(duracion ? ["-t", duracion.toFixed(3)] : [])]
+    : ["-i", archivo, "-map", "0:v:0", "-map", "0:a:0"];
+  const filtro = fuente ? `${filtroLoudnorm(fuente.medido)},${limitador},apad` : limitador;
+  return [
+    "-v", "error", "-y", ...entrada, "-c:v", "copy",
+    "-af", filtro,
+    "-c:a", "aac", "-b:a", `${ENTREGA.audioKbps}k`, "-aac_pns", "0", "-ar", "48000",
+    "-movflags", "+faststart", "-f", "mp4", salida,
+  ];
+}
+
 /**
  * Pico real tras codificar (HEREDADO.md §2, de explainroo `src/ffmpeg.js:96-150`): el AAC sube el pico
  * unas décimas por encima de lo que dejó loudnorm. Si el archivo final pasa de −1 dBTP, se limita el
  * audio a 192 kHz (el limitador ve los picos entre muestras) y se recodifica sólo el audio, hasta 4
- * veces con un tope cada vez más bajo. El video se copia sin tocar.
+ * veces con un tope cada vez más bajo. El video se copia sin tocar. Con `fuente` (REN-07) cada intento
+ * parte de la mezcla en WAV en vez del AAC ya entregado.
  */
-export async function asegurarPicoReal(archivo: string, log: Registro): Promise<{ tp: number; intentos: number }> {
+export async function asegurarPicoReal(archivo: string, log: Registro, fuente?: FuentePico): Promise<{ tp: number; intentos: number }> {
   let tp = Number((await medirSonoridad(archivo)).input_tp);
   let intentos = 0;
+  let duracion: number | undefined;
   for (const tope of TOPES_PICO) {
     if (tp <= OBJETIVO.picoMaxDbtp) break;
     intentos++;
+    if (fuente && duracion === undefined) {
+      const info = await probar(archivo);
+      duracion = Number(info.video?.duration) || info.duracion;
+    }
     const tmp = `${archivo}.pico.mp4`;
-    const lineal = Math.pow(10, tope / 20).toFixed(4);
-    await ffmpeg([
-      "-v", "error", "-y", "-i", archivo, "-map", "0:v:0", "-map", "0:a:0", "-c:v", "copy",
-      "-af", `aresample=192000,alimiter=limit=${lineal}:attack=1:release=50:level=disabled,aresample=48000`,
-      "-c:a", "aac", "-b:a", `${ENTREGA.audioKbps}k`, "-aac_pns", "0", "-ar", "48000",
-      "-movflags", "+faststart", "-f", "mp4", tmp,
-    ], log);
+    await ffmpeg(argsLimitador(archivo, tmp, tope, fuente, duracion), log);
     await fs.rename(tmp, archivo);
     const antes = tp;
     tp = Number((await medirSonoridad(archivo)).input_tp);
-    log(`pico real ${antes.toFixed(2)} → ${tp.toFixed(2)} dBTP (limitador a ${tope} dBTP)`);
+    log(`pico real ${antes.toFixed(2)} → ${tp.toFixed(2)} dBTP (limitador a ${tope} dBTP${fuente ? ", desde la mezcla" : ""})`);
   }
   return { tp, intentos };
 }
@@ -235,6 +265,24 @@ export function intervalosSubtitulos(grupos: Grupo[], finSubs: number) {
   return grupos.map((g, i) => ({ texto: g.texto, ini: iv[i]!.ini, fin: iv[i]!.fin }));
 }
 
+/** Caracteres por segundo de cada grupo, con los mismos intervalos que usa la regla del QC. */
+export function cpsDeGrupos(grupos: Grupo[], finSubs: number): number[] {
+  return intervalosSubtitulos(grupos, finSubs).map((g) => g.texto.length / (g.fin - g.ini));
+}
+
+/**
+ * Escenas cuyos subtítulos pasan de `OBJETIVO.maxCps` (REN-04): lo mismo que mide la regla
+ * «subtitulos» del QC, pero antes de renderizar. En orden de aparición, con el peor ritmo de cada una.
+ */
+export function escenasConSubtitulosRapidos(grupos: Grupo[], finSubs: number): { escena: string; cps: number }[] {
+  const cps = cpsDeGrupos(grupos, finSubs);
+  const peor = new Map<string, number>();
+  grupos.forEach((g, i) => {
+    if (cps[i]! > OBJETIVO.maxCps) peor.set(g.escena, Math.max(peor.get(g.escena) ?? 0, cps[i]!));
+  });
+  return [...peor].map(([escena, c]) => ({ escena, cps: Number(c.toFixed(1)) }));
+}
+
 export function revisarSubtitulos(formato: Formato, grupos: Grupo[], finSubs: number, plataformas: readonly Plataforma[] = []) {
   const cpl = caracteresPorLinea(formato, { plataformas });
   const malos: string[] = [];
@@ -243,10 +291,11 @@ export function revisarSubtitulos(formato: Formato, grupos: Grupo[], finSubs: nu
   let peorLinea = 0;
   let peorLineas = 0;
   let peorCps = 0;
-  for (const g of intervalosSubtitulos(grupos, finSubs)) {
+  const ritmo = cpsDeGrupos(grupos, finSubs);
+  for (const [i, g] of intervalosSubtitulos(grupos, finSubs).entries()) {
     const ls = lineas(g.texto, cpl);
     const largo = Math.max(...ls.map((l) => l.length));
-    const cps = g.texto.length / (g.fin - g.ini);
+    const cps = ritmo[i]!;
     peorLinea = Math.max(peorLinea, largo);
     peorLineas = Math.max(peorLineas, ls.length);
     peorCps = Math.max(peorCps, cps);

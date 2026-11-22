@@ -26,6 +26,20 @@ export interface Pulsos {
   tiempos: number[];
 }
 
+/** Lee la salida de `hyperframes beats --json`; null si no es un objeto JSON (no se sabe nada). */
+export function leerPulsos(stdout: string): Pulsos | null {
+  let j: unknown;
+  try {
+    j = JSON.parse(stdout);
+  } catch {
+    return null;
+  }
+  if (!j || typeof j !== "object" || Array.isArray(j)) return null;
+  const o = j as { bpm?: unknown; beatTimes?: unknown };
+  const tiempos = Array.isArray(o.beatTimes) ? o.beatTimes.filter((t): t is number => typeof t === "number" && Number.isFinite(t)) : [];
+  return { bpm: typeof o.bpm === "number" && Number.isFinite(o.bpm) ? o.bpm : null, tiempos };
+}
+
 /** Pulsos de una pista (cacheados junto al archivo por su sha256). */
 export async function detectarPulsos(rutaMusica: string, dirCache: string): Promise<Pulsos> {
   const hash = (await sha256Archivo(rutaMusica)).slice(0, 16);
@@ -38,16 +52,13 @@ export async function detectarPulsos(rutaMusica: string, dirCache: string): Prom
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "geeper-pulsos-"));
   try {
     const r = await correrHf(["beats", rutaMusica, "--json"], { cwd: tmp, permitirFallo: true });
-    let j: { bpm?: number | null; beatTimes?: number[] } = {};
-    try {
-      j = JSON.parse(r.stdout) as typeof j;
-    } catch {
-      /* sin pulso estable: el comando falla y no escribe nada */
-    }
-    const res: Pulsos = { bpm: j.bpm ?? null, tiempos: (j.beatTimes ?? []).filter((t) => Number.isFinite(t)) };
+    const leido = leerPulsos(r.stdout);
+    // WRK-12: si el comando falló o no dio JSON no se guarda «sin pulso» (pudo no llegar a correr:
+    // npx sin red); se vuelve a preguntar la próxima vez.
+    if (!leido) return { bpm: null, tiempos: [] };
     await fs.mkdir(dirCache, { recursive: true });
-    await fs.writeFile(cache, JSON.stringify(res));
-    return res;
+    await fs.writeFile(cache, JSON.stringify(leido));
+    return leido;
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
