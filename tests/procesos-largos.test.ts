@@ -63,6 +63,30 @@ describe.skipIf(process.platform === "win32")("procesos largos sin dueño (WRK-0
     process.kill(-h.pid!, "SIGTERM");
   });
 
+  it("sin hora de arranque anotada (macOS sin ps, nota vieja) no mata un proceso vivo: sólo borra la nota", () => {
+    const h = lanzar();
+    anotarProceso(h, "SinHora");
+    sinDueno(h.pid!);
+    const a = JSON.parse(readFileSync(nota(h.pid!), "utf8"));
+    writeFileSync(nota(h.pid!), JSON.stringify({ ...a, inicio: null }));
+    const avisos: string[] = [];
+    expect(cerrarHuerfanos((l) => avisos.push(l))).toEqual([]);
+    expect(vivo(h.pid!)).toBe(true);
+    expect(existsSync(nota(h.pid!))).toBe(false);
+    expect(avisos.join("\n")).toMatch(/no se pudo comprobar/);
+    process.kill(-h.pid!, "SIGTERM");
+  });
+
+  it("sin /proc (macOS) la hora de arranque sale de ps, igual en cada consulta; de un PID que no existe, null", () => {
+    const h = lanzar();
+    const ps = inicioDe(h.pid!, "darwin");
+    expect(ps).toMatch(/^ps:\w{3} \w{3} +\d+ \d{2}:\d{2}:\d{2} \d{4}$/);
+    expect(inicioDe(h.pid!, "darwin")).toBe(ps);
+    expect(inicioDe(4_000_000, "darwin")).toBeNull();
+    expect(inicioDe(h.pid!, "win32")).toBeNull();
+    process.kill(-h.pid!, "SIGTERM");
+  });
+
   it("notas ilegibles o de procesos que ya no existen se limpian sin tocar nada", () => {
     writeFileSync(path.join(dirProcesos(), "roto.json"), "{");
     writeFileSync(path.join(dirProcesos(), "999999.json"), JSON.stringify({ pid: 4_000_000, nombre: "x", inicio: null, dueno: 4_000_001, inicioDueno: null }));
