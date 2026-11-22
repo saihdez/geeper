@@ -1,18 +1,34 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Aviso, postJson, useSondeo } from "./comun";
 
 interface Estado { version: string | null; fase: string; progreso: number; detalle: string }
 
+/** Lo que se dice cuando ya está instalada: sin «recarga la página» (quien no sabe no lo entiende). */
+export function textoLista(version: string, seRevisaSola: boolean): string {
+  return seRevisaSola
+    ? `Lista (${version}). El chequeo se pone verde solo en un momento.`
+    : `Lista (${version}). Pulsa «Volver a revisar», arriba, para ver el chequeo en verde.`;
+}
+
 /**
  * Botón «Instalar con un clic» de una herramienta opcional (app Craft), con su avance. `api` responde
- * GET con el estado y POST para empezar (p. ej. /api/sistema/vectorcraft).
+ * GET con el estado y POST para empezar (p. ej. /api/sistema/vectorcraft). `alTerminar` se llama una vez
+ * cuando la instalación pedida aquí queda lista (Sistema vuelve a revisar y el chequeo se pone verde solo).
  */
-export function InstalarHerramienta({ api, paraQue }: { api: string; paraQue: string }) {
+export function InstalarHerramienta({ api, paraQue, alTerminar }: { api: string; paraQue: string; alTerminar?: () => void }) {
   const [activo, setActivo] = useState(false);
   const { datos: e, recargar } = useSondeo<Estado>(api, activo ? 1000 : 60_000);
   const [error, setError] = useState<string | null>(null);
   const trabajando = !!e && ["descargando", "verificando", "descomprimiendo"].includes(e.fase);
+  const avisado = useRef(false);
+  const lista = !!e?.version;
+  useEffect(() => {
+    if (activo && lista && !avisado.current) {
+      avisado.current = true;
+      alTerminar?.();
+    }
+  }, [activo, lista, alTerminar]);
 
   async function instalar() {
     setError(null);
@@ -26,7 +42,7 @@ export function InstalarHerramienta({ api, paraQue }: { api: string; paraQue: st
   }
 
   if (!e) return null;
-  if (e.version) return <p className="mt-2 text-xs text-emerald-300">Lista: {e.version}. Recarga la página para ver el chequeo en verde.</p>;
+  if (e.version) return <p className="mt-2 text-xs text-emerald-300" role="status">{textoLista(e.version, !!alTerminar)}</p>;
   return (
     <div className="mt-2 space-y-2">
       <p className="text-xs text-tenue">{paraQue}</p>

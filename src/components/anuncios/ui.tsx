@@ -33,7 +33,7 @@ export function Contadores({ r, compacto = false }: { r: Resumen; compacto?: boo
         <span key={k} className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums ${ESTILO[k].c} ${r[k] === 0 ? "opacity-40" : ""}`}>
           <span aria-hidden>{ESTILO[k].i}</span>
           {r[k]}
-          {!compacto && <span className="font-normal">{ESTILO[k].n.toLowerCase()}</span>}
+          <span className={compacto ? "sr-only" : "font-normal"}>{ESTILO[k].n.toLowerCase()}</span>
         </span>
       ))}
     </div>

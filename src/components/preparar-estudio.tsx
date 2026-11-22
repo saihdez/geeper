@@ -5,14 +5,15 @@ import { Aviso, pedir, postJson, useSondeo } from "./comun";
 interface Paso { id: string; nombre: string; paraQue: string; estado: string; detalle: string }
 interface Estado { disponible: boolean; corriendo: boolean; pasos: Paso[]; registro: string[]; revisado: string | null }
 
-const ICONO: Record<string, [string, string]> = {
-  listo: ["✓", "text-emerald-400"],
-  aviso: ["!", "text-amber-300"],
-  falta: ["·", "text-tenue"],
-  error: ["✗", "text-red-400"],
-  revisando: ["…", "text-sky-300"],
-  instalando: ["↓", "text-sky-300"],
-  pendiente: ["·", "text-tenue"],
+/** Signo, color y estado en palabras de cada paso (el signo solo es mudo para el lector de pantalla). */
+export const ICONO: Record<string, [string, string, string]> = {
+  listo: ["✓", "text-emerald-400", "Listo"],
+  aviso: ["!", "text-amber-300", "Con aviso"],
+  falta: ["·", "text-tenue", "Falta"],
+  error: ["✗", "text-red-400", "Falló"],
+  revisando: ["…", "text-sky-300", "Revisando"],
+  instalando: ["↓", "text-sky-300", "Instalando"],
+  pendiente: ["○", "text-tenue", "En espera"],
 };
 
 /**
@@ -86,10 +87,10 @@ export function PrepararEstudio({ alTerminar }: { alTerminar?: () => void }) {
       </p>
       <ul className="space-y-2">
         {e.pasos.map((p) => {
-          const [icono, color] = ICONO[p.estado] ?? ICONO.pendiente!;
+          const [icono, color, estado] = ICONO[p.estado] ?? ICONO.pendiente!;
           return (
             <li key={p.id} className="text-sm [overflow-wrap:anywhere]">
-              <span aria-hidden className={color}>{icono}</span> <span className="font-medium">{p.nombre}</span>
+              <span aria-hidden className={color}>{icono}</span><span className="sr-only">{estado}:</span> <span className="font-medium">{p.nombre}</span>
               <span className="text-tenue"> — {p.paraQue}</span>
               {p.detalle && <p className={`ml-4 text-xs ${p.estado === "error" ? "text-red-300" : p.estado === "aviso" ? "text-amber-200" : "text-tenue"}`}>{p.detalle}</p>}
             </li>
