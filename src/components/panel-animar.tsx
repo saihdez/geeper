@@ -41,6 +41,9 @@ const ESTADO_PESOS: Record<string, string> = {
   "no-existe": "no está en esta versión de Wan2GP",
 };
 
+/** Cada cuánto se consulta /plano: abierto, 3 s; cerrado y animando, 10 s; cerrado y quieto, nunca. */
+export const intervaloAnimar = (abierto: boolean, animando: boolean) => (abierto ? 3000 : animando ? 10_000 : Infinity);
+
 /**
  * «Animar esta escena»: convierte la imagen de la escena en un video corto con Wan2GP (en la GPU de este
  * equipo). Lo simple a la vista (movimiento, duración, rápido o calidad); lo demás en «Más opciones».
@@ -50,15 +53,25 @@ export function PanelAnimar({ proyectoId, escena, numero, ocupado, animar }: {
   animar: (escena: string, opciones: OpcionesAnimar) => Promise<void>;
 }) {
   const [abierto, setAbierto] = useState(false);
-  // Sondeo liviano siempre (para mostrar el avance aunque esté cerrado); el detalle sólo al abrir.
-  const { datos } = useSondeo<Datos>(`/api/proyectos/${proyectoId}/plano?escena=${encodeURIComponent(escena)}`, abierto ? 3000 : 10_000);
+  // Abierto: cada 3 s. Cerrado: sólo mientras esta escena se anima (para mostrar el avance en el título);
+  // si no, una consulta al abrir la página y nada más (la animación sólo se lanza desde aquí).
+  const { datos, recargar } = useSondeo<Datos>(`/api/proyectos/${proyectoId}/plano?escena=${encodeURIComponent(escena)}`,
+    (d) => intervaloAnimar(abierto, d?.trabajos.some((t) => t.escena === escena) ?? false));
   const trabajo = datos?.trabajos.find((t) => t.escena === escena) ?? null;
+  const animarYVer = async (e: string, o: OpcionesAnimar) => {
+    await animar(e, o);
+    await recargar();
+  };
   return (
-    <details className="text-sm" open={abierto} onToggle={(ev) => setAbierto((ev.target as HTMLDetailsElement).open)}>
+    <details className="text-sm" open={abierto} onToggle={(ev) => {
+      const abre = (ev.target as HTMLDetailsElement).open;
+      setAbierto(abre);
+      if (abre) void recargar(); // al abrir, datos frescos y vuelve el ritmo de 3 s
+    }}>
       <summary className="cursor-pointer text-tenue">
         Animar esta escena con IA <span className="text-xs">(convierte la imagen en video{trabajo ? ` · ${trabajo.estado === "pendiente" ? "en espera" : trabajo.etapa || "animando"}` : ""})</span>
       </summary>
-      {abierto && <Contenido proyectoId={proyectoId} escena={escena} numero={numero} ocupado={ocupado} animar={animar} trabajo={trabajo} base={datos} />}
+      {abierto && <Contenido proyectoId={proyectoId} escena={escena} numero={numero} ocupado={ocupado} animar={animarYVer} trabajo={trabajo} base={datos} />}
     </details>
   );
 }

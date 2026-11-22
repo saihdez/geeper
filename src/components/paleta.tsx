@@ -6,6 +6,7 @@
  */
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { DESTINOS } from "@/lib/destinos";
 
 export interface AccionPaleta {
   id: string;
@@ -36,15 +37,24 @@ const suscribir = (o: () => void) => {
 };
 const VACIO: AccionPaleta[] = [];
 
+/** Lo visible de una lista de acciones (sin `hacer`): si no cambia, no hace falta avisar a la paleta. */
+export function firmaAcciones(acciones: AccionPaleta[]): string {
+  return JSON.stringify(acciones.map(({ id, titulo, grupo, palabras, detalle, confirmar, deshabilitada }) => [id, titulo, grupo, palabras, detalle, confirmar, deshabilitada]));
+}
+
 /** Suma acciones a la paleta mientras el componente esté montado. */
 export function useAccionesPaleta(clave: string, acciones: AccionPaleta[]) {
   const ref = useRef(acciones);
   useEffect(() => {
     ref.current = acciones;
-    // Se envuelven para llamar siempre a la versión más nueva (los cierres cambian en cada render).
-    registradas.set(clave, acciones.map((a, i) => ({ ...a, hacer: () => ref.current[i]?.hacer() })));
-    avisar();
   });
+  // Sólo se vuelve a registrar (y a repintar la paleta) si cambia lo que se ve, no en cada render.
+  const firma = firmaAcciones(acciones);
+  useEffect(() => {
+    // Se envuelven para llamar siempre a la versión más nueva (los cierres cambian en cada render).
+    registradas.set(clave, ref.current.map((a, i) => ({ ...a, hacer: () => ref.current[i]?.hacer() })));
+    avisar();
+  }, [clave, firma]);
   useEffect(() => () => {
     registradas.delete(clave);
     avisar();
@@ -70,17 +80,6 @@ export function filtrar(acciones: AccionPaleta[], consulta: string): AccionPalet
     .map((x) => x.a);
 }
 
-const IR_A: { titulo: string; ruta: string; palabras: string }[] = [
-  { titulo: "Proyectos", ruta: "/", palabras: "inicio lista videos" },
-  { titulo: "Nuevo proyecto", ruta: "/nuevo", palabras: "crear generar tema lote video" },
-  { titulo: "Trabajos", ruta: "/trabajos", palabras: "cola avance log progreso" },
-  { titulo: "Anuncios", ruta: "/anuncios", palabras: "campañas ads publicidad" },
-  { titulo: "Plantillas", ruta: "/plantillas", palabras: "estilo diseño canal" },
-  { titulo: "Media (apps Craft)", ruta: "/media", palabras: "photocraft filmcraft vectorcraft effectcraft lightcraft designcraft pdfcraft soundcraft photoshop premiere illustrator after effects editar foto video" },
-  { titulo: "Cuentas conectadas", ruta: "/cuentas", palabras: "redes youtube tiktok instagram facebook conectar vpn" },
-  { titulo: "Sistema", ruta: "/sistema", palabras: "diagnostico doctor problemas estado" },
-];
-
 export function Paleta() {
   const router = useRouter();
   const propias = useSyncExternalStore(suscribir, () => instantanea, () => VACIO);
@@ -93,7 +92,7 @@ export function Paleta() {
 
   const todas = useMemo<AccionPaleta[]>(() => [
     ...propias,
-    ...IR_A.map((r) => ({ id: `ir:${r.ruta}`, titulo: r.titulo, grupo: "Ir a", palabras: r.palabras, hacer: () => router.push(r.ruta) })),
+    ...DESTINOS.map((r) => ({ id: `ir:${r.ruta}`, titulo: r.titulo, grupo: "Ir a", palabras: r.palabras, hacer: () => router.push(r.ruta) })),
   ], [propias, router]);
   const lista = useMemo(() => filtrar(todas, consulta), [todas, consulta]);
 
@@ -116,6 +115,11 @@ export function Paleta() {
     window.addEventListener("keydown", tecla);
     return () => window.removeEventListener("keydown", tecla);
   }, [abierta, abrir, cerrar]);
+
+  // Al bajar con las flechas, la opción activa no se sale de la vista.
+  useEffect(() => {
+    if (abierta) document.getElementById(`${idLista}-${activa}`)?.scrollIntoView({ block: "nearest" });
+  }, [abierta, activa, idLista]);
 
   useEffect(() => {
     const d = dialogo.current;

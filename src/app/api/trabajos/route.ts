@@ -10,13 +10,17 @@ export async function GET(req: Request) {
     where: proyectoId ? { proyectoId } : {},
     orderBy: { creado: "desc" },
     take: 200,
-    include: { proyecto: { select: { nombre: true, slug: true } } },
+    // Lo que pinta lista-trabajos: sin payload (la sesión de subida no sale), resultado ni log.
+    select: {
+      id: true, tipo: true, motor: true, estado: true, etapa: true, progreso: true, error: true, intentos: true, usaGpu: true,
+      creado: true, iniciado: true, terminado: true, proyectoId: true,
+      proyecto: { select: { nombre: true, slug: true } },
+    },
   });
   const latido = await db.sistema.findUnique({ where: { clave: "worker.latido" } });
   const ahora = Date.now();
-  // La sesión de subida de una publicación permite subir a la cuenta: no sale por la API.
-  for (const t of trabajos) {
-    if (t.payload && typeof t.payload === "object" && "sesion" in t.payload) t.payload = { ...(t.payload as object), sesion: "[oculto]" };
-  }
-  return json({ trabajos, workerLatido: latido?.valor ?? null, workerVivo: !!latido && ahora - new Date(latido.valor).getTime() < 60_000, ahora });
+  // `ahora` sólo sirve para la duración de lo que empezó y no terminó: si no hay nada así va fijo, para
+  // que la respuesta sea idéntica mientras nada cambie y la pantalla no se repinte (useSondeo compara).
+  const enCurso = trabajos.some((t) => t.iniciado && !t.terminado);
+  return json({ trabajos, workerVivo: !!latido && ahora - new Date(latido.valor).getTime() < 60_000, ahora: enCurso ? ahora : 0 });
 }

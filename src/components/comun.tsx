@@ -1,10 +1,13 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { mensajeHttp, traer } from "@/lib/conexion";
+import { crearSondeo, type Sondeo } from "@/lib/sondeo";
 
+/** Pide JSON. Los errores salen en palabras simples: sin conexión, «ya no existe», o el texto del servidor. */
 export async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(url, init);
-  const d = (await r.json().catch(() => ({}))) as T & { error?: string };
-  if (!r.ok) throw new Error(d.error ?? `Error ${r.status}`);
+  const r = await traer(url, init);
+  const d = (await r.json().catch(() => ({}))) as T & { error?: unknown };
+  if (!r.ok) throw new Error(mensajeHttp(r.status, d.error));
   return d;
 }
 
@@ -12,33 +15,43 @@ export function postJson<T>(url: string, cuerpo: unknown): Promise<T> {
   return pedir<T>(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(cuerpo) });
 }
 
-/** Trae datos y los refresca cada `ms` (más seguido si `rapido`). */
-export function useSondeo<T>(url: string, ms = 3000) {
+/**
+ * Trae datos y los refresca `ms` después de cada respuesta (o lo que diga `ms(datos)`, para ir más
+ * lento en reposo). No pide con la pestaña oculta, no repinta si nada cambió y descarta respuestas
+ * viejas (ver lib/sondeo.ts).
+ */
+export function useSondeo<T>(url: string, ms: number | ((datos: T | null) => number) = 3000) {
   const [datos, setDatos] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const vivo = useRef(true);
-  const cargar = useCallback(async () => {
-    try {
-      const d = await pedir<T>(url);
-      if (vivo.current) {
-        setDatos(d);
-        setError(null);
-      }
-    } catch (e) {
-      if (vivo.current) setError(e instanceof Error ? e.message : String(e));
-    }
-  }, [url]);
+  const intervalo = useRef(ms);
+  const sondeo = useRef<Sondeo | null>(null);
   useEffect(() => {
-    vivo.current = true;
-    const primera = setTimeout(() => void cargar(), 0);
-    const i = setInterval(() => void cargar(), ms);
+    intervalo.current = ms;
+  });
+  useEffect(() => {
+    const s = crearSondeo<T>({
+      url,
+      intervalo: (d) => {
+        const m = intervalo.current;
+        return typeof m === "function" ? m(d) : m;
+      },
+      alDatos: setDatos,
+      alError: setError,
+    });
+    sondeo.current = s;
+    s.iniciar();
     return () => {
-      vivo.current = false;
-      clearTimeout(primera);
-      clearInterval(i);
+      s.detener();
+      if (sondeo.current === s) sondeo.current = null;
     };
-  }, [cargar, ms]);
-  return { datos, error, recargar: cargar };
+  }, [url]);
+  // Si cambia un intervalo fijo (p. ej. un panel que se abre), la próxima consulta se reprograma.
+  const fijo = typeof ms === "number" ? ms : null;
+  useEffect(() => {
+    if (fijo !== null) sondeo.current?.reprogramar();
+  }, [fijo]);
+  const recargar = useCallback(() => sondeo.current?.recargar() ?? Promise.resolve(), []);
+  return { datos, error, recargar };
 }
 
 const COLORES: Record<string, string> = {
@@ -69,11 +82,12 @@ const COLORES: Record<string, string> = {
   archivada: "bg-zinc-700 text-zinc-200",
 };
 
-const NOMBRES: Record<string, string> = {
-  qc: "QC no aprobado",
-  entregado: "Entregado",
-  ensamblado: "Ensamblado",
-  generando: "Generando",
+/** Nombres en palabras simples (sin «QC», «render» ni «ensamblado»). */
+export const NOMBRES: Record<string, string> = {
+  qc: "Falta arreglar algo",
+  entregado: "Video listo",
+  ensamblado: "Listo para revisar",
+  generando: "Haciéndose",
   borrador: "Borrador",
   "en-revision": "En revisión",
   lista: "Lista para lanzar",
@@ -89,9 +103,10 @@ export function Estado({ valor }: { valor: string }) {
   );
 }
 
-export function Barra({ valor }: { valor: number }) {
+/** Barra de avance. `etiqueta` dice de qué es («Avance: instalando PhotoCraft») para el lector de pantalla. */
+export function Barra({ valor, etiqueta = "Avance" }: { valor: number; etiqueta?: string }) {
   return (
-    <div className="h-1.5 w-full overflow-hidden rounded bg-slate-800" role="progressbar" aria-valuenow={Math.round(valor * 100)} aria-valuemin={0} aria-valuemax={100}>
+    <div className="h-1.5 w-full overflow-hidden rounded bg-slate-800" role="progressbar" aria-label={etiqueta} aria-valuenow={Math.round(valor * 100)} aria-valuemin={0} aria-valuemax={100}>
       <div className="h-full bg-sky-500 transition-all" style={{ width: `${Math.round(valor * 100)}%` }} />
     </div>
   );
@@ -111,4 +126,9 @@ export function archivo(rutaRelativaADatos: string, descargar = false) {
 export function Aviso({ tipo = "info", children }: { tipo?: "info" | "error" | "ok" | "alerta"; children: React.ReactNode }) {
   const c = { info: "border-sky-800 bg-sky-950/50", error: "border-red-800 bg-red-950/50", ok: "border-emerald-800 bg-emerald-950/50", alerta: "border-amber-700 bg-amber-950/50" }[tipo];
   return <div className={`rounded-lg border px-3 py-2 text-sm ${c}`} role={tipo === "error" ? "alert" : "status"}>{children}</div>;
+}
+
+/** «Cargando…» igual en todas las pantallas, y anunciado al lector de pantalla. */
+export function Cargando({ children = "Cargando…" }: { children?: React.ReactNode }) {
+  return <p className="text-sm text-tenue" role="status">{children}</p>;
 }

@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { AppCraft, GrupoCraft } from "@/lib/craft-web";
-import { Aviso, Barra, pedir, useSondeo } from "./comun";
+import { Aviso, Barra, Cargando, pedir, useSondeo } from "./comun";
 
 interface EstadoInstalacion {
   fase: "inactiva" | "descargando" | "verificando" | "descomprimiendo" | "lista" | "error";
@@ -21,10 +21,14 @@ const masNueva = (a: string, b: string) => {
 
 const GRUPOS: GrupoCraft[] = ["Imagen y diseño", "Video y sonido", "Documentos", "3D y técnico"];
 const instalando = (e: EstadoInstalacion | null) => !!e && ["descargando", "verificando", "descomprimiendo"].includes(e.fase);
+/** 1,5 s mientras alguna app se instala; 30 s en reposo. */
+export const intervaloMedia = (filas: { instalacion: EstadoInstalacion | null }[] | null) =>
+  filas?.some((a) => instalando(a.instalacion)) ? 1500 : 30_000;
 
 /** Media: las apps Craft con su interfaz original, instalables con un clic y abiertas dentro de Geeper. */
 export function Media() {
-  const { datos, error } = useSondeo<FilaApp[]>("/api/media", 2000);
+  // Seguido sólo mientras algo se instala; en reposo, cada 30 s (por si llega una versión nueva).
+  const { datos, error, recargar } = useSondeo<FilaApp[]>("/api/media", intervaloMedia);
   const [msg, setMsg] = useState<string | null>(null);
 
   async function escritorio(a: FilaApp, accion: "instalar" | "abrir") {
@@ -34,6 +38,7 @@ export function Media() {
     } catch (e) {
       setMsg(e instanceof Error ? e.message : String(e));
     }
+    await recargar();
   }
 
   async function enviar(a: FilaApp, cuerpo: { version?: string; usar?: string } = {}) {
@@ -43,6 +48,7 @@ export function Media() {
     } catch (e) {
       setMsg(e instanceof Error ? e.message : String(e));
     }
+    await recargar();
   }
 
   return (
@@ -58,10 +64,10 @@ export function Media() {
       </div>
       {error && <Aviso tipo="error">No se pudo leer la lista: {error}</Aviso>}
       {msg && <Aviso tipo="error">{msg}</Aviso>}
-      {!datos && !error && <p className="text-sm text-tenue">Cargando…</p>}
-      {datos && GRUPOS.map((g) => (
-        <section key={g} aria-labelledby={`grupo-${g}`}>
-          <h2 id={`grupo-${g}`} className="mb-2 font-medium">{g}</h2>
+      {!datos && !error && <Cargando>Cargando las apps…</Cargando>}
+      {datos && GRUPOS.map((g, i) => (
+        <section key={g} aria-labelledby={`grupo-${i}`}>
+          <h2 id={`grupo-${i}`} className="mb-2 font-medium">{g}</h2>
           <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {datos.filter((a) => a.grupo === g).map((a) => (
               <li key={a.app} className="tarjeta flex flex-col gap-2 p-4">
@@ -79,7 +85,7 @@ export function Media() {
                     </p>
                   ) : a.soloEscritorio && instalando(a.instalacion) ? (
                     <>
-                      <Barra valor={a.instalacion!.progreso} />
+                      <Barra valor={a.instalacion!.progreso} etiqueta={`Avance: instalando ${a.nombre}`} />
                       <p className="text-xs text-tenue" role="status">{a.instalacion!.detalle}</p>
                     </>
                   ) : a.soloEscritorio && a.instalada ? (
@@ -98,7 +104,7 @@ export function Media() {
                     </>
                   ) : instalando(a.instalacion) ? (
                     <>
-                      <Barra valor={a.instalacion!.progreso} />
+                      <Barra valor={a.instalacion!.progreso} etiqueta={`Avance: instalando ${a.nombre}`} />
                       <p className="text-xs text-tenue" role="status">{a.instalacion!.detalle}</p>
                     </>
                   ) : a.instalada ? (
