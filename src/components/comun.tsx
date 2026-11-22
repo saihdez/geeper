@@ -82,11 +82,12 @@ const COLORES: Record<string, string> = {
   archivada: "bg-zinc-700 text-zinc-200",
 };
 
-const NOMBRES: Record<string, string> = {
-  qc: "QC no aprobado",
-  entregado: "Entregado",
-  ensamblado: "Ensamblado",
-  generando: "Generando",
+/** Nombres en palabras simples (sin «QC», «render» ni «ensamblado»). */
+export const NOMBRES: Record<string, string> = {
+  qc: "Falta arreglar algo",
+  entregado: "Video listo",
+  ensamblado: "Listo para revisar",
+  generando: "Haciéndose",
   borrador: "Borrador",
   "en-revision": "En revisión",
   lista: "Lista para lanzar",

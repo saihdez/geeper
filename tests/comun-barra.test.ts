@@ -12,3 +12,12 @@ describe("Barra", () => {
     expect(html).toContain('aria-valuenow="50"');
   });
 });
+
+describe("Estado (UX-20)", () => {
+  it("nombra los estados del proyecto sin jerga", async () => {
+    const { NOMBRES } = await import("@/components/comun");
+    expect(NOMBRES.qc).toBe("Falta arreglar algo");
+    expect(NOMBRES.entregado).toBe("Video listo");
+    for (const n of Object.values(NOMBRES)) expect(n).not.toMatch(/\b(QC|render|GPU|MPT)\b/i);
+  });
+});
