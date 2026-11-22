@@ -64,3 +64,35 @@ describe("/api/archivos sólo sirve proyectos y medios (SEG-01)", () => {
     expect((await pedir("../etc/passwd")).status).toBe(400);
   });
 });
+
+describe("/api/archivos con ETag y 304 (WEB-07)", () => {
+  const video = "mi-video-abc123/renders/v1.mp4";
+
+  it("manda ETag y Last-Modified, y responde 304 si el navegador ya lo tiene", async () => {
+    const r = await pedir(video);
+    const etag = r.headers.get("etag");
+    expect(etag).toMatch(/^"[0-9a-f]+-[0-9a-f]+"$/);
+    expect(r.headers.get("last-modified")).toBeTruthy();
+    expect(r.headers.get("cache-control")).toBe("no-cache");
+    const r2 = await pedir(video, { "if-none-match": etag! });
+    expect(r2.status).toBe(304);
+    expect(await r2.text()).toBe("");
+    expect((await pedir(video, { "if-modified-since": r.headers.get("last-modified")! })).status).toBe(304);
+  });
+
+  it("si el archivo cambió, lo manda entero", async () => {
+    const r = await pedir(video, { "if-none-match": '"1-1"' });
+    expect(r.status).toBe(200);
+    expect(await r.text()).toBe("0123456789");
+  });
+
+  it("respeta If-Range: con el mismo ETag manda el trozo; con otro, el archivo entero", async () => {
+    const etag = (await pedir(video)).headers.get("etag")!;
+    const parcial = await pedir(video, { range: "bytes=2-4", "if-range": etag });
+    expect(parcial.status).toBe(206);
+    expect(await parcial.text()).toBe("234");
+    const entero = await pedir(video, { range: "bytes=2-4", "if-range": '"otro"' });
+    expect(entero.status).toBe(200);
+    expect(await entero.text()).toBe("0123456789");
+  });
+});
