@@ -112,6 +112,21 @@ describe("liberar espacio en disco (UX-33)", () => {
     expect(fs.readdirSync(dirPapelera())).toEqual(["nuevo-2026-11-20-00-00-00"]);
   });
 
+  it.skipIf(process.getuid?.() === 0)("borra la fila antes que los archivos: si un archivo no se puede borrar, no queda un video roto en la lista", async () => {
+    const d = await proyecto("roto");
+    await render("roto", 1, "rechazado", 60);
+    await render("roto", 2, "aprobado", 40);
+    const carpeta = path.join(d, "renders");
+    fs.chmodSync(carpeta, 0o555); // no se puede borrar nada adentro
+    try {
+      const r = await m.liberar("renders", true, AHORA);
+      expect(r.cuantos).toBe(1);
+      expect((await db.render.findMany({ where: { proyectoId: "roto" } })).map((x) => x.versionNumero)).toEqual([2]);
+    } finally {
+      fs.chmodSync(carpeta, 0o755);
+    }
+  });
+
   it("no toca un proyecto con un trabajo en curso", async () => {
     const d = await proyecto("ocupado");
     await render("ocupado", 1, "rechazado", 60);

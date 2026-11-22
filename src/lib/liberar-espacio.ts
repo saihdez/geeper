@@ -193,6 +193,17 @@ export async function medirEspacio(ahora = new Date(), dias = DIAS_GUARDAR): Pro
   };
 }
 
+/** Borra un archivo o carpeta y devuelve cuánto liberó (0 si no se pudo: se sigue con lo demás). */
+async function borrar(ruta: string): Promise<number> {
+  const n = await tamano(ruta);
+  try {
+    await fs.rm(ruta, { recursive: true, force: true });
+    return n;
+  } catch {
+    return 0;
+  }
+}
+
 /**
  * Borra lo que se puede borrar de un tipo. Sólo la llama la pantalla Sistema con `confirmo: true`, después
  * de que la persona aceptó la pregunta. Vuelve a calcular todo aquí (no confía en una lista de fuera) y
@@ -207,11 +218,12 @@ export async function liberar(que: QueLiberar, confirmo: boolean, ahora = new Da
   if (que === "renders") {
     for (const x of c.renders) {
       if (await ocupado(x.proyectoId)) continue;
-      bytes += await sumar(x.archivos);
-      // La hoja de contacto es una carpeta (`<base>-hoja/`, con los fotogramas): va entera.
-      for (const a of x.archivos) await fs.rm(a, { recursive: true, force: true });
+      // Primero las filas: si un archivo no se puede borrar, queda un archivo suelto (que no se ve ni se
+      // ofrece) y no un video en la lista que apunta a un archivo que ya no está.
       await db.render.deleteMany({ where: { id: { in: x.renderIds } } });
       cuantos += x.renderIds.length;
+      // La hoja de contacto es una carpeta (`<base>-hoja/`, con los fotogramas): va entera.
+      for (const a of x.archivos) bytes += await borrar(a);
     }
   } else if (que === "crudos") {
     for (const x of c.crudos) {
