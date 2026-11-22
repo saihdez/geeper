@@ -5,9 +5,10 @@
  */
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { Aviso, Barra, archivo, pedir, postJson, useSondeo } from "./comun";
+import { Aviso, Barra, archivo, numero, pedir, postJson, segundos, useSondeo } from "./comun";
 import { SugerenciasBusqueda } from "./sugerencias-busqueda";
 import { sugerirGlosario, sumarAlGlosario } from "@/lib/glosario";
+import { etapaSimple, explicarError, ERROR_GENERICO } from "@/lib/textos";
 
 interface Vista { video: string; poster: string; desde: number; hasta: number }
 interface Candidato { n: number; inicio: number; fin: number; puntaje: number; motivos: string[]; texto?: string; vista?: Vista }
@@ -16,13 +17,17 @@ interface Fuente {
   info: { url: string; titulo: string; canal: string | null; plataforma: string | null; duracion: number };
   candidatos: Candidato[] | null;
   idioma: string | null;
+  /** Segundos que se revisaron (menos que la duración si el video pasa del tope). */
+  revisado?: number;
 }
-interface TrabajoM { id: string; estado: string; etapa: string; progreso: number; error: string | null; payload: { src?: string }; resultado: { fuente?: string } | null }
+interface TrabajoM {
+  id: string; estado: string; etapa: string; progreso: number; error: string | null;
+  payload: { src?: string; idioma?: string; min?: number; max?: number; maxMinutos?: number }; resultado: { fuente?: string } | null;
+}
 interface Datos { fuentes: Fuente[]; trabajos: TrabajoM[]; workerVivo: boolean }
 interface Tendencia { url: string; titulo: string; canal: string; vistas: number; horas: number; vistasPorHora: number; minutos: number; loMasVisto: boolean; fueDirecto: boolean }
 
 const mmss = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
-const miles = (n: number) => n.toLocaleString("es");
 
 /** Los motivos del puntaje, dichos como los diría una persona. */
 function motivoSimple(m: string): string {
@@ -113,6 +118,8 @@ function Paso1({ datos, recargar, elegir }: { datos: Datos; recargar: () => Prom
   const entrada = useRef<HTMLInputElement>(null);
 
   const trabajo = datos.trabajos.find((t) => t.id === esperando);
+  // UX-03: si el análisis falla o se cancela, los botones vuelven a funcionar sin recargar.
+  const ocupado = Boolean(esperando) && (!trabajo || trabajo.estado === "pendiente" || trabajo.estado === "corriendo");
   useEffect(() => {
     // Al pasar al paso 2 este componente se desmonta: basta con navegar.
     if (trabajo?.estado === "hecho" && trabajo.resultado?.fuente) elegir(trabajo.resultado.fuente);
@@ -122,9 +129,24 @@ function Paso1({ datos, recargar, elegir }: { datos: Datos; recargar: () => Prom
     e?.preventDefault();
     setError(null);
     try {
-      const r = await postJson<{ trabajo: string }>("/api/clips/momentos", { src: (u ?? url).trim(), idioma, min, max });
-      setEsperando(r.trabajo);
-      void recargar();
+      await analizar({ src: (u ?? url).trim(), idioma, min, max });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function analizar(pedido: { src: string; idioma?: string; min?: number; max?: number; maxMinutos?: number }) {
+    const r = await postJson<{ trabajo: string }>("/api/clips/momentos", pedido);
+    setEsperando(r.trabajo);
+    void recargar();
+  }
+
+  /** «Volver a intentar» con lo mismo que se pidió (sirve también para un archivo ya subido). */
+  async function reintentar(t: TrabajoM) {
+    setError(null);
+    try {
+      if (!t.payload.src) throw new Error("No sé qué video era: pega el enlace o súbelo otra vez.");
+      await analizar({ src: t.payload.src, idioma: t.payload.idioma, min: t.payload.min, max: t.payload.max, maxMinutos: t.payload.maxMinutos });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -140,13 +162,13 @@ function Paso1({ datos, recargar, elegir }: { datos: Datos; recargar: () => Prom
       setSubida(null);
       try {
         const r = JSON.parse(x.responseText) as { trabajo?: string; error?: string };
-        if (x.status >= 400 || !r.trabajo) setError(r.error ?? `Error ${x.status}`);
+        if (x.status >= 400 || !r.trabajo) setError(r.error ?? "No pude recibir el video. Vuelve a intentar; si sigue fallando, pide ayuda.");
         else {
           setEsperando(r.trabajo);
           void recargar();
         }
       } catch {
-        setError(`Error ${x.status}`);
+        setError(x.status === 413 ? "Ese video es demasiado grande para subirlo." : "No pude recibir el video. Vuelve a intentar; si sigue fallando, pide ayuda.");
       }
     };
     x.onerror = () => {
@@ -157,7 +179,7 @@ function Paso1({ datos, recargar, elegir }: { datos: Datos; recargar: () => Prom
   }
 
   const enCurso = datos.trabajos.filter((t) => t.estado === "pendiente" || t.estado === "corriendo");
-  const fallo = datos.trabajos.find((t) => t.id === esperando && t.estado === "fallido");
+  const fallo = trabajo && ["fallido", "interrumpido", "cancelado"].includes(trabajo.estado) ? trabajo : null;
   const conMomentos = datos.fuentes.filter((f) => f.candidatos?.length);
 
   return (
@@ -170,26 +192,6 @@ function Paso1({ datos, recargar, elegir }: { datos: Datos; recargar: () => Prom
             </button>
           ))}
         </div>
-        {modo === "enlace" ? (
-          <form onSubmit={buscarEnlace} className="space-y-2">
-            <label className="etiqueta" htmlFor="url">Enlace del video (YouTube, Twitch, Kick…)</label>
-            <input id="url" className="campo" type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=…" required />
-            <p className="text-xs text-tenue">Tiene que ser un video ya publicado. Si es un directo, espera a que termine y usa la grabación.</p>
-            <button className="boton boton-primario" disabled={!url.trim() || Boolean(esperando)}>Buscar los mejores momentos</button>
-          </form>
-        ) : (
-          <div
-            onDragOver={(e) => { e.preventDefault(); setArrastrando(true); }}
-            onDragLeave={() => setArrastrando(false)}
-            onDrop={(e) => { e.preventDefault(); setArrastrando(false); const f = e.dataTransfer.files[0]; if (f) subir(f); }}
-            className={`grid place-items-center gap-2 rounded-xl border-2 border-dashed p-8 text-center ${arrastrando ? "border-cyan-500 bg-cyan-950/30" : "border-borde"}`}>
-            <p className="text-base">Arrastra tu video aquí</p>
-            <p className="text-sm text-tenue">o</p>
-            <button type="button" className="boton boton-primario" disabled={subida !== null || Boolean(esperando)} onClick={() => entrada.current?.click()}>Elegir un archivo</button>
-            <input ref={entrada} type="file" accept="video/*" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) subir(f); e.target.value = ""; }} />
-            <p className="text-xs text-tenue">Una grabación tuya, de un directo o de una partida. MP4, MOV, MKV…</p>
-          </div>
-        )}
         <div className="flex flex-wrap items-end gap-4">
           <div>
             <label className="etiqueta" htmlFor="idioma">¿En qué idioma hablan en el video?</label>
@@ -205,21 +207,34 @@ function Paso1({ datos, recargar, elegir }: { datos: Datos; recargar: () => Prom
             </div>
           </details>
         </div>
+        {modo === "enlace" ? (
+          <form onSubmit={buscarEnlace} className="space-y-2">
+            <label className="etiqueta" htmlFor="url">Enlace del video (YouTube, Twitch, Kick…)</label>
+            <input id="url" className="campo" type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=…" required />
+            <p className="text-xs text-tenue">Tiene que ser un video ya publicado. Si es un directo, espera a que termine y usa la grabación.</p>
+            <button className="boton boton-primario" disabled={!url.trim() || ocupado}>Buscar los mejores momentos</button>
+          </form>
+        ) : (
+          <div
+            onDragOver={(e) => { e.preventDefault(); setArrastrando(true); }}
+            onDragLeave={() => setArrastrando(false)}
+            onDrop={(e) => { e.preventDefault(); setArrastrando(false); const f = e.dataTransfer.files[0]; if (f) subir(f); }}
+            className={`grid place-items-center gap-2 rounded-xl border-2 border-dashed p-8 text-center ${arrastrando ? "border-cyan-500 bg-cyan-950/30" : "border-borde"}`}>
+            <p className="text-base">Arrastra tu video aquí</p>
+            <p className="text-sm text-tenue">o</p>
+            <button type="button" className="boton boton-primario" disabled={subida !== null || ocupado} onClick={() => entrada.current?.click()}>Elegir un archivo</button>
+            <input ref={entrada} type="file" accept="video/*" className="hidden" tabIndex={-1} aria-hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) subir(f); e.target.value = ""; }} />
+            <p className="text-xs text-tenue">Una grabación tuya, de un directo o de una partida. MP4, MOV, MKV…</p>
+          </div>
+        )}
         {subida !== null && (
           <div className="space-y-1 text-sm"><p>Subiendo el video… {Math.round(subida * 100)} %</p><Barra valor={subida} /></div>
         )}
         {error && <Aviso tipo="error">{error}</Aviso>}
-        {fallo && <Aviso tipo="error">No pude analizar ese video: {fallo.error}</Aviso>}
+        {fallo && <FalloAnalisis t={fallo} reintentar={() => void reintentar(fallo)} ocupado={ocupado} />}
       </section>
 
-      {enCurso.map((t) => (
-        <section key={t.id} className="tarjeta space-y-2 p-4" aria-live="polite">
-          <p className="font-medium">Analizando el video… {t.id === esperando ? "te llevo a los momentos cuando termine." : ""}</p>
-          <p className="text-sm text-tenue">{etapaSimple(t.etapa, t.estado)}</p>
-          <Barra valor={Math.max(0.03, t.progreso)} />
-          <p className="text-xs text-tenue">Puede tardar unos minutos (bajar el video y escuchar los mejores momentos). Puedes dejar esta página abierta.</p>
-        </section>
-      ))}
+      {enCurso.map((t) => <TarjetaAnalisis key={t.id} t={t} fuentes={datos.fuentes} mio={t.id === esperando} />)}
 
       {conMomentos.length > 0 && (
         <section className="space-y-3">
@@ -236,7 +251,7 @@ function Paso1({ datos, recargar, elegir }: { datos: Datos; recargar: () => Prom
                       : <span className="grid h-16 w-28 shrink-0 place-items-center rounded bg-[#0f131a] text-2xl" aria-hidden>🎬</span>}
                     <span className="min-w-0">
                       <span className="block truncate font-medium">{f.info.titulo}</span>
-                      <span className="block text-xs text-tenue">{f.info.canal ?? "Video tuyo"} · {f.candidatos!.length} momentos</span>
+                      <span className="block text-xs text-tenue">{f.info.canal ?? "Video tuyo"} · {f.candidatos!.length === 1 ? "1 momento" : `${f.candidatos!.length} momentos`}</span>
                     </span>
                   </button>
                 </li>
@@ -251,12 +266,59 @@ function Paso1({ datos, recargar, elegir }: { datos: Datos; recargar: () => Prom
   );
 }
 
-function etapaSimple(etapa: string, estado: string): string {
+/** UX-03: por qué no se pudo, en palabras simples, con «Volver a intentar» y el detalle plegado. */
+export function FalloAnalisis({ t, reintentar, ocupado = false }: { t: Pick<TrabajoM, "estado" | "error">; reintentar: () => void; ocupado?: boolean }) {
+  const { simple, detalle } = explicarError(t.error);
+  const texto = t.estado === "cancelado"
+    ? "Se canceló el análisis de este video."
+    : t.estado === "interrumpido"
+      ? "El análisis se cortó (Geeper se cerró o se reinició a la mitad)."
+      : simple === ERROR_GENERICO ? "No pude abrir ese video. Revisa que el enlace esté completo y que el video sea público." : simple;
+  return (
+    <Aviso tipo="error">
+      <p>{texto}</p>
+      <button type="button" className="boton mt-2" disabled={ocupado} onClick={reintentar}>Volver a intentar</button>
+      {detalle && (
+        <details className="mt-2 text-xs">
+          <summary className="cursor-pointer text-tenue">Ver detalle técnico</summary>
+          <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-all">{detalle}</pre>
+        </details>
+      )}
+    </Aviso>
+  );
+}
+
+/** Nombre del video que se está analizando: su título si ya se sabe, si no el archivo o el enlace. */
+export function nombreAnalisis(src: string | undefined, fuentes: Pick<Fuente, "info">[]): string {
+  if (!src) return "tu video";
+  const f = fuentes.find((x) => x.info.url === src);
+  if (f?.info.titulo) return f.info.titulo;
+  if (!/^https?:\/\//i.test(src)) return (src.split(/[\\/]/).pop() ?? src).replace(/^[a-f0-9]{8,}-/, "");
+  return src.replace(/^https?:\/\/(www\.)?/i, "");
+}
+
+/** UX-34: el paso en curso en palabras simples; con un archivo subido nunca dice «Bajando». */
+export function etapaClip(etapa: string, estado: string, src?: string): string {
   if (estado === "pendiente") return "En la fila: empieza en cuanto el motor se libere.";
-  if (/Bajando/i.test(etapa)) return "Bajando el video…";
-  if (/transcri/i.test(etapa)) return "Escuchando lo que se dice en los mejores momentos…";
-  if (/sonido|Trayendo/i.test(etapa)) return "Bajando el video y midiendo dónde hay más reacción…";
-  return etapa || "Trabajando…";
+  const archivoPropio = Boolean(src) && !/^https?:\/\//i.test(src!);
+  // Trabajos de antes de que el worker avisara cada paso.
+  if (/^Trayendo la fuente/i.test(etapa)) return archivoPropio ? "Midiendo dónde hay más reacción…" : "Bajando el video y midiendo dónde hay más reacción…";
+  if (archivoPropio && /^Bajando/i.test(etapa)) return "Abriendo tu video…";
+  return etapaSimple(etapa, estado);
+}
+
+function TarjetaAnalisis({ t, fuentes, mio }: { t: TrabajoM; fuentes: Fuente[]; mio: boolean }) {
+  const archivoPropio = Boolean(t.payload.src) && !/^https?:\/\//i.test(t.payload.src!);
+  return (
+    <section className="tarjeta space-y-2 p-4" aria-live="polite">
+      <p className="font-medium">Analizando «{nombreAnalisis(t.payload.src, fuentes)}»… {mio ? "te llevo a los momentos cuando termine." : ""}</p>
+      <p className="text-sm text-tenue">{etapaClip(t.etapa, t.estado, t.payload.src)}</p>
+      <Barra valor={Math.max(0.03, t.progreso)} etiqueta="Avance del análisis" />
+      <p className="text-xs text-tenue">
+        Puede tardar unos minutos ({archivoPropio ? "medir el sonido" : "bajar el video, medir el sonido"} y escuchar los mejores momentos). Puedes dejar esta página abierta.
+      </p>
+    </section>
+  );
 }
 
 function Radar({ alElegir }: { alElegir: (url: string) => void }) {
@@ -300,7 +362,7 @@ function Radar({ alElegir }: { alElegir: (url: string) => void }) {
               <li key={v.url} className="flex flex-wrap items-center gap-3 rounded-lg border border-borde p-2 text-sm">
                 <span className="min-w-0 grow">
                   <a className="hover:underline" href={v.url} target="_blank" rel="noreferrer">{v.titulo}</a>
-                  <span className="block text-xs text-tenue">{v.canal} · {miles(v.vistasPorHora)} vistas por hora · hace {v.horas} h · {v.minutos} min</span>
+                  <span className="block text-xs text-tenue">{v.canal} · {numero(v.vistasPorHora)} vistas por hora · hace {v.horas} h · {segundos(v.minutos * 60)}</span>
                 </span>
                 <button type="button" className="boton" onClick={() => alElegir(v.url)}>Usar este video</button>
               </li>
@@ -320,13 +382,35 @@ function Paso2({ f, elegir, volver }: { f: Fuente; elegir: (n: number) => void; 
   const orden = [...cands].sort((a, b) => b.puntaje - a.puntaje);
   const sinVista = cands.some((c) => !c.vista);
   const [reanalizando, setReanalizando] = useState(false);
+  const [errorTodo, setErrorTodo] = useState<string | null>(null);
+  const corto = revisadoParcial(f);
+  async function revisarTodo() {
+    setReanalizando(true);
+    setErrorTodo(null);
+    try {
+      await postJson("/api/clips/momentos", { src: f.info.url, idioma: f.idioma ?? "es", maxMinutos: Math.min(600, Math.ceil(f.info.duracion / 60) + 1) });
+      volver(); // el paso 1 enseña el avance
+    } catch (err) {
+      setErrorTodo(err instanceof Error ? err.message : String(err));
+      setReanalizando(false);
+    }
+  }
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-baseline gap-3">
         <h2 className="text-lg font-medium">{f.info.titulo}</h2>
-        <span className="text-sm text-tenue">{f.info.canal ?? "Video tuyo"} · {mmss(f.info.duracion)}</span>
+        <span className="text-sm text-tenue">{f.info.canal ?? "Video tuyo"} · {segundos(f.info.duracion)}</span>
         <button type="button" className="boton ml-auto" onClick={volver}>← Elegir otro video</button>
       </div>
+      {corto && (
+        <Aviso tipo="info">
+          <p>Este video dura {segundos(f.info.duracion)}: revisé sólo {corto}. Los momentos de después no salen en la lista.</p>
+          <button type="button" className="boton mt-2" disabled={reanalizando} onClick={() => void revisarTodo()}>
+            {reanalizando ? "Pidiendo…" : "Revisar todo el video (tarda más y ocupa más espacio)"}
+          </button>
+          {errorTodo && <p className="mt-1 text-red-300">{errorTodo}</p>}
+        </Aviso>
+      )}
       {cands.length === 0 ? (
         <Aviso tipo="alerta">No encontré momentos en este video. Suele pasar si es más corto que un clip o si casi no tiene sonido.</Aviso>
       ) : (
@@ -347,7 +431,7 @@ function Paso2({ f, elegir, volver }: { f: Fuente; elegir: (n: number) => void; 
             <div className="space-y-2 p-3">
               <div className="flex items-center gap-2">
                 <span aria-label={`${estrellas(c, cands)} de 3 estrellas`} className="text-amber-300">{"★".repeat(estrellas(c, cands))}<span className="text-[#3a4255]">{"★".repeat(3 - estrellas(c, cands))}</span></span>
-                <span className="text-xs text-tenue">en el minuto {mmss(c.inicio)} · dura {Math.round(c.fin - c.inicio)} s</span>
+                <span className="text-xs text-tenue">en el minuto {mmss(c.inicio)} · dura {segundos(c.fin - c.inicio)}</span>
               </div>
               <ul className="text-sm">{[...new Set(c.motivos.map(motivoSimple))].map((m) => <li key={m}>• {m}</li>)}</ul>
               {c.texto && <p className="line-clamp-3 text-sm text-tenue">«{c.texto}»</p>}
@@ -358,6 +442,14 @@ function Paso2({ f, elegir, volver }: { f: Fuente; elegir: (n: number) => void; 
       </ul>
     </div>
   );
+}
+
+/** UX-24: «la primera hora y media» si de un video largo se revisó sólo una parte; si no, null. */
+export function revisadoParcial(f: Pick<Fuente, "info" | "revisado">): string | null {
+  const revisado = f.revisado ?? Math.min(f.info.duracion, 90 * 60);
+  if (f.info.duracion - revisado < 60) return null;
+  if (Math.abs(revisado - 5400) < 30) return "la primera hora y media";
+  return `los primeros ${segundos(revisado)}`;
 }
 
 /** Miniatura que, al darle play, reproduce sólo el momento (dentro de la vista previa con aire). */
@@ -506,7 +598,7 @@ function Paso3({ f, c, volver }: { f: Fuente; c: Candidato; volver: () => void }
         <div className="flex flex-wrap items-center gap-3">
           {v && <button type="button" className="boton" onClick={verRecorte}>▶ Ver mi recorte</button>}
           <span className={`text-sm ${dur < 7 || dur > 60 ? "text-amber-300" : "text-tenue"}`}>
-            Dura {Math.round(dur)} s{dur < 7 ? " · muy corto: la gente no alcanza a entenderlo" : dur > 60 ? " · largo: los clips de 15 a 40 s funcionan mejor" : " · buena duración"}
+            Dura {segundos(dur)}{dur < 7 ? " · muy corto: la gente no alcanza a entenderlo" : dur > 60 ? " · largo: los clips de 15 a 40 s funcionan mejor" : " · buena duración"}
           </span>
         </div>
         <div className="space-y-2 border-t border-borde pt-3">
@@ -542,7 +634,7 @@ function Paso3({ f, c, volver }: { f: Fuente; c: Candidato; volver: () => void }
         <h3 className="font-medium">2. ¿Cómo se ve en el teléfono?</h3>
         <div className="grid gap-3 sm:grid-cols-3" role="radiogroup" aria-label="Estilo">
           {ESTILOS.map((s) => (
-            <label key={s.id} className={`cursor-pointer rounded-xl border p-3 text-center ${estilo === s.id ? "border-cyan-500 bg-cyan-950/40" : "border-borde hover:border-cyan-800"}`}>
+            <label key={s.id} className={`cursor-pointer rounded-xl border p-3 text-center ${estilo === s.id ? "border-cyan-500 bg-cyan-950/40 ring-2 ring-cyan-500" : "border-borde hover:border-cyan-800"}`}>
               <input type="radio" name="estilo" value={s.id} checked={estilo === s.id} onChange={() => setEstilo(s.id)} className="sr-only" />
               <Dibujo id={s.id} />
               <span className="mt-2 block font-medium">{s.nombre}</span>
@@ -566,7 +658,7 @@ function Paso3({ f, c, volver }: { f: Fuente; c: Candidato; volver: () => void }
         {ideas && ideas.ganchos.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {ideas.ganchos.map((g) => (
-              <button key={g} type="button" onClick={() => setGancho(g)} className={`rounded-full border px-3 py-1 text-sm ${gancho === g ? "border-cyan-500 bg-cyan-950/50" : "border-borde hover:border-cyan-700"}`}>{g}</button>
+              <button key={g} type="button" aria-pressed={gancho === g} onClick={() => setGancho(g)} className={`rounded-full border px-3 py-1 text-sm ${gancho === g ? "border-cyan-500 bg-cyan-950/50 ring-2 ring-cyan-500" : "border-borde hover:border-cyan-700"}`}>{g}</button>
             ))}
           </div>
         )}

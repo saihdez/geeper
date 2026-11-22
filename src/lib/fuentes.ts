@@ -12,6 +12,7 @@ import path from "node:path";
 import { escribirAtomico, existe } from "./archivos";
 import { probar } from "./media";
 import { correr, type Registro } from "./proceso";
+import { SEPARADOR_DETALLE } from "./textos";
 import { ESCRITORIO, pythonDeVenv } from "./plataforma";
 import { dirDatos, VENV_CLIPS } from "./rutas";
 
@@ -67,9 +68,51 @@ export function runtimeJsYtdlp(): { args: string[]; env: Record<string, string> 
   };
 }
 
+/** Lo que más pasa al abrir un enlace, dicho en palabras simples (UX-03). Gana la primera que coincide. */
+const FALLOS_YTDLP: [RegExp, string][] = [
+  [/No module named|ENOENT|command not found|no such file or directory.*python/i, "A Geeper le falta la herramienta para bajar videos. Pide ayuda y muestra el detalle técnico."],
+  [/private video|video is private/i, "Ese video es privado: sólo lo puede ver quien lo subió. Usa un video público o pídele el archivo al creador."],
+  [/members[- ]only|join this channel/i, "Ese video es sólo para miembros del canal: Geeper no puede abrirlo. Usa un video público."],
+  [/confirm you.?re not a bot/i, "La página pidió comprobar que no eres un robot. Espera unos minutos y vuelve a intentar."],
+  [/confirm your age|age[- ]restricted|inappropriate for some users/i, "Ese video pide iniciar sesión porque tiene límite de edad: Geeper no puede abrirlo."],
+  [/not available in your country|geo.?restrict|blocked it in your country/i, "Ese video no se puede ver desde tu país."],
+  [/video unavailable|has been removed|removed by the uploader|account .*terminated|does not exist|HTTP Error 404/i, "Ese video ya no existe o lo quitaron. Revisa que el enlace esté bien copiado."],
+  [/unsupported url|is not a valid url|no video formats found|unable to extract/i, "No reconozco ese enlace. Copia el enlace completo desde la página del video (YouTube, Twitch, Kick…)."],
+  [/is live|live event will begin|premieres in/i, "Ese video todavía no está publicado (es un directo o un estreno). Espera a que termine y usa la grabación."],
+  [/HTTP Error 403|Forbidden/i, "La página no dejó bajar ese video. Espera unos minutos y vuelve a intentar; si sigue igual, usa otro video."],
+  [/getaddrinfo|name or service not known|temporary failure in name resolution|network is unreachable|timed out|connection (?:reset|refused)|unable to download webpage/i, "No pude conectarme a la página del video. Revisa tu internet y vuelve a intentar."],
+  [/no space left on device/i, "El disco se llenó mientras bajaba el video. Libera espacio y vuelve a intentar."],
+];
+
+export const FALLO_ENLACE = "No pude abrir ese video. Revisa que el enlace esté completo y que el video sea público.";
+
+/** El fallo de yt-dlp en palabras simples; lo que no se reconoce, con el aviso general. */
+export function explicarFalloYtdlp(salida: string): string {
+  return FALLOS_YTDLP.find(([re]) => re.test(salida))?.[1] ?? FALLO_ENLACE;
+}
+
+/** Un error con la frase para la persona y, aparte, el texto técnico (ver textos.explicarError). */
+function errorExplicado(simple: string, e: unknown): Error {
+  const detalle = e instanceof Error ? e.message : String(e);
+  return new Error(`${simple}${SEPARADOR_DETALLE}${detalle}`, { cause: e });
+}
+
 async function ytdlp(args: string[], log?: Registro, signal?: AbortSignal) {
   const js = runtimeJsYtdlp();
-  return correr(PYTHON_CLIPS, ["-I", "-m", "yt_dlp", "--no-warnings", "--no-progress", ...js.args, ...args], { log, signal, env: js.env });
+  try {
+    return await correr(PYTHON_CLIPS, ["-I", "-m", "yt_dlp", "--no-warnings", "--no-progress", ...js.args, ...args], { log, signal, env: js.env });
+  } catch (e) {
+    if (signal?.aborted) throw e; // cancelado: no hay nada que explicar
+    throw errorExplicado(explicarFalloYtdlp(e instanceof Error ? e.message : String(e)), e);
+  }
+}
+
+/**
+ * UX-24: si lo que ya se bajó es más corto que lo que ahora se pide (se bajó con el tope de 90 min y
+ * ahora se quiere revisar todo), hay que volver a bajarlo. Margen de 30 s por redondeos del corte.
+ */
+export function faltaPorBajar(bajado: number, total: number, maxSegundos: number): boolean {
+  return bajado + 30 < Math.min(total, maxSegundos);
 }
 
 /** Trae (o reutiliza) la fuente. `maxMinutos` limita lo que se baja de un VOD largo. */
@@ -80,7 +123,7 @@ export async function traerFuente(src: string, o: { maxMinutos?: number; log?: R
   const rutaInfo = path.join(dir, "info.json");
   if (!esUrl(src)) {
     const video = path.resolve(src.replace(/^~(?=\/)/, os.homedir()));
-    if (!(await existe(video))) throw new Error(`No existe el archivo ${video}`);
+    if (!(await existe(video))) throw errorExplicado("No encuentro ese archivo: puede que se haya movido o borrado. Súbelo otra vez.", `No existe el archivo ${video}`);
     const info: InfoFuente = {
       url: video,
       titulo: path.parse(video).name.replace(/^[a-f0-9]{8}-/, ""),
@@ -119,10 +162,14 @@ export async function traerFuente(src: string, o: { maxMinutos?: number; log?: R
   }
 
   const video = path.join(dir, "fuente.mp4");
+  const max = (o.maxMinutos ?? 90) * 60;
+  if ((await existe(video)) && faltaPorBajar(await probar(video).then((m) => m.duracion, () => 0), info.duracion, max)) {
+    o.log?.(`Lo bajado es más corto que lo pedido (${o.maxMinutos ?? 90} min): se baja otra vez`);
+    await fs.rm(video, { force: true });
+  }
   if (!(await existe(video))) {
     o.log?.(`Bajando ${info.url} (≤ 1080p)`);
     const args = ["-f", "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080]/b", "--merge-output-format", "mp4", "-o", path.join(dir, ".fuente.%(ext)s")];
-    const max = (o.maxMinutos ?? 90) * 60;
     if (info.duracion > max) {
       args.push("--download-sections", `*0-${max}`);
       o.log?.(`El VOD dura ${(info.duracion / 60).toFixed(0)} min: se bajan los primeros ${o.maxMinutos ?? 90} (usa --max-minutos para más)`);

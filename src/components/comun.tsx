@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { mensajeHttp, traer } from "@/lib/conexion";
 import { crearSondeo, type Sondeo } from "@/lib/sondeo";
+import { ESTADOS, nombreEstado } from "@/lib/textos";
 
 /** Pide JSON. Los errores salen en palabras simples: sin conexión, «ya no existe», o el texto del servidor. */
 export async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
@@ -82,23 +83,13 @@ const COLORES: Record<string, string> = {
   archivada: "bg-zinc-700 text-zinc-200",
 };
 
-/** Nombres en palabras simples (sin «QC», «render» ni «ensamblado»). */
-export const NOMBRES: Record<string, string> = {
-  qc: "Falta arreglar algo",
-  entregado: "Video listo",
-  ensamblado: "Listo para revisar",
-  generando: "Haciendo el video",
-  borrador: "Borrador",
-  "en-revision": "En revisión",
-  lista: "Lista para lanzar",
-  activa: "Activa",
-  archivada: "Archivada",
-};
+/** Nombres en palabras simples (sin «QC», «render» ni «ensamblado»): ver lib/textos.ts (UX-15). */
+export const NOMBRES = ESTADOS;
 
 export function Estado({ valor }: { valor: string }) {
   return (
     <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${COLORES[valor] ?? "bg-slate-700"}`}>
-      {NOMBRES[valor] ?? valor}
+      {nombreEstado(valor)}
     </span>
   );
 }
@@ -112,10 +103,8 @@ export function Barra({ valor, etiqueta = "Avance" }: { valor: number; etiqueta?
   );
 }
 
-export function segundos(s: number | null | undefined) {
-  if (s == null) return "—";
-  return s >= 60 ? `${Math.floor(s / 60)} min ${Math.round(s % 60)} s` : `${s.toFixed(1)} s`;
-}
+/** Duraciones, números y fechas: una sola forma en toda la app (A11-11, ver lib/formato.ts). */
+export { fecha, haceCuanto, hora, numero, segundos } from "@/lib/formato";
 
 /** En Windows el servidor arma rutas con «\» (path.relative): se parten igual, si no el navegador vería
  *  un solo segmento y los archivos relativos de la página (p. ej. la vista previa) apuntarían a otra carpeta. */
