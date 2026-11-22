@@ -18,7 +18,7 @@ import { SelectorEncuadre, type EncuadreV } from "./selector-encuadre";
 import { PanelOtroEditor } from "./panel-otro-editor";
 import { useAccionesProyecto } from "./acciones-proyecto";
 import { FranjaAviso, type MensajeEditor } from "./franja-aviso";
-import { correccionesVacias, errorSubtitulo, estaActivo, mismoContenido, pasoRender, renderEnCurso, type TrabajoV } from "./editor-estado";
+import { correccionesVacias, errorSubtitulo, estaActivo, estadoCreacion, mismoContenido, pasoRender, renderEnCurso, type TrabajoV } from "./editor-estado";
 import { EdicionPorTexto, EfectosEscena, PanelAvanzado, PanelEstilo, type EfectosV, type EstiloV, type ExtrasV, type PalabraV } from "./edicion-avanzada";
 
 /** Miniatura de una escena (la misma que su tarjeta). */
@@ -413,6 +413,8 @@ export function EditorProyecto({ id }: { id: string }) {
   const modo = pestana ?? (renderAlDia ? "render" : "vivo");
   const activos = fila.trabajos.filter(estaActivo);
   const enCurso = renderEnCurso(fila.trabajos);
+  /** Otro trabajo en marcha que no es el render (ése ya tiene su franja). */
+  const otroActivo = activos.find((t) => t !== enCurso) ?? null;
   const qc = render?.informeQc ? resumirQc(render.informeQc.reglas) : null;
   const avisoRapidos = avisoSubtitulosRapidos(v.subtitulosRapidos);
   const textoMostrar = mostrarTxt ?? (p?.mostrar ?? []).map((m) => `${m.de}=${m.a}`).join("\n");
@@ -489,10 +491,28 @@ export function EditorProyecto({ id }: { id: string }) {
           </div>
         </Aviso>
       )}
-      {activos.length > 0 && <Aviso tipo="info">Hay {activos.length} trabajo(s) en curso para este proyecto; abajo ves su avance y su log.</Aviso>}
-      {!p && (activos.some((t) => t.tipo === "proyecto.traducir")
-        ? <Aviso tipo="info">Geeper está haciendo esta versión en otro idioma: traduce el guion, graba la voz nueva, acomoda los subtítulos y la renderiza. Tarda unos minutos; puedes cerrar esta página y volver después. Abajo ves en qué paso va.</Aviso>
-        : <Aviso tipo="info">Todavía no hay geeper.json: el proyecto se está generando o importando.</Aviso>)}
+      {p && otroActivo && (
+        <Aviso tipo="info">Geeper está trabajando en este video{otroActivo.etapa ? `: ${otroActivo.etapa}` : ""}. Abajo, en «Trabajos de este proyecto», ves el avance.</Aviso>
+      )}
+      {!p && (() => {
+        // UX-29: sin jerga, con cuánto tarda, y si falló no se dice que «se está generando».
+        const c = estadoCreacion(fila.trabajos);
+        if (c.fase === "fallo") return (
+          <Aviso tipo="error">
+            <p>No se pudo hacer el video. Puedes volver a intentarlo; si vuelve a fallar, abajo en «Trabajos de este proyecto» ves qué pasó.</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button type="button" className="boton py-1" disabled={ocupado} onClick={() => void hacer(() => postJson(`/api/trabajos/${c.trabajo!.id}`, { accion: "relanzar" }), "Listo: lo estamos intentando otra vez.")}>Volver a intentar</button>
+              {c.trabajo?.error && <details className="text-xs"><summary className="cursor-pointer text-tenue">Ver el error</summary><p className="mt-1 whitespace-pre-wrap break-words">{c.trabajo.error}</p></details>}
+            </div>
+          </Aviso>
+        );
+        if (activos.some((t) => t.tipo === "proyecto.traducir")) return <Aviso tipo="info">Geeper está haciendo esta versión en otro idioma: traduce el guion, graba la voz nueva, acomoda los subtítulos y la renderiza. Tarda unos minutos; puedes cerrar esta página y volver después. Abajo ves en qué paso va.</Aviso>;
+        return (
+          <Aviso tipo="info">
+            Estamos haciendo tu video{c.trabajo?.etapa && c.fase === "en-curso" ? ` (ahora: ${c.trabajo.etapa})` : ""}. Tarda unos minutos; puedes cerrar esta página y volver. Abajo ves en qué paso va.
+          </Aviso>
+        );
+      })()}
       {p?.origen?.traduccion && <InformeTraduccion informe={p.origen.traduccion} escenas={escenas.map((e) => ({ id: e.id, numero: e.indice + 1 }))} />}
 
       {p && (

@@ -62,3 +62,15 @@ export function pasoRender(t: Pick<TrabajoV, "estado" | "etapa">): string {
   if (e.includes("control de calidad")) return "revisando que esté listo para publicar";
   return t.etapa || "empezando";
 }
+
+/**
+ * UX-29: qué decir mientras el proyecto todavía no tiene geeper.json. Si el último trabajo falló o se
+ * cortó, no se dice que «se está generando».
+ */
+export function estadoCreacion(trabajos: TrabajoV[]): { fase: "en-curso" | "fallo" | "esperando"; trabajo: TrabajoV | null } {
+  const activo = trabajos.find(estaActivo);
+  if (activo) return { fase: "en-curso", trabajo: activo };
+  const ultimo = trabajos[0] ?? null;
+  if (ultimo && ["fallido", "interrumpido", "cancelado"].includes(ultimo.estado)) return { fase: "fallo", trabajo: ultimo };
+  return { fase: "esperando", trabajo: ultimo };
+}
