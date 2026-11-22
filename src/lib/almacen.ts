@@ -29,23 +29,58 @@ export async function leerProyecto(slug: string): Promise<Proyecto | null> {
   }
 }
 
-/** Valida, guarda geeper.json (atómico) y crea la Version siguiente. Devuelve el número. */
+/**
+ * Valida, guarda geeper.json (atómico) y crea la Version siguiente. Devuelve el número.
+ *
+ * La transacción empieza ESCRIBIENDO (SEG-04): en SQLite con WAL, una que empieza leyendo y después
+ * escribe falla al instante si otro proceso escribió entretanto, aunque haya busy_timeout. Empezando por
+ * el `update`, la base espera su turno. El geeper.json se escribe dentro, con la base tomada: así el
+ * archivo y `versionActual` quedan en el mismo orden aunque la web y el worker guarden a la vez.
+ */
 export async function guardarProyecto(proyectoId: string, datos: Proyecto, nota: string): Promise<number> {
   const p = validarProyecto(datos);
-  const fila = await db.proyecto.findUniqueOrThrow({ where: { id: proyectoId } });
   const json = JSON.stringify(p, null, 2) + "\n";
-  const numero = await db.$transaction(async (tx) => {
-    const ultima = await tx.version.findFirst({ where: { proyectoId }, orderBy: { numero: "desc" } });
-    const n = (ultima?.numero ?? 0) + 1;
-    await tx.version.create({ data: { proyectoId, numero: n, nota, hash: sha256Texto(json), json } });
-    await tx.proyecto.update({
-      where: { id: proyectoId },
-      data: { versionActual: n, formato: p.formato, plantilla: p.plantilla, nombre: p.nombre },
-    });
-    return n;
-  });
-  await escribirAtomico(rutaGeeperJson(fila.slug), json);
-  return numero;
+  return conReintentos(() =>
+    db.$transaction(
+      async (tx) => {
+        const fila = await tx.proyecto.update({
+          where: { id: proyectoId },
+          data: { versionActual: { increment: 1 }, formato: p.formato, plantilla: p.plantilla, nombre: p.nombre },
+          select: { slug: true, versionActual: true },
+        });
+        let n = fila.versionActual;
+        // Por si la tabla tiene una versión más alta que versionActual (datos viejos): nunca repetir número.
+        const ultima = await tx.version.findFirst({ where: { proyectoId }, orderBy: { numero: "desc" }, select: { numero: true } });
+        if (ultima && ultima.numero >= n) {
+          n = ultima.numero + 1;
+          await tx.proyecto.update({ where: { id: proyectoId }, data: { versionActual: n } });
+        }
+        await tx.version.create({ data: { proyectoId, numero: n, nota, hash: sha256Texto(json), json } });
+        await escribirAtomico(rutaGeeperJson(fila.slug), json);
+        return n;
+      },
+      // La espera por la base (busy_timeout, 10 s) tiene que caber en la transacción.
+      { maxWait: 30_000, timeout: 30_000 },
+    ),
+  );
+}
+
+/** ¿La base respondió ocupada o venció la espera? Entonces vale la pena reintentar. */
+export function esOcupada(e: unknown): boolean {
+  const m = e instanceof Error ? `${e.name} ${e.message} ${String((e as { code?: unknown }).code ?? "")}` : String(e);
+  return /SQLITE_BUSY|database is locked|timed out|P2028|P1008|SocketTimeout/i.test(m);
+}
+
+/** Reintenta 2 veces (con una pausa corta) si la base está ocupada. */
+export async function conReintentos<T>(fn: () => Promise<T>, intentos = 3): Promise<T> {
+  for (let i = 1; ; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (i >= intentos || !esOcupada(e)) throw e;
+      await new Promise((r) => setTimeout(r, 150 * i + Math.random() * 150));
+    }
+  }
 }
 
 export async function registrarAssetsEnDb(proyectoId: string, p: Proyecto): Promise<void> {
