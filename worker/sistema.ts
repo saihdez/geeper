@@ -32,3 +32,19 @@ export async function barrerLeases(enCurso: Iterable<string>, workerId: string):
   const recuperados = await recuperarVencidos();
   return { recuperados, perdidos };
 }
+
+/** Tope para que los trabajos cortados terminen al apagar (gpu-solo tarda en volver a encender MPT). */
+export const TOPE_APAGAR_MS = 12_000;
+
+/**
+ * Espera a que `enCurso` quede vacío (cada trabajo lo deja en su `finally`, después de que sus procesos
+ * salieron y de anotarse «interrumpido») o a que pase `topeMs`. Devuelve true si quedó vacío (WRK-07).
+ */
+export async function esperarVacio(enCurso: { readonly size: number }, topeMs = TOPE_APAGAR_MS, pasoMs = 100): Promise<boolean> {
+  const limite = Date.now() + topeMs;
+  while (enCurso.size > 0) {
+    if (Date.now() >= limite) return false;
+    await new Promise((ok) => setTimeout(ok, pasoMs));
+  }
+  return true;
+}

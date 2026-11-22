@@ -13,7 +13,7 @@ import { enTrabajo } from "@/lib/proceso";
 import { tapar } from "@/lib/redes/secretos";
 import { dirProyecto } from "@/lib/rutas";
 import { EJECUTORES, rutaLog } from "./ejecutores";
-import { barrerLeases, REVISAR_CANCELADOS_MS, yaNoSonNuestros } from "./sistema";
+import { barrerLeases, esperarVacio, REVISAR_CANCELADOS_MS, TOPE_APAGAR_MS, yaNoSonNuestros } from "./sistema";
 
 const workerId = nuevoWorkerId();
 let apagando = false;
@@ -44,6 +44,8 @@ async function correrUno(motor: Motor): Promise<boolean> {
   };
   const ctrl = new AbortController();
   enCurso.set(t.id, ctrl);
+  // Reclamado justo mientras se apagaba: se corta ya para que el apagado no lo espere entero.
+  if (apagando) ctrl.abort();
   let pulso: ReturnType<typeof setInterval> | undefined;
   let proyecto: Awaited<ReturnType<typeof db.proyecto.findUnique>> = null;
   try {
@@ -156,7 +158,11 @@ async function main() {
     for (const c of enCurso.values()) c.abort();
     clearInterval(latidoSistema);
     clearInterval(vigiaCancelados);
-    setTimeout(() => process.exit(0), 4000).unref();
+    // Se espera a que cada trabajo cortado termine (sus procesos salieron, p. ej. gpu-solo ya volvió a
+    // encender la IA de MPT, y quedó anotado «interrumpido»), con un tope de 12 s (WRK-07).
+    const vacio = await esperarVacio(enCurso);
+    if (!vacio) avisar(`${enCurso.size} trabajo(s) no terminaron en ${TOPE_APAGAR_MS / 1000} s: se sale igual`);
+    process.exit(0);
   };
   process.on("SIGINT", () => void apagar("SIGINT"));
   process.on("SIGTERM", () => void apagar("SIGTERM"));

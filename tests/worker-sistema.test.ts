@@ -60,3 +60,17 @@ describe("yaNoSonNuestros (WRK-13)", () => {
     expect(await sistema.yaNoSonNuestros([], "w13")).toEqual([]);
   });
 });
+
+describe("esperarVacio (WRK-07)", () => {
+  it("vuelve en cuanto los trabajos terminan, no a un plazo fijo", async () => {
+    const m = new Map([["a", 1]]);
+    setTimeout(() => m.delete("a"), 300);
+    const t0 = Date.now();
+    expect(await sistema.esperarVacio(m, 5000, 20)).toBe(true);
+    expect(Date.now() - t0).toBeLessThan(2000);
+  });
+  it("respeta el tope si alguno no termina", async () => {
+    expect(await sistema.esperarVacio(new Map([["a", 1]]), 200, 20)).toBe(false);
+    expect(await sistema.esperarVacio(new Map(), 200)).toBe(true);
+  });
+});
