@@ -2,6 +2,7 @@
 /** Barra de arriba: marca la sección en la que estás y ofrece «Saltar al contenido» para el teclado. */
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { AvisoMotor } from "@/components/motor";
 import { Paleta } from "@/components/paleta";
 import { DESTINOS, destinoActual } from "@/lib/destinos";
 
@@ -28,6 +29,7 @@ export function Barra() {
         })}
         <Paleta />
       </nav>
+      <AvisoMotor />
     </header>
   );
 }

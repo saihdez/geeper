@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { AvatarV } from "./avatares";
 import { Aviso, Barra, postJson, useSondeo } from "./comun";
 import type { MotorVoz } from "./elegir-voz";
+import { useMotorVivo } from "./motor";
 import type { Formato, Marco } from "@/lib/esquema";
 import { metricas } from "@/lib/formatos";
 import { cajaMarco } from "@/lib/marco";
@@ -120,6 +121,7 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
   }, [opciones]);
   const url = `/api/proyectos/${proyectoId}/presentador${pedidas ? `?opciones=${encodeURIComponent(JSON.stringify(pedidas))}` : ""}`;
   const { datos: d, recargar } = useSondeo<Datos>(url, abierto ? 4000 : 15_000);
+  const motorVivo = useMotorVivo();
   const trabajo = d?.trabajos[0] ?? null;
   if (d && base !== d && !base) setBase(d);
 
@@ -294,7 +296,7 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
                 {error && <Aviso tipo="error">{error}</Aviso>}
                 {trabajo ? (
                   <div className="space-y-1">
-                    <p>{trabajo.estado === "pendiente" ? "En espera: la tarjeta de video está ocupada." : trabajo.etapa || "Generando…"}</p>
+                    <p>{trabajo.estado === "pendiente" ? (motorVivo === false ? "En espera: Geeper está en pausa (mira el aviso de arriba)." : "En espera: la tarjeta de video está ocupada.") : trabajo.etapa || "Generando…"}</p>
                     <Barra valor={trabajo.progreso} etiqueta="Avance del presentador" />
                     <p className="text-xs text-tenue">Puedes seguir editando; cuando termine aparece en el video como una versión nueva (se deshace desde «Historial»).</p>
                     <button type="button" className="boton" onClick={() => void cancelar()}>Cancelar</button>
