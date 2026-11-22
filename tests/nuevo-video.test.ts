@@ -63,6 +63,25 @@ describe("lo elegido no se pinta como el botón principal (A11-08)", () => {
     expect(css).toMatch(/content: "✓"/);
   });
 
+  it("las reglas de .opcion van en @layer components, así las utilidades (flex, p-3) les ganan", () => {
+    const ini = css.indexOf("@layer components {");
+    expect(ini).toBeGreaterThan(-1);
+    let nivel = 0;
+    let fin = ini;
+    for (let i = css.indexOf("{", ini); i < css.length; i++) {
+      if (css[i] === "{") nivel++;
+      else if (css[i] === "}" && --nivel === 0) {
+        fin = i;
+        break;
+      }
+    }
+    const dentro = css.slice(ini, fin);
+    const fuera = (css.slice(0, ini) + css.slice(fin)).replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(dentro).toContain(".opcion-tarjeta { position: relative; display: block;");
+    expect(dentro).toContain(".opcion { display: inline-flex;");
+    expect(fuera).not.toMatch(/\.opcion(-tarjeta)?[\s:{,]/);
+  });
+
   it("en Nuevo, boton-primario sólo se usa en el botón de enviar", () => {
     for (const f of ["form-nuevo.tsx", "form-demo.tsx", "nuevo.tsx"]) {
       const usos = fuente(f).split("\n").filter((l) => l.includes("boton-primario"));
