@@ -9,10 +9,10 @@ import { tapar } from "@/lib/redes/secretos";
 
 export const dynamic = "force-dynamic";
 
-function volver(req: NextRequest, error: string) {
-  const u = new URL("/cuentas", req.url);
-  u.searchParams.set("error", tapar(error).slice(0, 500));
-  return NextResponse.redirect(u, 302);
+/** A /cuentas con el error. Dirección relativa, como en la vuelta (ESC-02: `req.url` dice localhost). */
+function volver(error: string) {
+  const q = new URLSearchParams({ error: tapar(error).slice(0, 500) });
+  return new NextResponse(null, { status: 302, headers: { Location: `/cuentas?${q}` } });
 }
 
 /**
@@ -22,17 +22,17 @@ function volver(req: NextRequest, error: string) {
 export async function GET(req: NextRequest, ctx: { params: Promise<{ red: string }> }) {
   const { red: idRed } = await ctx.params;
   try {
-    if (!esIdRed(idRed)) return volver(req, `Red desconocida: ${idRed}`);
+    if (!esIdRed(idRed)) return volver(`Red desconocida: ${idRed}`);
     const red = obtenerRed(idRed);
-    if (privadosBloquean()) return volver(req, "Tus datos de acceso no están protegidos. Pulsa «Protegerlos ahora» en esta página y vuelve a intentarlo.");
-    if (!configurada(idRed)) return volver(req, `Falta la app de ${red.nombre}: cárgala en «Apps de las redes».`);
+    if (privadosBloquean()) return volver("Tus datos de acceso no están protegidos. Pulsa «Protegerlos ahora» en esta página y vuelve a intentarlo.");
+    if (!configurada(idRed)) return volver(`Falta la app de ${red.nombre}: cárgala en «Apps de las redes».`);
     const vpn = await verificarSalida();
-    if (!vpn.ok) return volver(req, `No se conecta con el VPN en este estado: ${vpn.detalle}`);
+    if (!vpn.ok) return volver(`No se conecta con el VPN en este estado: ${vpn.detalle}`);
 
     const cuentaId = req.nextUrl.searchParams.get("cuenta") || undefined;
     if (cuentaId) {
       const c = await db.cuenta.findUnique({ where: { id: cuentaId }, select: { red: true } });
-      if (!c || c.red !== idRed) return volver(req, "La cuenta a reconectar no existe o es de otra red");
+      if (!c || c.red !== idRed) return volver("La cuenta a reconectar no existe o es de otra red");
     }
 
     const estado = nuevoEstado(idRed, cuentaId);
@@ -47,6 +47,6 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ red: string
     });
     return res;
   } catch (e) {
-    return volver(req, e instanceof Error ? e.message : String(e));
+    return volver(e instanceof Error ? e.message : String(e));
   }
 }

@@ -18,7 +18,7 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { app, BrowserWindow, dialog, Menu, session, shell } from "electron";
-import { esVueltaOAuth } from "./oauth";
+import { esInicioLogin, pasoLogin } from "./oauth";
 import {
   abrirFuera,
   AvisoArranque,
@@ -204,7 +204,7 @@ function crearVentana(): void {
   });
   ventana.webContents.on("will-navigate", (e, destino) => {
     // «Conectar» una cuenta: el inicio de sesión de la red va en su propia ventana (ver abrirLogin).
-    if (esDeGeeper(url, destino) && destino.startsWith(`${url}/api/cuentas/conectar/`)) {
+    if (esInicioLogin(url, destino)) {
       e.preventDefault();
       abrirLogin(destino);
       return;
@@ -246,23 +246,14 @@ function abrirLogin(inicio: string): void {
     webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
   const guiar = (e: { preventDefault: () => void }, destino: string) => {
-    if (esVueltaOAuth(destino) && !esDeGeeper(url, destino)) {
-      e.preventDefault();
-      const u = new URL(destino);
-      void login.loadURL(`${url}${u.pathname}${u.search}`);
-      return;
+    const paso = pasoLogin(url, destino);
+    if (paso.tipo === "seguir") return;
+    e.preventDefault();
+    if (paso.tipo === "llevar") void login.loadURL(paso.a);
+    else if (paso.tipo === "terminar") {
+      void ventana?.loadURL(paso.a);
+      login.close();
     }
-    if (esDeGeeper(url, destino)) {
-      // Geeper ya procesó la vuelta (o devolvió un error): se muestra en la ventana principal.
-      if (!new URL(destino).pathname.startsWith("/api/cuentas/")) {
-        e.preventDefault();
-        void ventana?.loadURL(destino);
-        login.close();
-      }
-      return;
-    }
-    // Las páginas de inicio de sesión de las redes van siempre por https.
-    if (!destino.startsWith("https://")) e.preventDefault();
   };
   login.webContents.on("will-navigate", guiar);
   login.webContents.on("will-redirect", guiar);
