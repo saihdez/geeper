@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ErrorConexion, RECONECTANDO, mensajeHttp, traer } from "@/lib/conexion";
+import { mensajeHttp, traer } from "@/lib/conexion";
+import { crearSondeo, type Sondeo } from "@/lib/sondeo";
 
 /** Pide JSON. Los errores salen en palabras simples: sin conexión, «ya no existe», o el texto del servidor. */
 export async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
@@ -14,33 +15,43 @@ export function postJson<T>(url: string, cuerpo: unknown): Promise<T> {
   return pedir<T>(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(cuerpo) });
 }
 
-/** Trae datos y los refresca cada `ms` (más seguido si `rapido`). */
-export function useSondeo<T>(url: string, ms = 3000) {
+/**
+ * Trae datos y los refresca `ms` después de cada respuesta (o lo que diga `ms(datos)`, para ir más
+ * lento en reposo). No pide con la pestaña oculta, no repinta si nada cambió y descarta respuestas
+ * viejas (ver lib/sondeo.ts).
+ */
+export function useSondeo<T>(url: string, ms: number | ((datos: T | null) => number) = 3000) {
   const [datos, setDatos] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const vivo = useRef(true);
-  const cargar = useCallback(async () => {
-    try {
-      const d = await pedir<T>(url);
-      if (vivo.current) {
-        setDatos(d);
-        setError(null);
-      }
-    } catch (e) {
-      if (vivo.current) setError(e instanceof ErrorConexion ? RECONECTANDO : e instanceof Error ? e.message : String(e));
-    }
-  }, [url]);
+  const intervalo = useRef(ms);
+  const sondeo = useRef<Sondeo | null>(null);
   useEffect(() => {
-    vivo.current = true;
-    const primera = setTimeout(() => void cargar(), 0);
-    const i = setInterval(() => void cargar(), ms);
+    intervalo.current = ms;
+  });
+  useEffect(() => {
+    const s = crearSondeo<T>({
+      url,
+      intervalo: (d) => {
+        const m = intervalo.current;
+        return typeof m === "function" ? m(d) : m;
+      },
+      alDatos: setDatos,
+      alError: setError,
+    });
+    sondeo.current = s;
+    s.iniciar();
     return () => {
-      vivo.current = false;
-      clearTimeout(primera);
-      clearInterval(i);
+      s.detener();
+      if (sondeo.current === s) sondeo.current = null;
     };
-  }, [cargar, ms]);
-  return { datos, error, recargar: cargar };
+  }, [url]);
+  // Si cambia un intervalo fijo (p. ej. un panel que se abre), la próxima consulta se reprograma.
+  const fijo = typeof ms === "number" ? ms : null;
+  useEffect(() => {
+    if (fijo !== null) sondeo.current?.reprogramar();
+  }, [fijo]);
+  const recargar = useCallback(() => sondeo.current?.recargar() ?? Promise.resolve(), []);
+  return { datos, error, recargar };
 }
 
 const COLORES: Record<string, string> = {

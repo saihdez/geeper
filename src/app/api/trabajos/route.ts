@@ -18,5 +18,8 @@ export async function GET(req: Request) {
   for (const t of trabajos) {
     if (t.payload && typeof t.payload === "object" && "sesion" in t.payload) t.payload = { ...(t.payload as object), sesion: "[oculto]" };
   }
-  return json({ trabajos, workerLatido: latido?.valor ?? null, workerVivo: !!latido && ahora - new Date(latido.valor).getTime() < 60_000, ahora });
+  // `ahora` sólo sirve para la duración de lo que empezó y no terminó: si no hay nada así va fijo, para
+  // que la respuesta sea idéntica mientras nada cambie y la pantalla no se repinte (useSondeo compara).
+  const enCurso = trabajos.some((t) => t.iniciado && !t.terminado);
+  return json({ trabajos, workerVivo: !!latido && ahora - new Date(latido.valor).getTime() < 60_000, ahora: enCurso ? ahora : 0 });
 }
