@@ -1,5 +1,21 @@
 /** Tareas periódicas del worker que no son de un trabajo concreto (separadas para poder probarlas). */
 import { latido, recuperarVencidos } from "@/lib/cola";
+import { db } from "@/lib/db";
+
+/** Cada cuánto se mira si alguien canceló un trabajo en curso (el latido del lease va cada 15 s). */
+export const REVISAR_CANCELADOS_MS = 2000;
+
+/**
+ * De los trabajos que corren aquí, los que ya no son nuestros: la persona los canceló (o otro los
+ * recuperó). Una sola consulta liviana; así cancelar llega en ~2 s y no hasta 15 (WRK-13).
+ */
+export async function yaNoSonNuestros(enCurso: Iterable<string>, workerId: string): Promise<string[]> {
+  const ids = [...enCurso];
+  if (!ids.length) return [];
+  const filas = await db.trabajo.findMany({ where: { id: { in: ids } }, select: { id: true, estado: true, workerId: true } });
+  const nuestros = new Set(filas.filter((f) => f.estado === "corriendo" && f.workerId === workerId).map((f) => f.id));
+  return ids.filter((id) => !nuestros.has(id));
+}
 
 /**
  * Barrido de leases vencidos sin cortar los trabajos propios (WRK-06). Tras una suspensión del equipo o un

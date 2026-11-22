@@ -13,7 +13,7 @@ import { enTrabajo } from "@/lib/proceso";
 import { tapar } from "@/lib/redes/secretos";
 import { dirProyecto } from "@/lib/rutas";
 import { EJECUTORES, rutaLog } from "./ejecutores";
-import { barrerLeases } from "./sistema";
+import { barrerLeases, REVISAR_CANCELADOS_MS, yaNoSonNuestros } from "./sistema";
 
 const workerId = nuevoWorkerId();
 let apagando = false;
@@ -134,12 +134,28 @@ async function main() {
       (e: unknown) => avisar(`No se pudo revisar los leases vencidos: ${mensaje(e)} (se reintenta en ${LATIDO_MS / 1000} s)`),
     );
   }, LATIDO_MS);
+  const vigiaCancelados = setInterval(() => {
+    if (!enCurso.size) return;
+    yaNoSonNuestros(enCurso.keys(), workerId).then(
+      (ids) => {
+        for (const id of ids) {
+          const c = enCurso.get(id);
+          if (c && !c.signal.aborted) {
+            avisar(`${id}: cancelado; se detiene`);
+            c.abort();
+          }
+        }
+      },
+      () => undefined, // el latido de cada trabajo lo vuelve a mirar
+    );
+  }, REVISAR_CANCELADOS_MS);
   const apagar = async (senal: string) => {
     if (apagando) return;
     apagando = true;
     avisar(`${senal}: apagando; los trabajos en curso quedan «interrumpidos»`);
     for (const c of enCurso.values()) c.abort();
     clearInterval(latidoSistema);
+    clearInterval(vigiaCancelados);
     setTimeout(() => process.exit(0), 4000).unref();
   };
   process.on("SIGINT", () => void apagar("SIGINT"));

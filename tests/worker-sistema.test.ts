@@ -47,3 +47,16 @@ describe("barrerLeases (WRK-06)", () => {
     expect(r.perdidos).toEqual([t.id]);
   });
 });
+
+describe("yaNoSonNuestros (WRK-13)", () => {
+  it("devuelve los cancelados y los de otro worker; no los que siguen corriendo aquí", async () => {
+    const a = await cola.encolar(null, "publicar.subir", {});
+    await cola.reclamar("red", "w13");
+    const b = await cola.encolar(null, "publicar.subir", {});
+    await cola.reclamar("red", "w13");
+    await cola.cancelar(b.id);
+    expect(await sistema.yaNoSonNuestros([a.id, b.id, "no-existe"], "w13")).toEqual([b.id, "no-existe"]);
+    expect(await sistema.yaNoSonNuestros([a.id], "otro")).toEqual([a.id]);
+    expect(await sistema.yaNoSonNuestros([], "w13")).toEqual([]);
+  });
+});
