@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { agrupar, aplicarCorrecciones, lineas, reemplazar, type Ficha } from "@/lib/subtitulos";
+import { pruebasReales } from "./ayudas/reales";
 
 const PY = path.join(process.cwd(), "py", "geeper_py.py");
 const py = (accion: string, datos: unknown) => JSON.parse(execFileSync("python3", [PY, accion], { input: JSON.stringify(datos) }).toString());
@@ -21,7 +22,7 @@ const guion = "Vice City te espera. GTA seis llega pronto, y nadie sabe qué pas
 const palabras = guion.split(" ").map((t, i) => ({ text: t, start: i * 0.4, end: i * 0.4 + (i % 5 === 4 ? 0.2 : 0.38) }));
 const fichas: Ficha[] = palabras.map((w, i) => ({ texto: w.text, inicio: w.start, fin: w.end, origen: [i, i + 1] }));
 
-describe.skipIf(!hayEstudio)("paridad con mpt_acabado.py", () => {
+describe.skipIf(!pruebasReales || !hayEstudio)("paridad con mpt_acabado.py", () => {
   it("reemplazar = reemplazos()", () => {
     const esperado = estudio("reemplazos", palabras, ["GTA seis=GTA VI"]) as { text: string; start: number; end: number }[];
     const nuestro = reemplazar(fichas, [{ de: "GTA seis", a: "GTA VI" }]);

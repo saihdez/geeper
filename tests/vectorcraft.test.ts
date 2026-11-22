@@ -14,6 +14,7 @@ import { PLANTILLAS_INICIALES } from "@/lib/plantillas";
 import { reglaAmpliacion } from "@/lib/qc";
 import { revisarSvg } from "@/lib/svg";
 import { proyectoDePrueba } from "./fixtures";
+import { pruebasReales } from "./ayudas/reales";
 
 const instalado = (() => {
   try {
@@ -45,7 +46,7 @@ describe("formatos vectoriales", () => {
   });
 });
 
-describe.skipIf(!instalado)("VectorCraft real", () => {
+describe.skipIf(!pruebasReales || !instalado)("VectorCraft real", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "geeper-vc-test-"));
   fs.writeFileSync(path.join(dir, "marca.svg"), MARCA);
   // Un PDF y un PNG de verdad, hechos con la misma CLI (como los exportaría un programa de diseño).
@@ -114,7 +115,7 @@ describe("vectorizar desde el aviso de nitidez", () => {
     expect(() => cambiarAsset(p, "no-existe", svg)).toThrow(/ya no está/);
   });
 
-  it.skipIf(!instalado)("de punta a punta: PNG → SVG con VectorCraft → asset → compila como <img> SVG", async () => {
+  it.skipIf(!pruebasReales || !instalado)("de punta a punta: PNG → SVG con VectorCraft → asset → compila como <img> SVG", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "geeper-vect-"));
     fs.mkdirSync(path.join(dir, "assets"));
     fs.writeFileSync(path.join(dir, "marca.svg"), MARCA);
