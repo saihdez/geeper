@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { etapaSimple, nombreTipo } from "@/lib/textos";
 import { Aviso, Barra, Estado, postJson, segundos, useSondeo } from "./comun";
 
 interface Trabajo {
@@ -19,25 +20,6 @@ interface Trabajo {
   proyecto: { nombre: string; slug: string } | null;
   proyectoId: string | null;
 }
-
-const TIPOS: Record<string, string> = {
-  "mpt.generar": "Generar con MPT",
-  "proyecto.importar": "Importar y alinear",
-  "voz.regenerar": "Regenerar voz",
-  "voz.disenar": "Diseñar una voz",
-  "plano.generar": "Animar escena",
-  "avatar.proponer": "Crear avatar",
-  "avatar.retocar": "Retocar avatar",
-  "presentador.generar": "Presentador (avatar que habla)",
-  "avatar.actuar": "Tu avatar en una escena",
-  "avatar.streamer": "Tu avatar como streamer",
-  "avatar.escenas": "Tu avatar en el video nuevo",
-  "escena.rehacer": "Rehacer la toma",
-  "workflow.correr": "Workflow de ComfyUI",
-  "render.entregar": "Render y QC",
-  "escenas.animar": "Animando las escenas",
-  "demo.crear": "Demo de una página web",
-};
 
 function duracion(t: Trabajo, ahora: number) {
   if (!t.iniciado) return "";
@@ -83,11 +65,14 @@ export function ListaTrabajos({ proyectoId }: { proyectoId?: string }) {
   return (
     <div className="space-y-3">
       {datos && !workerVivo && (
-        <Aviso tipo="alerta">El worker no está corriendo: los trabajos no avanzan. Arráncalo con <code>pnpm run dev:up</code> o <code>pnpm run worker</code>.</Aviso>
+        <Aviso tipo="alerta">
+          <p className="font-medium">El motor de Geeper está apagado, así que nada avanza.</p>
+          <p className="mt-1">Cierra Geeper y ábrelo otra vez con <code>pnpm run dev:up</code> (enciende la web y el motor juntos).</p>
+        </Aviso>
       )}
       {error && <Aviso tipo="error">{error}</Aviso>}
       {fallo && <Aviso tipo="error">{fallo}</Aviso>}
-      {datos?.trabajos.length === 0 && <p className="text-sm text-tenue">Sin trabajos.</p>}
+      {datos?.trabajos.length === 0 && <p className="text-sm text-tenue">Todavía no hay nada: aquí verás cada cosa que Geeper haga por ti.</p>}
       <ul className="space-y-2">
         {datos?.trabajos.map((t) => {
           const vivo = t.estado === "corriendo" || t.estado === "pendiente";
@@ -95,11 +80,11 @@ export function ListaTrabajos({ proyectoId }: { proyectoId?: string }) {
             <li key={t.id} className="tarjeta p-3">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <Estado valor={t.estado} />
-                <span className="font-medium">{TIPOS[t.tipo] ?? t.tipo}</span>
+                <span className="font-medium">{nombreTipo(t.tipo)}</span>
                 {!proyectoId && t.proyecto && (
                   <Link href={`/proyectos/${t.proyectoId}`} className="truncate text-sm text-acento hover:underline">{t.proyecto.nombre}</Link>
                 )}
-                <span className="text-xs text-tenue">{t.usaGpu ? "GPU · " : ""}{duracion(t, datos.ahora)}</span>
+                <span className="text-xs text-tenue">{duracion(t, datos.ahora)}</span>
                 <span className="ml-auto flex gap-2">
                   {["fallido", "interrumpido", "cancelado"].includes(t.estado) && (
                     <button type="button" className="boton" onClick={() => void accion(t.id, "relanzar")}>Relanzar</button>
@@ -112,8 +97,8 @@ export function ListaTrabajos({ proyectoId }: { proyectoId?: string }) {
               </div>
               {t.estado === "corriendo" && (
                 <div className="mt-2 space-y-1">
-                  <p className="text-xs text-sky-200">{t.etapa}</p>
-                  <Barra valor={t.progreso} />
+                  <p className="text-xs text-sky-200">{etapaSimple(t.etapa, t.estado)}</p>
+                  <Barra valor={t.progreso} etiqueta={`Avance: ${nombreTipo(t.tipo)}`} />
                 </div>
               )}
               {t.error && <p className="mt-2 whitespace-pre-wrap text-xs text-red-300">{t.error.split("\n").slice(0, 4).join("\n")}</p>}
