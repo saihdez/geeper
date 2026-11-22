@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Aviso, Estado, archivo, pedir, postJson, segundos, useSondeo } from "./comun";
 import { ACCEPT_IMAGEN, esVector } from "@/lib/formatos-vector";
-import { explicar, resumirQc } from "@/lib/qc-explicado";
+import { explicarRegla, porQueFalla, resumirQc, type FraseQc } from "@/lib/qc-explicado";
 import { VistaEnVivo } from "./vista-en-vivo";
 import { ListaTrabajos } from "./lista-trabajos";
 import { ListaPublicaciones, PanelPublicar, type PublicacionV } from "./panel-publicar";
@@ -105,7 +105,12 @@ interface Vectorizar {
   ocupado: boolean;
 }
 
-function InformeQc({ r, slug, vectorizar }: { r: Render; slug: string; vectorizar?: Vectorizar }) {
+/** Escena donde está hoy una frase que marcó el QC (el informe puede ser de una versión anterior). */
+export function escenaDeFrase(f: Pick<FraseQc, "texto">, escenas: { id: string; indice: number; grupos: { texto: string }[] }[]) {
+  return escenas.find((e) => e.grupos.some((g) => g.texto === f.texto)) ?? null;
+}
+
+export function InformeQc({ r, slug, vectorizar, escenas = [] }: { r: Render; slug: string; vectorizar?: Vectorizar; escenas?: { id: string; indice: number; grupos: { texto: string }[] }[] }) {
   const inf = r.informeQc;
   if (!inf) return null;
   const res = resumirQc(inf.reglas);
@@ -114,11 +119,26 @@ function InformeQc({ r, slug, vectorizar }: { r: Render; slug: string; vectoriza
     <div className="space-y-3">
       <p className={`text-base font-medium ${color}`}>{res.estado === "listo" ? "✓ " : res.estado === "con-avisos" ? "! " : "✗ "}{res.titulo}</p>
       {[...res.bloquean.map((x) => ({ ...x, bloquea: true })), ...res.avisos.map((x) => ({ ...x, bloquea: false }))].map((x) => {
-        const e = explicar(x.id);
+        const e = explicarRegla(x);
         return (
           <div key={x.id} className={`rounded-lg border p-3 text-sm ${x.bloquea ? "border-red-900 bg-red-950/30" : "border-amber-900 bg-amber-950/20"}`}>
             <p className="font-medium">{x.bloquea ? "Hay que arreglarlo: " : "Para mirar: "}{e.que}</p>
             <p className="mt-1 text-tenue">Qué hacer: {e.hacer}</p>
+            {e.frases.length > 0 && (
+              <ul className="mt-2 space-y-1">
+                {e.frases.map((f) => {
+                  const esc = escenaDeFrase(f, escenas);
+                  return (
+                    <li key={`${f.t}-${f.texto}`}>
+                      «{f.texto}» {porQueFalla(f)}.{" "}
+                      {esc
+                        ? <a className="text-acento hover:underline" href={`#escena-${esc.id}`}>Ir a la escena {esc.indice + 1}</a>
+                        : <span className="text-tenue">(ya cambió desde que se hizo este video)</span>}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
         );
       })}
@@ -533,7 +553,7 @@ export function EditorProyecto({ id }: { id: string }) {
       {render?.informeQc && (
         <section className="tarjeta p-4">
           <h2 className="mb-3 font-medium">¿Está listo para publicar?</h2>
-          <InformeQc r={render} slug={fila.slug} vectorizar={{ hacer: vectorizarImagen, sigue: (a) => !!v && (v.escenas.some((e) => e.visual.asset === a) || !!v.extras?.libres.some((pi) => pi.clips.some((c) => c.asset === a))), ocupado }} />
+          <InformeQc r={render} slug={fila.slug} escenas={escenas} vectorizar={{ hacer: vectorizarImagen, sigue: (a) => !!v && (v.escenas.some((e) => e.visual.asset === a) || !!v.extras?.libres.some((pi) => pi.clips.some((c) => c.asset === a))), ocupado }} />
         </section>
       )}
 
