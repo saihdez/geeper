@@ -48,6 +48,19 @@ export function renderEnCurso(trabajos: TrabajoV[]): TrabajoV | null {
   return trabajos.find((t) => t.tipo === "render.entregar" && estaActivo(t)) ?? null;
 }
 
+/**
+ * UX-19: el aviso tras guardar. Ofrece «Crear el video» sólo si no hay uno creándose (si no, pediría
+ * otro igual encima); en ese caso dice que el que se está creando no tiene el cambio.
+ */
+export function avisoGuardado(trabajos: TrabajoV[]): { texto: string; ofrecerCrear: boolean } {
+  return renderEnCurso(trabajos)
+    ? { texto: "Guardado. Ya se ve en «En vivo». El video que se está creando no lo tiene: créalo otra vez cuando termine.", ofrecerCrear: false }
+    : { texto: "Guardado. Ya se ve en «En vivo». Para descargarlo, crea el video otra vez.", ofrecerCrear: true };
+}
+
+/** UX-19: el ritmo de la voz no cambia el video hasta que se vuelva a decir el guion. */
+export const TEXTO_RITMO_GUARDADO = "Listo: el ritmo cuenta la próxima vez que se diga el guion.";
+
 /** UX-10: el paso del render en palabras de quien no sabe de video. */
 export function pasoRender(t: Pick<TrabajoV, "estado" | "etapa">): string {
   if (t.estado === "pendiente") return "esperando su turno";

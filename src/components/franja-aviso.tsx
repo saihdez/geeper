@@ -2,7 +2,8 @@
 /**
  * UX-19: el aviso de «guardado» o de error del editor, en una franja fija abajo de la pantalla, cerca de
  * donde se edita (antes salía arriba, a varias pantallas de las escenas). Los éxitos se van solos; los
- * errores quedan hasta cerrarlos.
+ * errores quedan hasta cerrarlos. Va en z-50, por encima del reproductor pequeño de «En vivo» y de las
+ * tareas flotantes (z-40), para que nada tape sus botones.
  */
 import { useEffect } from "react";
 
@@ -28,7 +29,7 @@ export function FranjaAviso({ msg, cerrar }: { msg: MensajeEditor | null; cerrar
   if (!msg) return null;
   const error = msg.tipo === "error";
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-4">
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-4">
       <div role={error ? "alert" : "status"}
         className={`pointer-events-auto flex w-full max-w-3xl flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm shadow-lg ${error ? "border-red-800 bg-red-950" : "border-emerald-800 bg-emerald-950"}`}>
         <p className="min-w-0 flex-1">{msg.texto}</p>

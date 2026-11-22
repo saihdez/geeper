@@ -18,7 +18,7 @@ import { SelectorEncuadre, type EncuadreV } from "./selector-encuadre";
 import { PanelOtroEditor } from "./panel-otro-editor";
 import { useAccionesProyecto } from "./acciones-proyecto";
 import { FranjaAviso, type MensajeEditor } from "./franja-aviso";
-import { avisoRitmo, correccionesVacias, enLista, haceCuanto, mensajeSinCambios, opcionesRitmo, versionParaDeshacer, errorSubtitulo, escenasConOtraVoz, estaActivo, estadoCreacion, mismoContenido, pasoRender, preguntaVozEscena, renderEnCurso, verTrabajos, type TrabajoV, type VocesV } from "./editor-estado";
+import { avisoGuardado, avisoRitmo, correccionesVacias, enLista, haceCuanto, mensajeSinCambios, opcionesRitmo, versionParaDeshacer, errorSubtitulo, escenasConOtraVoz, estaActivo, estadoCreacion, mismoContenido, pasoRender, preguntaVozEscena, renderEnCurso, verTrabajos, TEXTO_RITMO_GUARDADO, type TrabajoV, type VocesV } from "./editor-estado";
 import { Plegable } from "./plegable";
 import { EdicionPorTexto, EfectosEscena, PanelAvanzado, PanelEstilo, type EfectosV, type EstiloV, type ExtrasV, type PalabraV } from "./edicion-avanzada";
 
@@ -346,6 +346,9 @@ export function EditorProyecto({ id }: { id: string }) {
   const [pestana, setPestana] = useState<"vivo" | "render" | null>(null);
   /** null: la persona no la tocó (se abre sola mientras hay algo en marcha). */
   const [trabajosAbiertos, setTrabajosAbiertos] = useState<boolean | null>(null);
+  /** La vista más reciente, para lo que se pulsa desde un aviso armado antes (UX-19). */
+  const vistaAlDia = useRef<Vista | null>(null);
+  useEffect(() => { vistaAlDia.current = v ?? null; }, [v]);
 
   /**
    * Si `fn` devuelve un texto, ése es el mensaje de éxito (p. ej. con avisos); si no, `ok`. Devuelve si
@@ -368,7 +371,11 @@ export function EditorProyecto({ id }: { id: string }) {
   }
   const hacer = async (fn: () => Promise<unknown>, ok: string | Omit<MensajeEditor, "tipo">) => { await intentar(fn, ok); };
   // UX-19: el aviso sale abajo, junto a lo que se edita, con el paso siguiente al lado.
-  const guardado = { texto: "Guardado. Ya se ve en «En vivo». Para descargarlo, crea el video otra vez.", accion: { texto: "Crear el video", hacer: () => void renderizar() } };
+  // Se arma al guardar: si ya se está creando un video, no se ofrece pedir otro encima.
+  const guardado = (): Omit<MensajeEditor, "tipo"> => {
+    const a = avisoGuardado(v?.fila.trabajos ?? []);
+    return a.ofrecerCrear ? { texto: a.texto, accion: { texto: "Crear el video", hacer: () => void renderizar() } } : { texto: a.texto };
+  };
   /** Guarda una edición y dice si salió bien. */
   // UX-18: si nada cambió, se dice eso (sin «Guardado» ni «Crear el video»).
   const guardar = async (eds: object[]) => {
@@ -376,9 +383,9 @@ export function EditorProyecto({ id }: { id: string }) {
     const nada = mensajeSinCambios(eds as { tipo?: unknown }[], r);
     return nada ?? r; // un texto reemplaza al «Guardado» (y a su «Crear el video»)
   };
-  const editarOk = (ed: object) => intentar(() => guardar([ed]), guardado);
+  const editarOk = (ed: object, ok: string | Omit<MensajeEditor, "tipo"> = guardado()) => intentar(() => guardar([ed]), ok);
   const editar = async (ed: object) => { await editarOk(ed); };
-  const editarVarias = (eds: object[]) => hacer(() => guardar(eds), guardado);
+  const editarVarias = (eds: object[]) => hacer(() => guardar(eds), guardado());
   const subirClip = (escena: string, f: File) => hacer(async () => {
     const fd = new FormData();
     fd.set("escena", escena);
@@ -398,6 +405,11 @@ export function EditorProyecto({ id }: { id: string }) {
     if (confirm(preguntaUsarVoz(nombre))) await regenerarVoz(null);
   };
   const renderizar = async () => {
+    // UX-19: el botón de la franja puede pulsarse después de que empezó otro render (la vista es la del aviso).
+    if (renderEnCurso(vistaAlDia.current?.fila.trabajos ?? [])) {
+      setMsg({ tipo: "ok", texto: "Ya se está creando el video. Arriba ves cómo va." });
+      return;
+    }
     // REN-04: si el QC lo va a rechazar por subtítulos rápidos, se pregunta antes de esperar el render.
     const aviso = avisoSubtitulosRapidos(v?.subtitulosRapidos);
     if (aviso?.confirmar && !confirm(aviso.confirmar)) return;
@@ -647,7 +659,7 @@ export function EditorProyecto({ id }: { id: string }) {
                 <div>
                   <label className="etiqueta" htmlFor="vel">Ritmo de la voz (cuenta la próxima vez que se diga el guion)</label>
                   <select id="vel" className="campo w-auto" value={String(p.voz.velocidad)} disabled={ocupado} aria-describedby={avisoRitmo(p.voz.velocidad) ? "aviso-ritmo" : undefined}
-                    onChange={(e) => void editar({ tipo: "cambiarVoz", velocidad: Number(e.target.value) })}>
+                    onChange={(e) => void editarOk({ tipo: "cambiarVoz", velocidad: Number(e.target.value) }, TEXTO_RITMO_GUARDADO)}>
                     {opcionesRitmo(p.voz.velocidad).map((x) => <option key={x.valor} value={String(x.valor)}>{x.nombre}</option>)}
                   </select>
                 </div>
