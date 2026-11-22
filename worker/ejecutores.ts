@@ -21,9 +21,9 @@ import { PedidoRehacer, rehacerEscena } from "@/lib/rehacer";
 import { animarEscenasDelVideo } from "@/lib/animar-escenas";
 import { actuarEscena, leerAvatarDelVideo, PedidoActuar, PedidoStreamer, proponerEscenas, streamerAvatar } from "@/lib/actuar";
 import { correrWorkflow, PedidoWorkflow } from "@/lib/workflows";
-import { regenerarVoz } from "@/lib/regenerar";
+import { regenerarVoz, textoADecir } from "@/lib/regenerar";
 import { IdiomaTraduccion, traducirProyecto } from "@/lib/traducir";
-import { disenarVoz } from "@/lib/voces";
+import { adelantarVoxcpm, disenarVoz } from "@/lib/voces";
 import { agregarEfecto, describirEnIngles, generarEfecto, generarEfectos, presetsQueFaltan } from "@/lib/efectos-sonido";
 import type { Avance } from "@/lib/wan2gp";
 import { reencuadrarEscena } from "@/lib/reencuadre";
@@ -226,14 +226,53 @@ async function visualReencuadrar(t: Trabajo, h: Herramientas): Promise<Salida> {
   return { resultado: r, siguiente: siguienteDe(t.payload, { version: r.version }) };
 }
 
+/** Las escenas de `payload.escenas` (rehacer varias en un solo trabajo, GPU-07), sin repetir; null si no hay. */
+export function escenasDelPedido(payload: Payload): string[] | null {
+  const l = Array.isArray(payload.escenas) ? payload.escenas.filter((x): x is string => typeof x === "string" && x.length > 0) : [];
+  return l.length ? [...new Set(l)] : null;
+}
+
+const palabrasDe = (s: string) => s.split(/\s+/).filter(Boolean).join(" ");
+
 async function vozRegenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
   const escena = typeof t.payload.escena === "string" ? t.payload.escena : null;
   const { p } = await versionDeProyecto(t.proyectoId!);
   // Una voz diseñada (VoxCPM2) espera la tarjeta: en la fila «voz» frenaría importar, clips y demos (GPU-06).
   if (p.voz.motor === "voxcpm" && (t.motor ?? "voz") === "voz") throw new CambiarDeFila("tarjeta", "En cola: espera la tarjeta gráfica (voz diseñada)");
+  const varias = escenasDelPedido(t.payload);
+  if (varias) return vozRegenerarVarias(t, h, varias);
   await h.etapa(escena ? `Voz nueva para ${escena} y subtítulos realineados` : "Voz nueva del guion completo y subtítulos realineados", 0.1);
   const r = await regenerarVoz(h, t.proyectoId!, p, escena);
   return { resultado: r, siguiente: siguienteDe(t.payload, { version: r.version }) };
+}
+
+/**
+ * Voz nueva de varias escenas en un solo trabajo (GPU-07): con una voz diseñada, VoxCPM2 carga una sola
+ * vez para todas (antes, 60–95 s de carga por escena) y el video se renderiza una sola vez, al final.
+ * Cada escena se guarda sobre la versión de ese momento, como al rehacer una sola; si la persona quitó
+ * una escena mientras tanto, se salta.
+ */
+async function vozRegenerarVarias(t: Trabajo, h: Herramientas, escenas: string[]): Promise<Salida> {
+  const { p } = await versionDeProyecto(t.proyectoId!);
+  if (p.voz.motor === "voxcpm") {
+    await h.etapa(`Voz nueva de ${escenas.length} escenas (una sola carga de la voz diseñada)`, 0.05);
+    const textos = escenas.flatMap((id) => (p.escenas[id] ? [palabrasDe(textoADecir(p.escenas[id]))] : []));
+    await adelantarVoxcpm(h, textos, p.voz.voz);
+  }
+  let ultima: { version: number; asset: string } | null = null;
+  const hechas: string[] = [];
+  for (const [i, id] of escenas.entries()) {
+    const { p: ahora } = await versionDeProyecto(t.proyectoId!);
+    if (!ahora.escenas[id]) {
+      h.log(`La escena ${id} ya no está en el video: se salta.`);
+      continue;
+    }
+    await h.etapa(`Voz nueva de la escena ${i + 1} de ${escenas.length} y subtítulos realineados`, 0.1 + (0.85 * i) / escenas.length);
+    ultima = await regenerarVoz(h, t.proyectoId!, ahora, id);
+    hechas.push(id);
+  }
+  if (!ultima) throw new Error("Esas escenas ya no están en el video: no hubo voz que rehacer.");
+  return { resultado: { ...ultima, escenas: hechas }, siguiente: siguienteDe(t.payload, { version: ultima.version }) };
 }
 
 async function efectoGenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
