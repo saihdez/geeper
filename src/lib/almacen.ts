@@ -39,7 +39,6 @@ export async function leerProyecto(slug: string): Promise<Proyecto | null> {
  */
 export async function guardarProyecto(proyectoId: string, datos: Proyecto, nota: string): Promise<number> {
   const p = validarProyecto(datos);
-  const json = JSON.stringify(p, null, 2) + "\n";
   return conReintentos(() =>
     db.$transaction(
       async (tx) => {
@@ -48,21 +47,57 @@ export async function guardarProyecto(proyectoId: string, datos: Proyecto, nota:
           data: { versionActual: { increment: 1 }, formato: p.formato, plantilla: p.plantilla, nombre: p.nombre },
           select: { slug: true, versionActual: true },
         });
-        let n = fila.versionActual;
-        // Por si la tabla tiene una versión más alta que versionActual (datos viejos): nunca repetir número.
-        const ultima = await tx.version.findFirst({ where: { proyectoId }, orderBy: { numero: "desc" }, select: { numero: true } });
-        if (ultima && ultima.numero >= n) {
-          n = ultima.numero + 1;
-          await tx.proyecto.update({ where: { id: proyectoId }, data: { versionActual: n } });
-        }
-        await tx.version.create({ data: { proyectoId, numero: n, nota, hash: sha256Texto(json), json } });
-        await escribirAtomico(rutaGeeperJson(fila.slug), json);
-        return n;
+        return cerrarGuardado(tx, proyectoId, fila, p, nota);
       },
       // La espera por la base (busy_timeout, 10 s) tiene que caber en la transacción.
       { maxWait: 30_000, timeout: 30_000 },
     ),
   );
+}
+
+/**
+ * Guarda aplicando un cambio sobre la versión que hay AHORA, no sobre una copia leída antes (SEG-05).
+ * Para los trabajos largos (animar, presentador, voz nueva): leen al empezar, generan durante minutos y,
+ * si guardaran esa copia, borrarían lo que la persona editó mientras tanto. Con esto, al terminar se
+ * relee geeper.json con la base ya tomada y `aplicar` pone encima sólo lo generado (como `efectoGenerar`).
+ * Si `aplicar` lanza (la escena ya no existe, cambió su texto), no se guarda nada.
+ */
+export async function guardarEncima(proyectoId: string, nota: string, aplicar: (actual: Proyecto) => Proyecto): Promise<number> {
+  return conReintentos(() =>
+    db.$transaction(
+      async (tx) => {
+        // Empieza escribiendo (SEG-04): desde aquí nadie más guarda hasta que esto termine.
+        const fila = await tx.proyecto.update({
+          where: { id: proyectoId },
+          data: { versionActual: { increment: 1 } },
+          select: { slug: true, versionActual: true },
+        });
+        const actual = await leerProyecto(fila.slug);
+        if (!actual) throw new Error("El proyecto ya no tiene geeper.json: no hay sobre qué guardar.");
+        const p = validarProyecto(aplicar(structuredClone(actual)));
+        await tx.proyecto.update({ where: { id: proyectoId }, data: { formato: p.formato, plantilla: p.plantilla, nombre: p.nombre } });
+        return cerrarGuardado(tx, proyectoId, fila, p, nota);
+      },
+      { maxWait: 30_000, timeout: 30_000 },
+    ),
+  );
+}
+
+type Tx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
+/** Número de versión, fila Version y geeper.json (con la base tomada por la transacción). */
+async function cerrarGuardado(tx: Tx, proyectoId: string, fila: { slug: string; versionActual: number }, p: Proyecto, nota: string): Promise<number> {
+  const json = JSON.stringify(p, null, 2) + "\n";
+  let n = fila.versionActual;
+  // Por si la tabla tiene una versión más alta que versionActual (datos viejos): nunca repetir número.
+  const ultima = await tx.version.findFirst({ where: { proyectoId }, orderBy: { numero: "desc" }, select: { numero: true } });
+  if (ultima && ultima.numero >= n) {
+    n = ultima.numero + 1;
+    await tx.proyecto.update({ where: { id: proyectoId }, data: { versionActual: n } });
+  }
+  await tx.version.create({ data: { proyectoId, numero: n, nota, hash: sha256Texto(json), json } });
+  await escribirAtomico(rutaGeeperJson(fila.slug), json);
+  return n;
 }
 
 /** ¿La base respondió ocupada o venció la espera? Entonces vale la pena reintentar. */

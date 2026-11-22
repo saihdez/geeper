@@ -60,3 +60,43 @@ describe("guardarProyecto con varios procesos a la vez (SEG-04)", () => {
     expect(enDisco.nombre).toBe(versiones[versiones.length - 1]!.nota);
   }, 120_000);
 });
+
+describe("guardarEncima: un trabajo largo no pisa lo editado mientras tanto (SEG-05)", () => {
+  it("aplica lo generado sobre la versión de ahora, no sobre la copia de cuando empezó", async () => {
+    const { guardarProyecto, guardarEncima, leerProyecto } = await import("@/lib/almacen");
+    const { proyectoDePrueba } = await import("./fixtures");
+    await db.proyecto.create({ data: { id: "p2", slug: "p2", nombre: "p", tema: "t", formato: "9:16", plantilla: "x" } });
+    fs.mkdirSync(path.join(dir, "p2"), { recursive: true });
+    await guardarProyecto("p2", { ...proyectoDePrueba(), nombre: "inicio" }, "inicio");
+
+    const copiaDelTrabajo = (await leerProyecto("p2"))!; // el trabajo lee al empezar…
+    const editado = structuredClone(copiaDelTrabajo); // …y la persona edita mientras tanto
+    editado.escenas.e01!.texto = "Texto corregido a mano.";
+    await guardarProyecto("p2", editado, "Subtítulo corregido");
+
+    // Al terminar, el trabajo sólo pone lo suyo (aquí, un texto en la escena 2).
+    const n = await guardarEncima("p2", "Voz regenerada: escena e02", (actual) => {
+      actual.escenas.e02!.texto = "Generado por el trabajo.";
+      return actual;
+    });
+    const final = (await leerProyecto("p2"))!;
+    expect(final.escenas.e01!.texto).toBe("Texto corregido a mano.");
+    expect(final.escenas.e02!.texto).toBe("Generado por el trabajo.");
+    expect(n).toBe(3);
+    expect(copiaDelTrabajo.escenas.e01!.texto).not.toBe("Texto corregido a mano.");
+  });
+
+  it("si lo generado ya no encaja, no guarda nada ni gasta un número de versión", async () => {
+    const { guardarEncima, leerProyecto } = await import("@/lib/almacen");
+    const antes = await db.proyecto.findUniqueOrThrow({ where: { id: "p2" } });
+    await expect(
+      guardarEncima("p2", "x", (actual) => {
+        if (!actual.escenas.e99) throw new Error("La escena ya no existe: no apliqué la voz nueva.");
+        return actual;
+      }),
+    ).rejects.toThrow(/ya no existe/);
+    expect((await db.proyecto.findUniqueOrThrow({ where: { id: "p2" } })).versionActual).toBe(antes.versionActual);
+    expect(await db.version.count({ where: { proyectoId: "p2" } })).toBe(antes.versionActual);
+    expect((await leerProyecto("p2"))!.escenas.e02!.texto).toBe("Generado por el trabajo.");
+  });
+});
