@@ -729,3 +729,89 @@ Además, tres de los cinco agentes que probaron la app en vivo le consultaron lo
 
 Un detalle de funcionamiento: OpenRouter no tiene saldo, así que todas las consultas cayeron a NVIDIA NIM y respondieron.
 
+
+## 7. Fase 2: antes y después
+
+Medido el 2026-11-21 entre las 22:00 y las 22:30, sobre la rama `fix/auditoria-2026-11` (115 commits desde `c9b7a35`, 83 identificadores tocados), con la misma instancia aislada que en la sección 1: copia de los datos (los mismos 7 proyectos y 42 trabajos), candado de GPU falso, puerto 3311 y build de producción. Nada de GPU.
+
+**Ojo con la carga:** la línea base se midió con la máquina saturada (carga 14–47 sobre 32 hilos) y ésta casi en reposo (0,3–7). Por eso los tiempos de compilar y la CPU del worker mejoran en parte sólo por la máquina. Los tamaños de respuesta, el número de peticiones y la memoria no dependen de la carga, y ésas son las cifras que valen.
+
+La copia de la base no tiene los índices nuevos de SRV-05: el modo automático no dejó correr `prisma db push`, ni siquiera sobre la copia. Las latencias de la cola están medidas sin ellos.
+
+### 7.1 Compilar y revisar
+
+| Qué | Antes | Después | Nota |
+|---|---|---|---|
+| `pnpm typecheck` | 45,3 s · 808 MB | 5,1 s en frío · 846 MB (3,0 s incremental) | Casi todo es carga |
+| `pnpm lint` | 17,5 s · 1,08 GB | 7,0 s sin caché · 0,99 GB | Casi todo es carga |
+| `pnpm test` | 179,7 s · 48 archivos y 462 pruebas · 2,1 GB | **32,0 s** · 113 archivos y 719 pruebas (11 reales saltadas) · 0,48 GB | Las pruebas de trabajo real van aparte (`pnpm run test:reales`), y sólo whisper sumaba 105,7 s |
+| `next build` | 42,0 s · 1,26 GB | 11,0 s · 1,40 GB | Carga |
+| Avisos de Turbopack | 8 | 14 (8 archivos) | **No mejoró.** Los nuevos son de `nodos-comfy.ts` y `novedades.ts`, que vienen de la otra sesión. No tiene identificador en la tabla: queda anotado aquí |
+| `.next` recién hecho | 109 MB | 119 MB | |
+
+### 7.2 Reposo (120 s, sin navegador)
+
+| Proceso | Antes | Después |
+|---|---|---|
+| Web (build de producción) | 0,03 % de un núcleo · RSS 160,6 MB · PSS 105,5 MB | 0,00 % · **RSS 122,9 MB · PSS 74,5 MB** |
+| Worker | 2,7 % de un núcleo (máquina saturada) · RSS 152 MB · PSS 91 MB | **0,12 %** · RSS 147 MB · PSS 93 MB |
+
+### 7.3 Peticiones (mismos datos)
+
+| Ruta | Antes | Después |
+|---|---|---|
+| `/api/proyectos` | 11–25 ms · 40 136 B | 3–4 ms · **3 540 B** (−91 %) |
+| `/api/trabajos` | 19–850 ms · 36 897 B | 4–9 ms · **18 189 B** (−51 %) |
+| `/api/proyectos/[id]` | 74–293 ms · 80 579 B | 10–40 ms · **34 545 B** (−57 %) |
+| **`/api/sistema`** | **49,5 s** la primera, 7,6–9,1 s las siguientes | **3,7 s** la primera, **3 ms** las siguientes (caché de 60 s; revisa a demanda) |
+| `/api/red` | 115–132 ms | 126–311 ms (igual) |
+| Resto | 5–158 ms | 2–11 ms |
+
+### 7.4 Peticiones por minuto con la pestaña visible (contadas con el navegador)
+
+| Página | Antes | Después |
+|---|---|---|
+| **Proyecto abierto** (7 escenas) | ≈98–110 | **58** |
+| Trabajos | 30 | 32 |
+| Media | 30 | **4** |
+| Portada | 20 | 23 |
+| Clips | 20 | 22 |
+| Workflows | ≈21 | 24 |
+| Sistema | 2 diagnósticos completos (11 procesos cada uno) + 4 | **6, ningún diagnóstico completo** (revisa sólo al pedirlo) |
+| Pestaña oculta | igual que visible | **0** (todas; por el código de `useSondeo` y sus pruebas, no contado en el navegador) |
+
+- En el editor, el sondeo de «Animar» por escena desapareció en la ronda 1. Al medir aparecieron dos fugas nuevas: «Rehacer la toma» pedía cada 15 s en cada escena aunque estuviera cerrado (28 por minuto) y cada escena preguntaba por su cuenta si el motor estaba encendido (18). Las dos quedaron corregidas en esta medición: commits `7645b3e` y `540adea`.
+- Las 30 por minuto que quedan en el editor son `/api/trabajos` cada 2 s, que se piden desde `editor-proyecto.tsx`. Ese archivo está vedado mientras la otra sesión no commitee.
+- En Portada, Clips y Workflows se suma ahora el estado del motor cada 30 s: es el aviso «Geeper está en pausa» (UX-05).
+
+### 7.5 JavaScript por página
+
+| Ruta | Antes (gzip) | Después (gzip) |
+|---|---|---|
+| `/` | 177,6 KB | 181,1 KB |
+| `/sistema` | 181,6 KB | 185,3 KB |
+| `/proyectos/[id]` | 253,1 KB | 251,7 KB |
+| Resto | 178–188 KB | 181–191 KB |
+
+No mejoró: entre +1 y +5 KB por página por el aviso del motor, los textos nuevos y la otra sesión. El editor bajó 1,4 KB porque el panel del presentador ya no importa zod. Reducir el JS compartido (570 KB) no estaba en el alcance aprobado: es de esfuerzo L. Sigue el 404 de `favicon.ico`.
+
+### 7.6 Disco
+
++108 GB libres en WSL y +12 GB en C: (detalle en la sección 6.2 y en el registro de la limpieza).
+
+### 7.7 Lo que no se pudo medir (necesita la tarjeta: lo pruebas tú)
+
+Por la regla del 2026-11-21 (nada de GPU para probar), la sesión corta con la tarjeta de la sección 6.1 quedó anulada. Pasos para probarlo en tu app:
+
+1. **Render con NVENC:** renderiza un proyecto corto. Debe salir igual que antes y en un tiempo parecido. En el registro del trabajo no debe aparecer «se repite una vez por CPU».
+2. **Windows sin NVIDIA**, si tienes dónde: el render va directo por CPU sin intentar NVENC.
+3. **MoneyPrinterTurbo:** con Docker Desktop abierto, recrea el contenedor (`docker compose -f docker-compose.local.yml up -d` en `~/dev/MoneyPrinterTurbo`), genera un short y comprueba que la tarjeta se suelta al terminar (GPU-01, `IMAGE_PRELOAD=0`).
+4. **App de escritorio empaquetada:** copia y pega en Geeper y en una app Craft; abre y guarda un archivo en GridCraft; cierra Geeper con un trabajo en curso (tarda hasta 14 s) y al volver a abrir el trabajo debe decir «interrumpido».
+5. **Sistema:** debe aparecer el aviso de la copia de seguridad (`D:\geeper-respaldo`, 7 copias).
+
+### 7.8 Lo que queda
+
+- **Esperan a que la otra sesión commitee** (unos 25 hallazgos; archivos de `sucios.txt`): SEG-05 (que los ejecutores usen `guardarEncima`), REN-04 (mostrar el aviso de subtítulos rápidos: el dato ya viene en la vista), REN-05, GPU-03 a GPU-10, WRK-09, COD-04, ESC-03, el foco de `clips.tsx`, `useMotorVivo` en `avatares.tsx`, el «Subiendo… %» de SRV-01 y el sondeo de trabajos del editor. Además hay que reconciliar `compilador.ts` y `api/proyectos/route.ts`.
+- **Hacen falta en tu instalación al integrar:** `pnpm install` (entró `hyperframes@0.9.27` y se quitó `better-sqlite3@13`) y `pnpm run db:push` (índices nuevos).
+- **Para revisar más adelante:** si una transacción interactiva de Prisma se corta por su plazo mientras espera la base, la conexión puede quedar dentro de una transacción abierta (lo vio el agente de seguridad en un experimento). Los temporales `.subiendo-*` que deja una subida cortada no se borran.
+- En `D:\geeper-respaldo\geeper-2026-11-21` quedó una base de prueba de 152 KB que creó una prueba antes del arreglo de SEG-03. Bórrala tú cuando quieras; la copia real de hoy no la pisa.
