@@ -90,6 +90,13 @@ describe("lo elegido no se pinta como el botón principal (A11-08)", () => {
     }
   });
 
+  it("en Animar, Presentador y Conceptos lo elegido tampoco usa el relleno del botón principal", () => {
+    for (const f of ["panel-animar.tsx", "panel-presentador.tsx", "anuncios/conceptos.tsx"]) {
+      expect(fuente(f), f).not.toMatch(/\? "boton-primario"|outline outline-2 outline-cyan-500/);
+      expect(fuente(f), f).toMatch(/className="opcion(-tarjeta)?[ "]/);
+    }
+  });
+
   it("las formas del video y los estilos son opciones con su estado", () => {
     const html = pintar();
     expect(html).toMatch(/<label class="opcion"><input type="radio"[^>]*name="formato"[^>]*checked=""[^>]*value="9:16"/);
