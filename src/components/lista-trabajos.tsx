@@ -1,8 +1,8 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { etapaSimple, explicarError, nombreTipo } from "@/lib/textos";
-import { Aviso, Barra, Estado, postJson, segundos, useSondeo } from "./comun";
+import { Aviso, Barra, Estado, haceCuanto, postJson, segundos, useSondeo } from "./comun";
 
 interface Trabajo {
   id: string;
@@ -27,8 +27,35 @@ function duracion(t: Trabajo, ahora: number) {
   return segundos(Math.max(0, (fin - new Date(t.iniciado).getTime()) / 1000));
 }
 
+/** Cuándo se pidió, para encontrar lo de hoy sin leer todo (UX-41). */
+function cuando(t: Trabajo, ahora: number) {
+  return haceCuanto(t.creado, ahora);
+}
+
+/** Terminados que se muestran antes de «Ver más». */
+export const MAX_TERMINADOS = 20;
+
+type Grupo = { id: "curso" | "turno" | "atencion" | "terminados"; titulo: string; trabajos: Trabajo[] };
+
+/** UX-41: lo que pasa ahora arriba; lo que necesita atención aparte; lo terminado al final. */
+export function agruparTrabajos<T extends Pick<Trabajo, "estado">>(trabajos: T[]): { id: Grupo["id"]; titulo: string; trabajos: T[] }[] {
+  const de = (...estados: string[]) => trabajos.filter((t) => estados.includes(t.estado));
+  return [
+    { id: "curso", titulo: "En curso", trabajos: de("corriendo") },
+    { id: "turno", titulo: "Esperando su turno", trabajos: de("pendiente") },
+    { id: "atencion", titulo: "Necesitan atención", trabajos: de("fallido", "interrumpido") },
+    { id: "terminados", titulo: "Terminados", trabajos: trabajos.filter((t) => !["corriendo", "pendiente", "fallido", "interrumpido"].includes(t.estado)) },
+  ];
+}
+
 function Log({ id, vivo }: { id: string; vivo: boolean }) {
   const [texto, setTexto] = useState("Cargando…");
+  const caja = useRef<HTMLPreElement>(null);
+  // Lo último que pasó está al final: se abre por ahí (UX-41).
+  useEffect(() => {
+    const el = caja.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [texto]);
   useEffect(() => {
     let activo = true;
     const cargar = () =>
@@ -40,7 +67,7 @@ function Log({ id, vivo }: { id: string; vivo: boolean }) {
       if (i) clearInterval(i);
     };
   }, [id, vivo]);
-  return <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-all rounded bg-black/60 p-3 text-xs leading-relaxed text-slate-300">{texto}</pre>;
+  return <pre ref={caja} className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-all rounded bg-black/60 p-3 text-xs leading-relaxed text-slate-300">{texto}</pre>;
 }
 
 /** UX-14: el error en palabras simples; el texto tal cual, plegado, para quien dé soporte. */
@@ -68,6 +95,48 @@ export function ListaTrabajos({ proyectoId }: { proyectoId?: string }) {
   const [fallo, setFallo] = useState<string | null>(null);
   const workerVivo = datos?.workerVivo;
 
+  const [verTodos, setVerTodos] = useState(false);
+  const grupos = agruparTrabajos(datos?.trabajos ?? []);
+  // «hace 5 min» se refresca solo cada minuto, aunque la lista no cambie.
+  const [ahoraCliente, setAhoraCliente] = useState(() => Date.now());
+  useEffect(() => {
+    const i = setInterval(() => setAhoraCliente(Date.now()), 60_000);
+    return () => clearInterval(i);
+  }, []);
+
+  function fila(t: Trabajo) {
+    const vivo = t.estado === "corriendo" || t.estado === "pendiente";
+    return (
+      <li key={t.id} className="tarjeta p-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <Estado valor={t.estado} />
+          <span className="font-medium">{nombreTipo(t.tipo)}</span>
+          {!proyectoId && t.proyecto && (
+            <Link href={`/proyectos/${t.proyectoId}`} className="truncate text-sm text-acento hover:underline">{t.proyecto.nombre}</Link>
+          )}
+          <span className="text-xs text-tenue">{cuando(t, ahoraCliente)}{t.iniciado ? ` · ${duracion(t, datos?.ahora || ahoraCliente)}` : ""}</span>
+          <span className="ml-auto flex gap-2">
+            {["fallido", "interrumpido", "cancelado"].includes(t.estado) && (
+              <button type="button" className="boton" onClick={() => void accion(t.id, "relanzar")}>Volver a intentar</button>
+            )}
+            {vivo && <button type="button" className="boton boton-peligro" onClick={() => void accion(t.id, "cancelar")}>Cancelar</button>}
+            <button type="button" className="boton" aria-expanded={abierto === t.id} onClick={() => setAbierto(abierto === t.id ? null : t.id)}>
+              {abierto === t.id ? "Ocultar el registro" : "Ver el registro"}
+            </button>
+          </span>
+        </div>
+        {t.estado === "corriendo" && (
+          <div className="mt-2 space-y-1">
+            <p className="text-xs text-sky-200">{etapaSimple(t.etapa, t.estado)}</p>
+            <Barra valor={t.progreso} etiqueta={`Avance: ${nombreTipo(t.tipo)}`} />
+          </div>
+        )}
+        {t.error && <ErrorTrabajo error={t.error} />}
+        {abierto === t.id && <Log id={t.id} vivo={vivo} />}
+      </li>
+    );
+  }
+
   async function accion(id: string, a: "relanzar" | "cancelar") {
     setFallo(null);
     try {
@@ -89,40 +158,28 @@ export function ListaTrabajos({ proyectoId }: { proyectoId?: string }) {
       {error && <Aviso tipo="error">{error}</Aviso>}
       {fallo && <Aviso tipo="error">{fallo}</Aviso>}
       {datos?.trabajos.length === 0 && <p className="text-sm text-tenue">Todavía no hay nada: aquí verás cada cosa que Geeper haga por ti.</p>}
-      <ul className="space-y-2">
-        {datos?.trabajos.map((t) => {
-          const vivo = t.estado === "corriendo" || t.estado === "pendiente";
-          return (
-            <li key={t.id} className="tarjeta p-3">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <Estado valor={t.estado} />
-                <span className="font-medium">{nombreTipo(t.tipo)}</span>
-                {!proyectoId && t.proyecto && (
-                  <Link href={`/proyectos/${t.proyectoId}`} className="truncate text-sm text-acento hover:underline">{t.proyecto.nombre}</Link>
-                )}
-                <span className="text-xs text-tenue">{duracion(t, datos.ahora)}</span>
-                <span className="ml-auto flex gap-2">
-                  {["fallido", "interrumpido", "cancelado"].includes(t.estado) && (
-                    <button type="button" className="boton" onClick={() => void accion(t.id, "relanzar")}>Volver a intentar</button>
-                  )}
-                  {vivo && <button type="button" className="boton boton-peligro" onClick={() => void accion(t.id, "cancelar")}>Cancelar</button>}
-                  <button type="button" className="boton" aria-expanded={abierto === t.id} onClick={() => setAbierto(abierto === t.id ? null : t.id)}>
-                    {abierto === t.id ? "Ocultar el registro" : "Ver el registro"}
-                  </button>
-                </span>
-              </div>
-              {t.estado === "corriendo" && (
-                <div className="mt-2 space-y-1">
-                  <p className="text-xs text-sky-200">{etapaSimple(t.etapa, t.estado)}</p>
-                  <Barra valor={t.progreso} etiqueta={`Avance: ${nombreTipo(t.tipo)}`} />
-                </div>
+      {datos && grupos.map((g) => {
+        if (!g.trabajos.length) return null;
+        const lista = g.id === "terminados" && !verTodos ? g.trabajos.slice(0, MAX_TERMINADOS) : g.trabajos;
+        const filas = <ul className="space-y-2">{lista.map(fila)}</ul>;
+        const titulo = <>{g.titulo} <span className="font-normal text-tenue">({g.trabajos.length})</span></>;
+        return g.id === "terminados" ? (
+          <details key={g.id} className="space-y-2">
+            <summary className="cursor-pointer font-medium">{titulo}</summary>
+            <div className="mt-2 space-y-2">
+              {filas}
+              {g.trabajos.length > MAX_TERMINADOS && !verTodos && (
+                <button type="button" className="boton" onClick={() => setVerTodos(true)}>Ver más ({g.trabajos.length - MAX_TERMINADOS})</button>
               )}
-              {t.error && <ErrorTrabajo error={t.error} />}
-              {abierto === t.id && <Log id={t.id} vivo={vivo} />}
-            </li>
-          );
-        })}
-      </ul>
+            </div>
+          </details>
+        ) : (
+          <section key={g.id} className="space-y-2" aria-label={g.titulo}>
+            <h3 className="font-medium">{titulo}</h3>
+            {filas}
+          </section>
+        );
+      })}
     </div>
   );
 }
