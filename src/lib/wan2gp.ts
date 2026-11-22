@@ -19,6 +19,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { Formato } from "./esquema";
 import { tomarGpu } from "./gpu";
+import { comandoGpuSolo } from "./gpu-solo";
 import { LICENCIAS } from "./licencias";
 import { aplicarParchesWan2gp } from "./parches-wan2gp";
 import { GPU_SOLO_BIN, WAN2GP_DIR, WAN2GP_PYTHON } from "./rutas";
@@ -424,8 +425,8 @@ function matarArbol(hijo: ChildProcess, i: InstalacionWan2gp, conGpuSolo: boolea
 const TOPE_SALIDA = 2 * 1024 * 1024;
 
 function lanzar(i: InstalacionWan2gp, args: string[], conGpuSolo: boolean) {
-  const [cmd, ...resto] = conGpuSolo ? [GPU_SOLO_BIN, i.python, i.wgp, ...args] : [i.python, i.wgp, ...args];
-  return spawn(cmd!, resto, {
+  const c = conGpuSolo ? comandoGpuSolo(i.python, [i.wgp, ...args]) : { cmd: i.python, args: [i.wgp, ...args] };
+  return spawn(c.cmd, c.args, {
     cwd: i.dir,
     env: {
       ...process.env,

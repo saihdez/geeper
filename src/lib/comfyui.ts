@@ -16,6 +16,7 @@ import { existsSync, readdirSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { comandoGpuSolo } from "./gpu-solo";
 import { bajarHub, dirHub, HUB_COMMIT, resolverArchivo, unirHub } from "./hub-comfy";
 import { pythonDeVenv } from "./plataforma";
 import { correr } from "./proceso";
@@ -324,8 +325,8 @@ export async function arrancarComfyui(op: { puerto: number; gpuSolo?: boolean; l
   if (falta) throw new Error(falta);
   const args = [path.join(dir, "main.py"), "--listen", "127.0.0.1", "--port", String(op.puerto), "--disable-auto-launch", "--output-directory", path.join(dir, "output"), ...(op.nodos ?? ["--disable-all-custom-nodes"])];
   const conGpuSolo = op.gpuSolo ?? existsSync(GPU_SOLO_BIN);
-  const [cmd, ...resto] = conGpuSolo ? [GPU_SOLO_BIN, python, ...args] : [python, ...args];
-  const hijo = spawn(cmd!, resto, { cwd: dir, env: { ...process.env, PYTHONUNBUFFERED: "1", PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" }, detached: process.platform !== "win32" });
+  const c = conGpuSolo ? comandoGpuSolo(python, args) : { cmd: python, args };
+  const hijo = spawn(c.cmd, c.args, { cwd: dir, env: { ...process.env, PYTHONUNBUFFERED: "1", PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" }, detached: process.platform !== "win32" });
   let salida = "";
   const leer = (d: Buffer) => {
     const t = d.toString();
