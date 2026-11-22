@@ -40,9 +40,12 @@ PC_KEY=$(wg genkey)
 PC_PUB=$(echo "$PC_KEY" | wg pubkey)
 
 # Reglas de firewall locales (necesarias en Oracle, inofensivas en otros VPS). Se insertan arriba
-# de los REJECT de la imagen.
-FW4_UP="iptables -I INPUT -p udp --dport 51820 -j ACCEPT; iptables -I FORWARD -i wg0 -j ACCEPT; iptables -I FORWARD -o wg0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT"
-FW4_DOWN="iptables -D INPUT -p udp --dport 51820 -j ACCEPT; iptables -D FORWARD -i wg0 -j ACCEPT; iptables -D FORWARD -o wg0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT"
+# de los REJECT de la imagen. El TCPMSS ajusta el tamaño de los segmentos TCP al MTU del túnel: sin
+# él, lo que sale de WSL (MTU 1500, sin aviso de fragmentación) se cuelga en saludos TLS grandes
+# (p. ej. Node 24 con ML-KEM).
+MSS="-p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu"
+FW4_UP="iptables -t mangle -A FORWARD $MSS; iptables -I INPUT -p udp --dport 51820 -j ACCEPT; iptables -I FORWARD -i wg0 -j ACCEPT; iptables -I FORWARD -o wg0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT"
+FW4_DOWN="iptables -t mangle -D FORWARD $MSS; iptables -D INPUT -p udp --dport 51820 -j ACCEPT; iptables -D FORWARD -i wg0 -j ACCEPT; iptables -D FORWARD -o wg0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT"
 FW6_UP="ip6tables -I INPUT -p udp --dport 51820 -j ACCEPT; ip6tables -I FORWARD -i wg0 -j ACCEPT; ip6tables -I FORWARD -o wg0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT"
 FW6_DOWN="ip6tables -D INPUT -p udp --dport 51820 -j ACCEPT; ip6tables -D FORWARD -i wg0 -j ACCEPT; ip6tables -D FORWARD -o wg0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT"
 

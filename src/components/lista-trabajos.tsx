@@ -36,6 +36,7 @@ const TIPOS: Record<string, string> = {
   "workflow.correr": "Workflow de ComfyUI",
   "render.entregar": "Render y QC",
   "escenas.animar": "Animando las escenas",
+  "demo.crear": "Demo de una página web",
 };
 
 function duracion(t: Trabajo, ahora: number) {

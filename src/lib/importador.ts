@@ -24,7 +24,7 @@ import { aplicarEdicion } from "./ediciones";
 import { conFocos, marcarAuto } from "./caras";
 import { proponerMusica } from "./pulsos";
 import { etiquetaPesos, huellaPesos } from "./modelos";
-import { alinear, MODELO_WHISPER, transcribir } from "./voz";
+import { alinear, MODELO_WHISPER, motorTranscripcion, transcribir } from "./voz";
 
 interface ScriptMpt {
   script: string;
@@ -118,7 +118,7 @@ export async function tiemposDeVoz(ctx: Contexto, rutaVoz: string, texto: string
   await paso(
     ctx,
     "voz.alinear",
-    { archivos: [rutaVoz], params: { texto, idioma, modelo: MODELO_WHISPER }, motor: `hyperframes@${HYPERFRAMES_VERSION}+alinear-v2+${pesos}` },
+    { archivos: [rutaVoz], params: { texto, idioma, modelo: MODELO_WHISPER }, motor: `hyperframes@${HYPERFRAMES_VERSION}+alinear-v2+${await motorTranscripcion()}+${pesos}` },
     [salida],
     async ([tmp]) => {
       const w = await transcribir(rutaVoz, idioma, ctx.log);

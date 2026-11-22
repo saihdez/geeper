@@ -110,9 +110,39 @@ export interface NuevoClip {
   titulo?: string;
   gancho?: string;
   permiso?: string;
+  /** Nombres propios para guiar a whisper («GTA VI, Lucia, Vice City»). */
+  glosario?: string;
   campania?: Record<string, unknown>;
   /** false: sólo importar (para revisar antes de renderizar). */
   renderizar?: boolean;
+  /** «Mejorar la voz» (quita ruido y empareja el volumen). Por defecto, sí. */
+  mejorarVoz?: boolean;
+}
+
+export interface NuevaDemo {
+  url: string;
+  formato: "9:16" | "16:9";
+  estilo: "3d" | "plano";
+  texto: string;
+  plantilla: string;
+  nombre?: string;
+  /** El sitio es de quien crea el proyecto (o tiene permiso). */
+  propio?: boolean;
+}
+
+/** Demo de una página web: voz → demo a su medida → proyecto → render y QC. */
+export async function crearDemo(d: NuevaDemo) {
+  let host: string;
+  try {
+    const u = new URL(d.url);
+    if (!/^https?:$/.test(u.protocol)) throw new Error();
+    host = u.host.replace(/^www\./, "");
+  } catch {
+    throw new Error("El link no es válido: cópialo completo desde tu navegador (empieza con https://).");
+  }
+  const p = await crearFila({ tema: `Demo de ${host}`, nombre: d.nombre?.trim() || `Demo de ${host}`, formato: d.formato, plantilla: d.plantilla });
+  await encolar(p.id, "demo.crear", { url: d.url, estilo: d.estilo, texto: d.texto, propio: d.propio === true, cadena: ["render.entregar"] });
+  return p;
 }
 
 /** Clip de material largo (VOD, directo ya publicado, grabación): importar → render → QC. */

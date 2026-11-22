@@ -21,26 +21,31 @@ export const TIPOS = {
   "clip.momentos": { motor: "voz", usaGpu: false, nombre: "Buscar momentos de una fuente" },
   "clip.importar": { motor: "voz", usaGpu: false, nombre: "Importar clip de material largo" },
   "visual.reencuadrar": { motor: "voz", usaGpu: false, nombre: "Reencuadrar siguiendo la cara" },
+  "demo.crear": { motor: "voz", usaGpu: false, nombre: "Demo de una página web" },
   "voz.regenerar": { motor: "voz", usaGpu: false, nombre: "Regenerar voz" },
+  // Toma la GPU sólo para Gemma (gpu-lock, esperando su turno); la voz y whisper van en CPU.
+  "proyecto.traducir": { motor: "voz", usaGpu: false, nombre: "Versión en otro idioma" },
   // VoxCPM2 toma el gpu-lock por su cuenta (~6 GB): no bloquea la cola de la voz mientras espera.
   "voz.disenar": { motor: "voz", usaGpu: false, nombre: "Diseñar una voz" },
+  // Casi 16 GB de VRAM con gpu-solo: en la fila de MPT y Wan, que también usan toda la GPU.
+  "efecto.generar": { motor: "mpt", usaGpu: true, nombre: "Crear efecto de sonido" },
   // Mismo motor que MPT: los dos usan toda la GPU y así nunca corren a la vez.
   "plano.generar": { motor: "mpt", usaGpu: true, nombre: "Animar escena" },
   // Avatares (Wan2GP): también toda la GPU, en la misma fila.
   "avatar.proponer": { motor: "mpt", usaGpu: true, nombre: "Crear avatar" },
   "avatar.retocar": { motor: "mpt", usaGpu: true, nombre: "Retocar avatar" },
   "presentador.generar": { motor: "mpt", usaGpu: true, nombre: "Presentador (avatar que habla)" },
-  "escena.rehacer": { motor: "mpt", usaGpu: true, nombre: "Rehacer la toma" },
-  // ComfyUI (sección Workflows): toda la GPU, en la misma fila.
-  "workflow.correr": { motor: "mpt", usaGpu: true, nombre: "Workflow de ComfyUI" },
-  "render.entregar": { motor: "render", usaGpu: true, nombre: "Render y QC" },
-  "publicar.subir": { motor: "red", usaGpu: false, nombre: "Publicar en red" },
   "avatar.actuar": { motor: "mpt", usaGpu: true, nombre: "Tu avatar en una escena" },
   "avatar.streamer": { motor: "mpt", usaGpu: true, nombre: "Tu avatar como streamer" },
   // Después de importar un video nuevo con avatar: lo pone en las escenas propuestas (actuar.ts).
   "avatar.escenas": { motor: "mpt", usaGpu: true, nombre: "Tu avatar en el video nuevo" },
   // Video nuevo «Equilibrado» o «Lo más real posible»: anima cada escena con Wan (animar-escenas.ts).
   "escenas.animar": { motor: "mpt", usaGpu: true, nombre: "Animando las escenas" },
+  "escena.rehacer": { motor: "mpt", usaGpu: true, nombre: "Rehacer la toma" },
+  // ComfyUI (sección Workflows): toda la GPU, en la misma fila.
+  "workflow.correr": { motor: "mpt", usaGpu: true, nombre: "Workflow de ComfyUI" },
+  "render.entregar": { motor: "render", usaGpu: true, nombre: "Render y QC" },
+  "publicar.subir": { motor: "red", usaGpu: false, nombre: "Publicar en red" },
 } as const;
 export type TipoTrabajo = keyof typeof TIPOS;
 export const MOTORES = ["mpt", "voz", "render", "red"] as const;

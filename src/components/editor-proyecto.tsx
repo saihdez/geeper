@@ -8,7 +8,9 @@ import { ListaTrabajos } from "./lista-trabajos";
 import { ListaPublicaciones, PanelPublicar, type PublicacionV } from "./panel-publicar";
 import { PanelAnimar, type OpcionesAnimar } from "./panel-animar";
 import { PanelPortada } from "./panel-portada";
+import { InformeTraduccion, PanelTraducir, type InformeTraduccionV } from "./panel-traducir";
 import { ElegirVoz, type MotorVoz } from "./elegir-voz";
+import { PanelEfectosSonido } from "./panel-efectos-sonido";
 import { PanelPresentador } from "./panel-presentador";
 import { PanelRehacer } from "./panel-rehacer";
 import { PanelAvatarEscena, PanelAvatarVideo } from "./panel-avatar";
@@ -67,7 +69,7 @@ interface Vista {
     lote: { nombre: string } | null;
     publicaciones: PublicacionV[];
   };
-  p: { voz: { motor: string; voz: string; velocidad: number; idioma: string }; mostrar: { de: string; a: string }[]; formato: string; plantilla: string } | null;
+  p: { voz: { motor: string; voz: string; velocidad: number; idioma: string }; origen?: { traduccion?: InformeTraduccionV }; mostrar: { de: string; a: string }[]; formato: string; plantilla: string } | null;
   escenas: EscenaV[];
   total: number;
   extras: ExtrasV | null;
@@ -178,8 +180,10 @@ function lista(n: number[]): string {
   return n.length <= 1 ? String(n[0] ?? "") : `${n.slice(0, -1).join(", ")} y ${n[n.length - 1]}`;
 }
 
-function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, editar, subirClip, regenerarVoz, reencuadrar, animar, ocupado }: {
+function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, editar, subirClip, regenerarVoz, reencuadrar, animar, ocupado, vozReal }: {
   e: EscenaV; anterior?: EscenaV; slug: string; proyectoId: string; total: number; ocupado: boolean; formato: string; estilo: EstiloV | null;
+  /** Clip de material largo: la voz es la del creador (la revisión de dudosas corrige texto). */
+  vozReal: boolean;
   editar: (ed: object) => Promise<void>;
   subirClip: (escena: string, f: File) => Promise<void>;
   regenerarVoz: (escena: string) => Promise<void>;
@@ -199,7 +203,8 @@ function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, 
           <span className="font-mono text-xs text-tenue">{t2(e.inicio)} – {t2(e.inicio + e.duracion)} ({e.duracion.toFixed(2)} s)</span>
           <span className="text-xs text-tenue">clip: {e.visual.source}{e.visual.source === "archivo" ? " (propio)" : ""} · voz: {e.voz.source}</span>
         </div>
-        <EdicionPorTexto escena={e.id} audio={archivo(`${slug}/${e.voz.ruta}`)} palabras={e.detalle} duracion={e.duracion} duracionOriginal={e.duracionOriginal} editar={editar} ocupado={ocupado} />
+        <EdicionPorTexto escena={e.id} audio={archivo(`${slug}/${e.voz.ruta}`)} palabras={e.detalle} duracion={e.duracion} duracionOriginal={e.duracionOriginal} editar={editar} ocupado={ocupado}
+          vozReal={vozReal} correcciones={e.correcciones} />
         <ul className="space-y-1.5">
           {e.grupos.map((g) => (
             <EditorGrupo key={`${g.desde}-${g.hasta}-${g.mostradoPropio}`} g={g}
@@ -367,7 +372,10 @@ export function EditorProyecto({ id }: { id: string }) {
         </Aviso>
       )}
       {activos.length > 0 && <Aviso tipo="info">Hay {activos.length} trabajo(s) en curso para este proyecto; abajo ves su avance y su log.</Aviso>}
-      {!p && <Aviso tipo="info">Todavía no hay geeper.json: el proyecto se está generando o importando.</Aviso>}
+      {!p && (activos.some((t) => t.tipo === "proyecto.traducir")
+        ? <Aviso tipo="info">Geeper está haciendo esta versión en otro idioma: traduce el guion, graba la voz nueva, acomoda los subtítulos y la renderiza. Tarda unos minutos; puedes cerrar esta página y volver después. Abajo ves en qué paso va.</Aviso>
+        : <Aviso tipo="info">Todavía no hay geeper.json: el proyecto se está generando o importando.</Aviso>)}
+      {p?.origen?.traduccion && <InformeTraduccion informe={p.origen.traduccion} escenas={escenas.map((e) => ({ id: e.id, numero: e.indice + 1 }))} />}
 
       {p && (
         <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
@@ -455,9 +463,12 @@ export function EditorProyecto({ id }: { id: string }) {
         <>
           <PanelEstilo estilo={v.extras.estilo} escenas={escenas} formato={p.formato} imgs={escenas.slice(0, 2).map((e) => miniatura(fila.slug, e))}
             editar={editar} editarVarias={editarVarias} ocupado={ocupado} />
+          <PanelEfectosSonido proyectoId={id} escenas={escenas.map((e) => ({ numero: e.indice + 1, inicio: e.inicio }))} total={v.total} ocupado={ocupado} alCambiar={() => void recargar()} />
           <PanelAvanzado extras={v.extras} formato={p.formato} total={v.total} editar={editar} alinearMusica={alinearMusica} subirLibre={subirLibre} ocupado={ocupado} slug={fila.slug} />
         </>
       )}
+
+      {p && !v.extras?.clip && <PanelTraducir proyectoId={id} idiomaActual={p.voz.idioma} ocupado={ocupado} />}
 
       {p && <PanelAvatarVideo proyectoId={id} ocupado={ocupado} />}
 
@@ -490,7 +501,8 @@ export function EditorProyecto({ id }: { id: string }) {
           <ol className="space-y-3">
             {escenas.map((e, i) => (
               <TarjetaEscena key={e.id} e={e} anterior={escenas[i - 1]} slug={fila.slug} total={escenas.length} formato={p?.formato ?? fila.formato}
-                estilo={v.extras?.estilo ?? null} editar={editar} subirClip={subirClip} regenerarVoz={regenerarVoz} reencuadrar={reencuadrar} animar={animar} proyectoId={id} ocupado={ocupado} />
+                estilo={v.extras?.estilo ?? null} editar={editar} subirClip={subirClip} regenerarVoz={regenerarVoz} reencuadrar={reencuadrar} animar={animar} proyectoId={id} ocupado={ocupado}
+                vozReal={Boolean(v.extras?.clip)} />
             ))}
           </ol>
         </section>

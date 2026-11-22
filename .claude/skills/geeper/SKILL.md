@@ -143,7 +143,8 @@ Reglas de contenido (de claude-ads):
 ## Clips de material largo (VODs, videos publicados, grabaciones propias)
 
 La persona puede hacerlo todo desde la página **Clips** (http://localhost:3300/clips), un asistente de 3 pasos
-con vista previa, sugerencias de gancho y casilla de permiso. Por terminal:
+con vista previa, sugerencias de gancho, «Mejorar la voz» (encendido; `mejorarVoz: false` en el pedido lo
+apaga) y casilla de permiso. Por terminal:
 
 1. **Candidatos:** `pnpm tsx scripts/momentos.ts <url|archivo> --top 8 --min 15 --max 40 --idioma <es|en>`.
    Deja `~/geeper-data/_fuentes/<id>/candidatos.md` con el porqué de cada uno (pico de sonoridad, lo

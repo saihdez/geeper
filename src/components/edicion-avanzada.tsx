@@ -97,10 +97,21 @@ function useTramo(audio: string) {
  * restauran. Las de tiempo dudoso se revisan una por una («Revisar dudosas»): se escucha el tramo y se
  * confirma («Suena bien»), se recorta o se salta. Idea de la pantalla «OCR Verify» de PdfCraft.
  */
-export function EdicionPorTexto({ escena, audio, palabras, duracion, duracionOriginal, editar, ocupado }: {
+export function EdicionPorTexto({ escena, audio, palabras, duracion, duracionOriginal, editar, ocupado, vozReal = false, correcciones = [] }: {
   escena: string; audio: string; palabras: PalabraV[]; duracion: number; duracionOriginal: number; editar: Editar; ocupado: boolean;
+  /**
+   * Voz real (clips): el subtítulo es lo que entendió whisper, así que una palabra dudosa puede estar MAL
+   * ESCRITA (no sólo mal ubicada) y se corrige escribiendo lo que se oye. En una voz TTS el texto sale del
+   * guion y lo dudoso es el tiempo.
+   */
+  vozReal?: boolean;
+  correcciones?: { desde: number; hasta: number; texto: string }[];
 }) {
   const [sel, setSel] = useState<[number, number] | null>(null);
+  // Revisión en clips: «No, dice otra cosa…» abre este campo con la palabra para corregirla.
+  const [corrigiendo, setCorrigiendo] = useState<string | null>(null);
+  /** Texto corregido de una palabra suelta (las correcciones de varias palabras se ven en los subtítulos). */
+  const corregida = (i: number) => correcciones.find((c) => c.desde === i && c.hasta === i + 1)?.texto ?? null;
   const [revisando, setRevisando] = useState(false);
   // Al terminar: si hay otra escena con dudosas más abajo, para ofrecer seguir con ella.
   const [terminada, setTerminada] = useState<{ hayProxima: boolean } | null>(null);
@@ -134,6 +145,7 @@ export function EdicionPorTexto({ escena, audio, palabras, duracion, duracionOri
     setSel([i, i + 1]);
     setRevisando(true);
     setTerminada(null);
+    setCorrigiendo(null);
     escuchar(i, i + 1);
   };
   const actual = revisando && sel ? sel[0] : null;
@@ -170,7 +182,11 @@ export function EdicionPorTexto({ escena, audio, palabras, duracion, duracionOri
       {pendientes.length > 0 && !revisando && !terminada && (
         <div className="flex flex-wrap items-center gap-2 rounded border border-amber-700/60 bg-amber-950/30 px-2 py-1.5 text-xs">
           <span className="text-amber-200">
-            {pendientes.length === 1 ? "1 palabra" : `${pendientes.length} palabras`} con el tiempo dudoso: si recortas ahí, el corte podría caer mal.
+            {vozReal
+              ? pendientes.length === 1
+                ? "1 palabra que Geeper no está seguro de haber entendido bien: escúchala para que el subtítulo diga lo correcto."
+                : `${pendientes.length} palabras que Geeper no está seguro de haber entendido bien: escúchalas para que el subtítulo diga lo correcto.`
+              : `${pendientes.length === 1 ? "1 palabra" : `${pendientes.length} palabras`} con el tiempo dudoso: si recortas ahí, el corte podría caer mal.`}
           </span>
           <button type="button" data-revisar-dudosas className="boton ml-auto py-0.5" disabled={ocupado} onClick={() => siguiente(-1)}>Revisarlas una por una</button>
         </div>
@@ -183,8 +199,12 @@ export function EdicionPorTexto({ escena, audio, palabras, duracion, duracionOri
             <button key={i} type="button" disabled={ocupado}
               onClick={(ev) => { setRevisando(false); elegir(i, ev.shiftKey); }}
               aria-pressed={Boolean(elegida)}
-              aria-description={n === "baja" ? "tiempo dudoso" : n === "media" ? "tiempo poco seguro" : undefined}
-              title={[w.recorte ? MOTIVOS[w.recorte] : null, w.confianza !== null ? `seguridad del tiempo: ${Math.round(w.confianza * 100)} %` : null].filter(Boolean).join(" · ") || undefined}
+              aria-description={n === "baja" ? (vozReal ? "quizás mal entendida" : "tiempo dudoso") : n === "media" ? (vozReal ? "poco segura" : "tiempo poco seguro") : undefined}
+              title={[
+                w.recorte ? MOTIVOS[w.recorte] : null,
+                corregida(i) !== null ? `corregida (Geeper había entendido «${w.texto}»)` : null,
+                w.confianza !== null ? `${vozReal ? "seguridad de lo entendido" : "seguridad del tiempo"}: ${Math.round(w.confianza * 100)} %` : null,
+              ].filter(Boolean).join(" · ") || undefined}
               className={[
                 "rounded px-1",
                 elegida ? "bg-sky-700 text-white" : n === "baja" ? "bg-amber-500/20 hover:bg-amber-500/30" : "hover:bg-white/10",
@@ -192,14 +212,14 @@ export function EdicionPorTexto({ escena, audio, palabras, duracion, duracionOri
                 n === "baja" ? "underline decoration-amber-400 decoration-wavy underline-offset-4" : "",
                 n === "media" ? "underline decoration-amber-200/60 decoration-dotted underline-offset-4" : "",
               ].join(" ")}>
-              {w.texto}
+              {corregida(i) ?? w.texto}
             </button>
           );
         })}
       </p>
       {medidas && palabras.some((w) => nivel(w)) && (
         <p className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-tenue" aria-label="Qué significan las marcas">
-          <span><span className="rounded bg-amber-500/20 px-1 underline decoration-amber-400 decoration-wavy underline-offset-4">palabra</span> tiempo dudoso (menos de {DUDOSA * 100} %): escúchala antes de recortar</span>
+          <span><span className="rounded bg-amber-500/20 px-1 underline decoration-amber-400 decoration-wavy underline-offset-4">palabra</span> {vozReal ? "quizás mal entendida: escúchala y corrígela si hace falta" : `tiempo dudoso (menos de ${DUDOSA * 100} %): escúchala antes de recortar`}</span>
           <span><span className="px-1 underline decoration-amber-200/60 decoration-dotted underline-offset-4">palabra</span> poco seguro ({DUDOSA * 100}–{MEDIA * 100} %)</span>
           <span>sin marca: seguro</span>
         </p>
@@ -208,21 +228,46 @@ export function EdicionPorTexto({ escena, audio, palabras, duracion, duracionOri
         <div className="space-y-2 rounded border border-sky-800 bg-sky-950/40 p-2 text-sm" role="group" aria-label="Revisión de palabras dudosas">
           <p>
             Revisando {pendientes.indexOf(actual) + 1 > 0 ? `${pendientes.indexOf(actual) + 1} de ${pendientes.length}` : ""}:
-            {" "}¿se oye <span className="font-semibold">«{textoDe(sel)}»</span> en el audio?
+            {" "}{vozReal ? "¿dice" : "¿se oye"} <span className="font-semibold">«{textoDe(sel)}»</span>{vozReal ? "?" : " en el audio?"}
           </p>
-          <div className="flex flex-wrap gap-2">
+          {vozReal && corrigiendo !== null && (
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="sr-only" htmlFor={`corregir-${escena}`}>Lo que se oye</label>
+              <input id={`corregir-${escena}`} className="campo grow" autoFocus value={corrigiendo} maxLength={80}
+                onChange={(e) => setCorrigiendo(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && corrigiendo.trim()) { e.preventDefault(); void resolver({ tipo: "corregirSubtitulo", escena, desde: sel[0], hasta: sel[1], texto: corrigiendo, revisada: true }); }
+                  if (e.key === "Escape") setCorrigiendo(null);
+                }} />
+              <button type="button" className="boton py-1" onClick={() => (sonando ? parar() : escuchar(sel[0], sel[1]))}>{sonando ? "■ Parar" : "▶ Escuchar otra vez"}</button>
+              <button type="button" className="boton boton-primario py-1" disabled={ocupado || !corrigiendo.trim()}
+                onClick={() => void resolver({ tipo: "corregirSubtitulo", escena, desde: sel[0], hasta: sel[1], texto: corrigiendo, revisada: true })}>Guardar y seguir</button>
+              <button type="button" className="boton py-1" onClick={() => setCorrigiendo(null)}>Cancelar</button>
+            </div>
+          )}
+          {corrigiendo === null && <div className="flex flex-wrap gap-2">
             <button type="button" className="boton py-1" onClick={() => (sonando ? parar() : escuchar(sel[0], sel[1]))}>{sonando ? "■ Parar" : "▶ Escuchar otra vez"}</button>
             <button type="button" className="boton boton-primario py-1" disabled={ocupado}
-              onClick={() => void resolver({ tipo: "confirmarPalabras", escena, desde: sel[0], hasta: sel[1] })}>Sí, suena bien</button>
+              onClick={() => void resolver({ tipo: "confirmarPalabras", escena, desde: sel[0], hasta: sel[1] })}>{vozReal ? "Sí, dice eso" : "Sí, suena bien"}</button>
+            {vozReal && corrigiendo === null && (
+              <button type="button" className="boton py-1" disabled={ocupado} onClick={() => setCorrigiendo(corregida(sel[0]) ?? textoDe(sel))}>No, dice otra cosa…</button>
+            )}
             <button type="button" className="boton boton-peligro py-1" disabled={ocupado}
               onClick={() => void resolver({ tipo: "recortarPalabras", escena, desde: sel[0], hasta: sel[1] })}>Recortarla</button>
             <button type="button" className="boton py-1" onClick={() => siguiente(actual)}>Saltar</button>
-            <button type="button" className="boton py-1" onClick={() => { setRevisando(false); setSel(null); setTerminada({ hayProxima: !!proximaEscena() }); parar(); }}>Terminar</button>
-          </div>
-          <p className="text-xs text-tenue">
-            «Sí, suena bien» la marca como revisada y deja de contar como dudosa en el control de calidad. Si se oye otra cosa,
-            no la recortes: usa «Regenerar voz de la escena».
-          </p>
+            <button type="button" className="boton py-1" onClick={() => { setRevisando(false); setSel(null); setCorrigiendo(null); setTerminada({ hayProxima: !!proximaEscena() }); parar(); }}>Terminar</button>
+          </div>}
+          {vozReal ? (
+            <p className="text-xs text-tenue">
+              Es la voz real del video: si Geeper la escribió mal, elige «No, dice otra cosa…» y escribe lo que se oye; sólo cambia
+              el subtítulo. «Recortarla» quita ese pedazo del clip.
+            </p>
+          ) : (
+            <p className="text-xs text-tenue">
+              «Sí, suena bien» la marca como revisada y deja de contar como dudosa en el control de calidad. Si se oye otra cosa,
+              no la recortes: usa «Regenerar voz de la escena».
+            </p>
+          )}
         </div>
       )}
       {sel && actual === null && (

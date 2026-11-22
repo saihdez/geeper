@@ -2,13 +2,14 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { crearCarpetas } from "@/lib/almacen";
+import { crearCarpetas, guardarProyecto, registrarAssetsEnDb } from "@/lib/almacen";
 import { generarPropuesta, retocarAvatar } from "@/lib/avatares";
 import { guardarPayload, type Payload, type TipoTrabajo } from "@/lib/cola";
 import { db } from "@/lib/db";
 import { Formato } from "@/lib/esquema";
 import { tomarGpu } from "@/lib/gpu";
 import { importarMpt } from "@/lib/importador";
+import { importarDemo } from "@/lib/importador-demo";
 import { buscarMomentos } from "@/lib/buscar-momentos";
 import { Campania } from "@/lib/clips";
 import { ENCUADRES, importarClip, type EncuadreClip } from "@/lib/importador-clip";
@@ -22,8 +23,10 @@ import { PedidoRehacer, rehacerEscena } from "@/lib/rehacer";
 import { animarEscenasDelVideo } from "@/lib/animar-escenas";
 import { actuarEscena, leerAvatarDelVideo, PedidoActuar, PedidoStreamer, proponerEscenas, streamerAvatar } from "@/lib/actuar";
 import { correrWorkflow, PedidoWorkflow } from "@/lib/workflows";
-import { disenarVoz } from "@/lib/voces";
 import { regenerarVoz } from "@/lib/regenerar";
+import { IdiomaTraduccion, traducirProyecto } from "@/lib/traducir";
+import { disenarVoz } from "@/lib/voces";
+import { agregarEfecto, describirEnIngles, generarEfecto } from "@/lib/efectos-sonido";
 import type { Avance } from "@/lib/wan2gp";
 import { reencuadrarEscena } from "@/lib/reencuadre";
 import { renderEntregar, versionDeProyecto } from "@/lib/render";
@@ -197,7 +200,30 @@ async function clipImportar(t: Trabajo, h: Herramientas): Promise<Salida> {
     titulo: texto(pl.titulo),
     gancho: texto(pl.gancho),
     permiso: texto(pl.permiso),
+    glosario: texto(pl.glosario),
     campania: pl.campania ? Campania.parse(pl.campania) : undefined,
+    mejorarVoz: pl.mejorarVoz !== false,
+  });
+  await db.proyecto.update({ where: { id: proyecto.id }, data: { estado: "ensamblado" } });
+  return { resultado: r, siguiente: siguienteDe(t.payload, { version: r.version }) };
+}
+
+async function demoCrear(t: Trabajo, h: Herramientas): Promise<Salida> {
+  const proyecto = await db.proyecto.findUniqueOrThrow({ where: { id: t.proyectoId! } });
+  const pl = t.payload;
+  const formato = proyecto.formato === "16:9" ? "16:9" : "9:16";
+  const r = await importarDemo(h, {
+    proyectoId: proyecto.id,
+    slug: proyecto.slug,
+    nombre: proyecto.nombre,
+    tema: proyecto.tema,
+    formato,
+    plantilla: await obtenerPlantilla(proyecto.plantilla),
+    url: String(pl.url ?? ""),
+    estilo: pl.estilo === "plano" ? "plano" : "3d",
+    texto: String(pl.texto ?? ""),
+    historia: pl.historia === "clic" || pl.historia === "scroll" ? pl.historia : undefined,
+    propio: pl.propio === true,
   });
   await db.proyecto.update({ where: { id: proyecto.id }, data: { estado: "ensamblado" } });
   return { resultado: r, siguiente: siguienteDe(t.payload, { version: r.version }) };
@@ -214,16 +240,47 @@ async function visualReencuadrar(t: Trabajo, h: Herramientas): Promise<Salida> {
 
 async function vozRegenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
   const escena = typeof t.payload.escena === "string" ? t.payload.escena : null;
-  await h.etapa(escena ? `Voz nueva para ${escena} (Kokoro + whisper, CPU)` : "Voz nueva del guion completo (Kokoro + whisper, CPU)", 0.1);
+  await h.etapa(escena ? `Voz nueva para ${escena} y subtítulos realineados` : "Voz nueva del guion completo y subtítulos realineados", 0.1);
   const { p } = await versionDeProyecto(t.proyectoId!);
   const r = await regenerarVoz(h, t.proyectoId!, p, escena);
   return { resultado: r, siguiente: siguienteDe(t.payload, { version: r.version }) };
+}
+
+async function efectoGenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
+  const pl = t.payload;
+  let prompt = String(pl.prompt ?? "");
+  if (!prompt) {
+    await h.etapa("Entendiendo qué sonido quieres (IA local)", 0.05);
+    prompt = await describirEnIngles(String(pl.descripcion ?? ""), h);
+    h.log(`Descripción para el modelo: ${prompt}`);
+  }
+  await h.etapa("Creando el sonido (tarjeta gráfica; la primera carga tarda ~1,5 min)", 0.2);
+  const e = await generarEfecto(h, { nombre: String(pl.nombre ?? "Efecto"), prompt, segundos: Number(pl.segundos ?? 3) });
+  await h.etapa("Agregándolo al video", 0.95);
+  const inicio = Number(pl.inicio ?? 0);
+  const { p } = await versionDeProyecto(t.proyectoId!);
+  const nuevo = await agregarEfecto(h.dir, p, e, inicio);
+  const version = await guardarProyecto(t.proyectoId!, nuevo, `Efecto de sonido «${e.nombre}» en ${inicio.toFixed(1)} s`);
+  await registrarAssetsEnDb(t.proyectoId!, nuevo);
+  return { resultado: { version, efecto: e.id } };
 }
 
 async function vozDisenar(t: Trabajo, h: Herramientas): Promise<Salida> {
   await h.etapa("Creando 3 voces que cumplan la descripción (VoxCPM2, tarjeta gráfica)", 0.1);
   const r = await disenarVoz(h, String(t.payload.propuesta ?? ""), String(t.payload.descripcion ?? ""));
   return { resultado: r };
+}
+
+async function proyectoTraducir(t: Trabajo, h: Herramientas): Promise<Salida> {
+  const idioma = IdiomaTraduccion.parse(t.payload.idioma);
+  try {
+    const r = await traducirProyecto(h, t.proyectoId!, String(t.payload.origen ?? ""), idioma);
+    await db.proyecto.update({ where: { id: t.proyectoId! }, data: { estado: "ensamblado" } });
+    return { resultado: r, siguiente: siguienteDe(t.payload, { version: r.version }) };
+  } catch (e) {
+    await db.proyecto.update({ where: { id: t.proyectoId! }, data: { estado: "fallido" } });
+    throw e;
+  }
 }
 
 /** Lo que ve la persona en Trabajos mientras se anima una escena. */
@@ -402,8 +459,11 @@ export const EJECUTORES: Record<TipoTrabajo, (t: Trabajo, h: Herramientas) => Pr
   "escenas.animar": escenasAnimar,
   "escena.rehacer": escenaRehacer,
   "workflow.correr": workflowCorrer,
+  "demo.crear": demoCrear,
   "voz.regenerar": vozRegenerar,
+  "proyecto.traducir": proyectoTraducir,
   "voz.disenar": vozDisenar,
+  "efecto.generar": efectoGenerar,
   "render.entregar": renderEntregarEj,
   "publicar.subir": publicarSubirEj,
 };

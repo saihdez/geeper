@@ -28,6 +28,7 @@ import { correr, type Registro } from "./proceso";
 import { CACHE_HF, ESTUDIO, PHOTOCRAFT_VERSION, PYTHON_VOZ, UV, VECTORCRAFT_VERSION, VENV_CLIPS, WHISPER_CLI } from "./rutas";
 import { versionVectorcraft } from "./vectorcraft";
 import { MODELO_WHISPER, sintetizar, transcribir } from "./voz";
+import { asegurarVad, rutaVad } from "./whisper";
 
 /** Python de los venvs (uv lo baja: no hace falta tenerlo instalado). */
 export const PYTHON_VERSION = "3.12";
@@ -170,10 +171,13 @@ function pasos(): Paso[] {
         const modelo = (await tamano(modeloWhisper())) > 1e9;
         // En Windows y macOS whisper-cli viene en el instalador; en Linux Hyperframes lo compila.
         const programa = WHISPER_CLI ? existsSync(WHISPER_CLI) : SISTEMA === "linux";
-        return modelo && programa ? `whisper ${MODELO_WHISPER} listo${WHISPER_CLI ? ` (${path.basename(WHISPER_CLI)})` : ""}` : null;
+        // El filtro de voz (VAD) evita palabras inventadas sobre música o silencio (whisper.ts).
+        const vad = existsSync(rutaVad());
+        return modelo && programa && vad ? `whisper ${MODELO_WHISPER} listo, con filtro de voz${WHISPER_CLI ? ` (${path.basename(WHISPER_CLI)})` : ""}` : null;
       },
       instalar: async (log) => {
         if (SISTEMA !== "linux" && !WHISPER_CLI) throw new Error("Falta whisper-cli en el instalador: vuelve a instalar Geeper.");
+        await asegurarVad(log);
         log(`Probando la transcripción (la primera vez baja el modelo ${MODELO_WHISPER}, ~1,5 GB)…`);
         const wav = await frasePrueba(log);
         try {

@@ -45,8 +45,7 @@ export function FormNuevo() {
   }
 
   return (
-    <form onSubmit={enviar} className="mx-auto max-w-2xl space-y-5">
-      <h1 className="text-xl font-semibold">Nuevo proyecto o lote</h1>
+    <form onSubmit={enviar} className="space-y-5">
       <div>
         <label className="etiqueta" htmlFor="temas">Tema (uno por línea: varias líneas crean un lote)</label>
         <textarea id="temas" className="campo min-h-36 font-mono" value={temas} onChange={(e) => setTemas(e.target.value)}
@@ -73,6 +72,7 @@ export function FormNuevo() {
           </select>
           <p className="mt-1 text-xs text-tenue">{datos?.plantillas.find((p) => p.slug === plantilla)?.datos.descripcion}</p>
         </div>
+      </div>
       {!!lib?.avatares.length && !importa && (
         <fieldset className="space-y-2">
           <legend className="etiqueta">¿Sale tu avatar? (opcional)</legend>
@@ -91,7 +91,6 @@ export function FormNuevo() {
           {avatar && <p className="text-xs text-tenue">Geeper lo pone hablando en el gancho y en el cierre, y actuando en las escenas que hablan de personas. Suma unos 10 minutos por escena en la tarjeta de video; después puedes cambiarlo escena por escena.</p>}
         </fieldset>
       )}
-      </div>
       {!importa && (
         <fieldset className="space-y-2">
           <legend className="etiqueta">¿Qué tan real?</legend>

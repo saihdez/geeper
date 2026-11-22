@@ -7,6 +7,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Aviso, Barra, archivo, pedir, postJson, useSondeo } from "./comun";
 import { SugerenciasBusqueda } from "./sugerencias-busqueda";
+import { sugerirGlosario, sumarAlGlosario } from "@/lib/glosario";
 
 interface Vista { video: string; poster: string; desde: number; hasta: number }
 interface Candidato { n: number; inicio: number; fin: number; puntaje: number; motivos: string[]; texto?: string; vista?: Vista }
@@ -411,6 +412,25 @@ function Paso3({ f, c, volver }: { f: Fuente; c: Candidato; volver: () => void }
   const [tienePermiso, setTienePermiso] = useState(f.info.plataforma === "archivo");
   const [tipoPermiso, setTipoPermiso] = useState<string>(f.info.plataforma === "archivo" ? "propio" : "campania");
   const [detallePermiso, setDetallePermiso] = useState("");
+  const [glosario, setGlosario] = useState("");
+  const [mejorarVoz, setMejorarVoz] = useState(true);
+  const [prueba, setPrueba] = useState<{ antes: string; despues: string; clave: string } | null>(null);
+  const [probando, setProbando] = useState(false);
+  const [errorPrueba, setErrorPrueba] = useState<string | null>(null);
+  const clavePrueba = `${inicio.toFixed(1)}-${fin.toFixed(1)}`;
+  async function escucharPrueba() {
+    setProbando(true);
+    setErrorPrueba(null);
+    try {
+      const r = await postJson<{ antes: string; despues: string }>("/api/clips/voz-prueba", { fuenteId: f.id, inicio, fin });
+      setPrueba({ ...r, clave: clavePrueba });
+    } catch (err) {
+      setErrorPrueba(err instanceof Error ? err.message : String(err));
+    } finally {
+      setProbando(false);
+    }
+  }
+  const sugeridos = sugerirGlosario(f.info.titulo, f.info.canal).filter((t) => !glosario.toLocaleLowerCase("es").split(",").map((x) => x.trim()).includes(t.toLocaleLowerCase("es")));
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dur = fin - inicio;
@@ -446,7 +466,7 @@ function Paso3({ f, c, volver }: { f: Fuente; c: Candidato; volver: () => void }
     try {
       const r = await postJson<{ proyecto: { id: string } }>("/api/clips", {
         fuenteId: f.id, inicio: Math.round(inicio * 10) / 10, fin: Math.round(fin * 10) / 10, encuadre: estilo, formato,
-        idioma: f.idioma ?? "es", plantilla: "gta-vi-shorts", gancho, titulo: estilo === "react" ? titulo : "", permiso,
+        idioma: f.idioma ?? "es", plantilla: "gta-vi-shorts", gancho, titulo: estilo === "react" ? titulo : "", permiso, glosario: glosario.trim() || undefined, mejorarVoz,
       });
       router.push(`/proyectos/${r.proyecto.id}`);
     } catch (err) {
@@ -488,6 +508,33 @@ function Paso3({ f, c, volver }: { f: Fuente; c: Candidato; volver: () => void }
           <span className={`text-sm ${dur < 7 || dur > 60 ? "text-amber-300" : "text-tenue"}`}>
             Dura {Math.round(dur)} s{dur < 7 ? " · muy corto: la gente no alcanza a entenderlo" : dur > 60 ? " · largo: los clips de 15 a 40 s funcionan mejor" : " · buena duración"}
           </span>
+        </div>
+        <div className="space-y-2 border-t border-borde pt-3">
+          <label className="flex items-start gap-2">
+            <input type="checkbox" className="mt-1" checked={mejorarVoz} onChange={(e) => setMejorarVoz(e.target.checked)} />
+            <span>Mejorar la voz
+              <span className="block text-xs text-tenue">Quita el ruido de fondo (ventilador, teclado, zumbido) y empareja gritos y susurros. Apágalo si la voz ya suena bien o si notas que cambia de más.</span>
+            </span>
+          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="boton" disabled={probando} onClick={() => void escucharPrueba()}>
+              {probando ? "Preparando (unos segundos)…" : prueba && prueba.clave === clavePrueba ? "↻ Volver a preparar" : "🎧 Escuchar antes y después"}
+            </button>
+            {prueba && prueba.clave !== clavePrueba && <span className="text-xs text-tenue">Cambiaste el recorte: vuelve a prepararlo para oír el nuevo tramo.</span>}
+          </div>
+          {errorPrueba && <Aviso tipo="alerta">No se pudo preparar la prueba: {errorPrueba}</Aviso>}
+          {prueba && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <span className="etiqueta">Antes (como está)</span>
+                <audio controls preload="none" src={archivo(prueba.antes)} className="w-full" />
+              </div>
+              <div>
+                <span className="etiqueta">Después (voz mejorada)</span>
+                <audio controls preload="none" src={archivo(prueba.despues)} className="w-full" />
+              </div>
+            </div>
+          )}
         </div>
       </section>
 
@@ -536,7 +583,26 @@ function Paso3({ f, c, volver }: { f: Fuente; c: Candidato; volver: () => void }
       </section>
 
       <section className="tarjeta space-y-3 p-4">
-        <h3 className="font-medium">4. ¿Tienes permiso para usar este video?</h3>
+        <h3 className="font-medium">4. ¿Se dicen nombres difíciles? <span className="font-normal text-tenue">(opcional)</span></h3>
+        <p className="text-sm text-tenue">
+          Nombres de personas, juegos o lugares que se oyen en el clip, para que los subtítulos los escriban bien. Sepáralos con
+          comas. Si no hay, déjalo vacío: escribir palabras de más puede cambiar otras.
+        </p>
+        <input aria-label="Nombres difíciles" className="campo w-full" value={glosario} maxLength={400}
+          onChange={(e) => setGlosario(e.target.value)} placeholder="Ej.: Lucia, Vice City, GTA VI" />
+        {sugeridos.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-xs text-tenue">Del video:</span>
+            {sugeridos.map((t) => (
+              <button key={t} type="button" className="rounded-full border border-borde px-3 py-1 hover:border-cyan-700"
+                onClick={() => setGlosario(sumarAlGlosario(glosario, t))} aria-label={`Agregar ${t}`}>+ {t}</button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="tarjeta space-y-3 p-4">
+        <h3 className="font-medium">5. ¿Tienes permiso para usar este video?</h3>
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={tienePermiso} onChange={(e) => setTienePermiso(e.target.checked)} />
           Sí, tengo permiso

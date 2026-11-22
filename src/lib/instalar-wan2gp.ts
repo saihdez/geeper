@@ -16,6 +16,7 @@ import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { instalarAtencionRapida } from "./atencion";
 import { entornoUv } from "./estudio";
 import { bajar, carpetaRaiz } from "./instalar-craft";
 import { aplicarParchesWan2gp } from "./parches-wan2gp";
@@ -250,6 +251,8 @@ export function instalarWan2gp(): EstadoWan2gp {
         }
         poner(c.paso, "listo");
       }
+      // Opcional: FlashAttention desde una rueda guardada (nunca hace fallar la instalación).
+      await instalarAtencionRapida(i.python, log, env);
       actual = "prueba";
       poner("prueba", "trabajando");
       await probar(i, log);

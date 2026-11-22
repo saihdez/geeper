@@ -1,7 +1,8 @@
 /**
  * Uso: pnpm tsx scripts/importar-clip.ts <fuente-id> <inicio> <fin> [--encuadre react|cara|contener|cubrir]
  *        [--idioma es] [--formato 9:16] [--plantilla gta-vi-shorts] [--titulo "…"] [--gancho "…"]
- *        [--permiso "campaña X en Whop, 2026-11-19"] [--campania campania.json] [--sin-render]
+ *        [--permiso "campaña X en Whop, 2026-11-19"] [--glosario "GTA VI, Lucia, Vice City"]
+ *        [--campania campania.json] [--sin-render]
  *
  * Crea un proyecto de Geeper con un tramo de una fuente (la de `scripts/momentos.ts`) y lo encola:
  * importar → render → QC. El worker (`pnpm run dev:up`) hace el trabajo.
@@ -24,7 +25,7 @@ async function main() {
   const args = process.argv.slice(2);
   const [fuenteId, ini, fin] = args;
   if (!fuenteId || ini === undefined || fin === undefined) {
-    console.error('Uso: pnpm tsx scripts/importar-clip.ts <fuente-id> <inicio> <fin> [--encuadre react|cara|contener|cubrir] [--titulo "…"] [--gancho "…"] [--permiso "…"] [--campania c.json] [--sin-render]');
+    console.error('Uso: pnpm tsx scripts/importar-clip.ts <fuente-id> <inicio> <fin> [--encuadre react|cara|contener|cubrir] [--titulo "…"] [--gancho "…"] [--permiso "…"] [--glosario "A, B"] [--campania c.json] [--sin-render]');
     process.exit(2);
   }
   const encuadre = opcion(args, "--encuadre") ?? "react";
@@ -44,6 +45,7 @@ async function main() {
       titulo: opcion(args, "--titulo"),
       gancho: opcion(args, "--gancho"),
       permiso: opcion(args, "--permiso"),
+      glosario: opcion(args, "--glosario"),
       campania,
       renderizar: !args.includes("--sin-render"),
     },

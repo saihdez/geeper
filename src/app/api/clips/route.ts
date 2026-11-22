@@ -35,8 +35,10 @@ const Pedido = z.object({
   titulo: z.string().max(160).optional(),
   gancho: z.string().max(160).optional(),
   permiso: z.string().max(300).optional(),
+  glosario: z.string().max(400).optional(),
   campania: Campania.optional(),
   renderizar: z.boolean().optional(),
+  mejorarVoz: z.boolean().optional(),
 });
 
 /** Crea un proyecto con un tramo de una fuente: importar → render → QC. */
@@ -45,7 +47,7 @@ export async function POST(req: Request) {
     const d = Pedido.parse(await req.json());
     const f = await leerFuente(d.fuenteId);
     const vacio = (s?: string) => (s?.trim() ? s.trim() : undefined);
-    const p = await crearClip({ ...d, titulo: vacio(d.titulo), gancho: vacio(d.gancho), permiso: vacio(d.permiso) }, f.info.titulo);
+    const p = await crearClip({ ...d, titulo: vacio(d.titulo), gancho: vacio(d.gancho), permiso: vacio(d.permiso), glosario: vacio(d.glosario) }, f.info.titulo);
     return json({ proyecto: p }, 201);
   });
 }

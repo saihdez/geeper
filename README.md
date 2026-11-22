@@ -22,6 +22,10 @@ calidad. Uso interno, en esta PC, US$0 al mes. Ver `docs/PRODUCTO.md` (qué es y
 6. **Regenerar la voz** de una escena o del guion (Kokoro de MPT, en CPU) y realinear los subtítulos.
    **Elegir la voz escuchándola** o crear una nueva describiéndola («narradora cálida de documental»):
    VoxCPM2 propone 3 y la elegida queda en la biblioteca `~/geeper-data/voces` (GPU, ~6 GB).
+   **Versión en otro idioma** (inglés, portugués, francés, italiano): una copia traducida con Gemma
+   local, voz nueva, subtítulos realineados y render; el original no cambia.
+   **Efectos de sonido** desde una lista o descritos con palabras (MOSS-SoundEffect, GPU): quedan en
+   la biblioteca `~/geeper-data/efectos` y la segunda vez entran al instante.
    Lo recortado ya no se vuelve a decir.
 7. **Descargar** el render (H.264 High CRF 20, ~4 Mbps: un short de 57 s pesa ~31 MB), sus subtítulos
    `.srt` y, si se pide, un máster de archivo `.mov`, sólo si pasó el QC: −14 LUFS y pico ≤ −1 dBTP
@@ -55,8 +59,12 @@ pnpm run dev:up       # web en http://localhost:3300 + worker, en una terminal. 
 ```
 
 - **Proyectos** (`/`): lista con estado, avance y último render.
-- **Nuevo** (`/nuevo`): tema o lote, formato y plantilla. Generar usa la GPU: pide confirmar que
-  guardaste tu trabajo (Windows se ha reiniciado sin aviso durante generaciones).
+- **Nuevo** (`/nuevo`): elige de dónde sale el video.
+  - «Desde un tema»: tema o lote, formato y plantilla. Generar usa la GPU: pide confirmar que guardaste
+    tu trabajo (Windows se ha reiniciado sin aviso durante generaciones).
+  - «Desde una página web»: link, vertical u horizontal, movimiento (cinematográfico 3D o sencillo) y lo que
+    dice la voz. Geeper recorre la página solo (sin tocar el mouse), hace la voz, arma el proyecto y lo
+    renderiza con QC. Sin GPU, 3–5 min. Idea de cap-demo de Cap (HEREDADO.md «Cap»).
 - **Proyecto** (`/proyectos/<id>`): vista previa «En vivo» (cada cambio guardado se ve al instante, sin renderizar) y «Último render», QC, escenas con miniatura, texto, tiempos y
   subtítulos editables, ajustes, historial y trabajos del proyecto. En cada escena, «Animar esta escena con IA» convierte su imagen
   en un video corto con movimiento (Wan2GP en la GPU de esta PC; se instala una vez desde Sistema). «¿Qué se ve?»
@@ -65,12 +73,15 @@ pnpm run dev:up       # web en http://localhost:3300 + worker, en una terminal. 
   También la **portada** en tres pasos (escena, títulos que propone la IA local, diseño), que se sube
   como miniatura al publicar en YouTube. Ver `docs/PHOTOCRAFT.md`.
 - **Avatares** (`/avatares`): crea un personaje realista o animado describiéndolo o desde una foto (con
-  consentimiento), elige entre varias opciones y retócalo con una frase («ponle lentes»). Cada avatar tiene
-  su voz. En cada proyecto, **Presentador** lo hace hablar con la voz del video, en una burbuja todo el video
-  o a pantalla completa en las escenas que elijas (InfiniteTalk en Wan2GP; ver HEREDADO.md «ComfyUI»).
-  En cada escena con video, **Rehacer la toma** cambia a la persona por uno de tus avatares (copia sus gestos
-  y su boca) o vuelve a filmarla con otro movimiento de cámara, elegido viéndolo sobre tu propia escena.
-- **Workflows** (`/workflows`): las 776 recetas del hub de ComfyUI (imágenes, video, música, voces, 3D) para usar
+  consentimiento), elige entre varias opciones y retócalo con una frase («ponle lentes»). En cada proyecto,
+  **Presentador** lo hace hablar con la voz del video, en una burbuja todo el video o a pantalla completa en
+  las escenas que elijas (InfiniteTalk en Wan2GP; ver HEREDADO.md «ComfyUI»). En cada escena con video,
+  **Rehacer la toma** cambia a la persona por uno de tus avatares (copia sus gestos y su boca) o vuelve a
+  filmarla con otro movimiento de cámara, elegido viéndolo sobre tu propia escena.
+  **Tu avatar en el video**: elígelo en «Nuevo» y Geeper lo pone hablando en el gancho y el cierre y actuando
+  donde se habla de personas; o encima de todo el video como un streamer (gameplay), de medio cuerpo o
+  completo. En cada escena: que hable, que haga algo (caminar, jugar, celebrar…) o que muestre tu producto.
+- **Workflows** (`/workflows`): las recetas oficiales de ComfyUI (imágenes, video, música, voces, 3D) para usar
   sin saber de nodos: buscar, subir tu archivo o escribir lo que quieres, y «Crear». ComfyUI se instala con un
   clic en la misma página; cada receta baja sus modelos al usarla. Las de pago aparecen bloqueadas; las que
   usan código de la comunidad piden tu permiso y sólo instalan la versión revisada. Lo que sale se pone en
@@ -106,12 +117,14 @@ pnpm tsx scripts/exportar-otio.ts <slug>                           # .otio con r
 pnpm tsx scripts/analizar-caras.ts <slug> [--aplicar]             # busca caras para el reencuadre (lo nuevo lo hace solo)
 pnpm tsx scripts/plano.ts <slug> <escena> [--probar]              # animar una escena con Wan2GP (usa la GPU; en la web: «Animar esta escena con IA»)
 pnpm tsx scripts/instalar-wan2gp.ts                                # instala Wan2GP (en la web: Sistema → «Instalar con un clic»)
+pnpm tsx scripts/demo-web.ts <url> [--formato 9:16] [--estilo plano]  # demo de producto desde una web (tarjeta 3D, sin audio; HEREDADO.md «Cap»)
 pnpm tsx scripts/avatar.ts crear "<descripción>" [--estilo animado-3d] [--probar]   # avatares y presentador (ver el script)
 ```
 
 **Clips de material largo** (VOD, video publicado o grabación propia; nunca un directo en vivo): desde la
 página **Clips** (`/clips`: un asistente de 3 pasos —elige tu video, elige un momento, ajusta y crea— pensado para
-quien no sabe de video; sugiere ganchos con el modelo local de MPT si Docker está encendido) o desde la terminal:
+quien no sabe de video; sugiere ganchos con el modelo local de MPT si Docker está encendido, y «Mejorar la voz»
+—quita ruido de fondo y empareja el volumen, con «Escuchar antes y después»— viene encendido) o desde la terminal:
 
 ```bash
 pnpm tsx scripts/momentos.ts <url|archivo> [--top 8] [--min 15] [--max 40] [--idioma es]   # candidatos.md

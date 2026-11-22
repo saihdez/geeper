@@ -540,6 +540,74 @@ con 3 pasos. Render v6 con el plano: QC aprobado. **Sin medir:** Calidad (50 pas
 
 Falta: comparar Rápido y Calidad lado a lado; botón «Cancelar» en el propio panel (hoy, desde Trabajos).
 
+## Cap (CapSoftware, AGPL-3.0) — revisión 2026-11-20
+
+Grabador de pantalla tipo Loom (Rust + app de escritorio + web Next.js), commit `a29df6c`. **Licencia:
+AGPLv3** salvo los crates `cap-camera*` y `scap-*` (MIT, captura de cámara y pantalla nativa, en Rust:
+no le sirven a una app Node). Geeper tiene instalador de escritorio, así que de Cap se toman **ideas y
+parámetros reescritos, nunca código**. Lo de valor está en su editor (`crates/project`, `crates/rendering`,
+`crates/audio`) y en la skill `apps/cli/skill/cap-demo`.
+
+| Pieza | Qué hace | En Geeper |
+|---|---|---|
+| Skill `cap-demo` (`scout-shoot.mjs`, `treat.py`) | URL → explora la página, elige el botón que cuenta la historia, la recorre con entrada virtual, graba la ventana con el binario de Cap y la trata: cámara 3D apuntada al titular, al botón y a la página siguiente, fondo con los colores de la marca, cursor sintético, 12 s | **Rehecho** en `src/lib/demo-web.ts` + `scripts/demo-web.ts` (primer paso de F4 «Lanzamiento de producto»). Cap sólo corre en macOS (captura de ventana); aquí la toma es Chromium headless + screencast de CDP (Linux/WSL, sin permisos de pantalla, el cursor de la persona no se mueve) y el tratamiento es una composición de **Hyperframes** (tarjeta con `perspective`, cortes duros en cada cambio de contenido, cursor y pulso de clic dibujados). Mismas reglas editoriales (cortar en la acción, quitar la carga, un solo sistema de movimiento, apuntar al contenido). Arreglado respecto del original: un botón blanco/negro ya no da el color de marca (salía un fondo gris), un enlace a la misma página o al blog ya no abre la historia, y `--force-device-scale-factor` (sin él la toma sale a 1280 px y la tarjeta queda borrosa). Agregado: palabras de botón en español, versión móvil para 9:16 y estilo «plano» |
+| `crates/project/src/auto_zoom.rs` | Zoom automático por clics | **Portado** a `rangosZoomPorClics` (estilo «plano» de la demo): 0,3 s antes del clic y 2,5 s después, se ignoran los del último segundo, terminan 0,8 s antes del final, se juntan si los separan ≤ 2,5 s |
+| `crates/project/src/disfluency.rs` | Detecta vacilaciones, repeticiones, arranques en falso y muletillas de discurso (en inglés) | **Portado al español** en `src/lib/ediciones.ts` («Quitar muletillas»): vacilaciones estiradas de cualquier largo («eeeeh», «mmmmm», «ehmmm») y tartamudeos («el el», «en la en la»; se quita la primera vez), salvo dobles intencionales («no no», «muy muy», números), si la primera cierra oración o si hay una pausa ≥ 1 s. Además, aplicarlo dos veces ya no duplica recortes. Los arranques en falso y «o sea / ¿no? / tipo» quedan fuera: dependen de la gramática inglesa y en español necesitan su propia lista |
+| `fpsDominante` (de `treat.py`) | fps reales de una captura de cuadro variable: la moda, no la media | **Portado**; lo usa la toma para informar |
+| `crates/audio/src/voice*.rs` («Studio Sound») | RNNoise (xiph, **BSD**, mezcla 0,9 húmedo) → ganancia a −16 LUFS (±12/+24 dB) → compresor 2:1 (umbral ≈ −18 dBFS, ataque 15 ms, relajación 180 ms) → compensación ±6 dB → limitador a 192 kHz a −1,5 dBTP; ecualización de voz (pasa-altos 90 Hz, −4 dB a 350 Hz, +5 dB a 3,5 kHz, +3 dB sobre 9 kHz) | **Hecho** (2026-11-20): «Mejorar la voz» en Clips (`src/lib/voz-limpia.ts`, encendido por defecto, con «Escuchar antes y después»). Sólo filtros de ffmpeg, sin modelo que licenciar: `afftdn` en lugar de RNNoise (medido: con ruido rosa a −32 dB el fondo baja 5,3 dB y la voz no cambia; `anlmdn` quitaba menos y tardaba 10×), ecualización más suave que la de Cap y su compresor 2:1. Whisper sigue oyendo el original. La sonoridad final la pone la entrega (−14 LUFS). En la voz de Kokoro no hace falta |
+| `crates/editor/src/join_fade.rs` | Fundido de 5 ms en cada corte de audio | **Ya lo teníamos**: `mezcla.ts` pone 15 ms |
+| `caption_words.rs` | Segmentos de 6 palabras (máx. 8), no cerrar en palabra débil, cada palabra dura como mucho 2,5 s | La palabra débil ya está (`subtitulos.ts`, de DesignCraft). **Hecho** el tope de 2,5 s en pantalla (`MAX_DURACION_PALABRA` en `linea.ts`): la paridad con `mpt_acabado.py` es de cómo se agrupa el texto, no de los tiempos, así que no hubo que tocar el Python |
+| Resorte del zoom (k 205, c 33,3, m 1,5: 90 % en 317 ms, sin rebote) y adelanto c/k | Movimiento de cámara del editor | Referencia para los golpes de zoom de `compilador.ts` si se pasan a resorte |
+| IA de la web (`apps/web/workflows/generate-ai.ts`) | Título, resumen y capítulos con un LLM | **Hecho** (D1): «✨ Sugerir título, descripción y hashtags» en Publicar (`src/lib/texto-publicacion.ts`), con el modelo local de MPT y largo según la duración (< 60 s: 15–35 palabras). La salida se limpia con los límites de cada red, sin hashtags de relleno (#fyp, #viral), con el crédito del creador si es un clip; la persona la revisa antes de publicar. Capítulos (≥ 120 s, separados ≥ max(5 s, duración/10)) quedan para cuando haya videos largos |
+| Teclas en pantalla (`keyboard.rs`), cursor con resortes (`cursor_interpolation.rs`), mejora de nitidez (`screen_enhance.rs`, red propia sin procedencia) | Grabación de pantalla | **No por ahora**: Geeper no graba la pantalla de la persona. Los pesos de la red no se reutilizan (AGPL, sin datos de entrenamiento) |
+| Render farm, web de compartir, S3, Loom import, CLI `cap record`, MCP | Producto de Cap | **No**: nube, cuentas o macOS. La música de `cap-demo` (lofi de Pixabay) tampoco: licencia no clara |
+
+Uso:
+
+```bash
+pnpm tsx scripts/demo-web.ts https://producto.com                       # 16:9, cámara 3D
+pnpm tsx scripts/demo-web.ts https://producto.com --formato 9:16 --estilo plano
+pnpm tsx scripts/demo-web.ts https://producto.com --fondo E4DCF8,C6BAEA --retratar   # recomponer sin volver a grabar
+```
+
+**En la web:** «Nuevo → Desde una página web» (link, forma, movimiento y lo que dice la voz). El trabajo
+`demo.crear` hace primero la voz (da la duración exacta), después la demo a esa medida (si la voz es larga, la
+toma sigue bajando por la página) y un proyecto normal con la imagen en `sincro: "voz"`; sigue el render con QC.
+La captura queda con licencia «revisar» salvo que la persona marque que el sitio es suyo.
+
+Desde la terminal sale en `~/geeper-data/demos/<slug>/<slug>-demo.mp4` (sólo la imagen), con `toma.json`
+(eventos, cursor, colores) y `qa-*.jpg` para mirar antes de usarlo. Como en cap-demo, conviene revisar los fotogramas: en sitios claros o con
+degradados el color medido miente (`--fondo` a ojo), y si el botón lleva a un registro o login, forzar
+`--historia scroll`.
+
+**Probado** (2026-11-20) contra cap.so en 16:9/3D (toma 1920×1200, 60 fps reales, 12 s) y
+hyperframes.heygen.com en 9:16/plano (toma móvil 1030×2230): `hyperframes check` sin errores ni avisos y
+fotogramas revisados. El flujo de la web, probado de punta a punta en una base aparte (cap.so, 9:16, 3D): voz
+11 s → demo → proyecto → render **aprobado** por el QC (−14,3 LUFS, subtítulos legibles, licencias). Falta:
+1:1, y que `brag` escriba el texto de la voz leyendo el código del producto.
+
+## OpenWhispr (MIT) — revisión 2026-11-20
+
+App de dictado de escritorio (Electron + whisper.cpp + Parakeet por sherpa-onnx), v1.12.0, commit
+`007826d`. Casi todo es dictado en vivo, reuniones, notas y nube; lo útil para Geeper es cómo usa whisper
+sobre audio real, que es lo que hacen los clips. Medido en esta PC con la voz de «faros-en-costas-escarpadas»
+(44,5 s, whisper `medium`, CPU).
+
+| Pieza | Qué hace | En Geeper |
+|---|---|---|
+| VAD Silero (`--vad`, `src/constants/whisperVad.json`) | whisper sólo decodifica donde hay voz | **Hecho** (`src/lib/whisper.ts`). Con 12 s de música tras la voz, sin VAD whisper inventaba «y no te dejes de ver.»; con VAD, 0 palabras de más y los mismos tiempos al milisegundo en las 112 palabras. Modelo ggml de 885 KB con tamaño y SHA-256 fijados, se baja solo a la caché de whisper; si falla, se transcribe sin VAD y se avisa |
+| Umbrales del decodificador (`whisperServer.js:50`: entropía 2,8, logprob −1,25) | Bajaron sus colas inventadas de 2,25 % a 0,06 % en 4814 dictados | **Hecho**, junto con el VAD. Solos no frenaron la cola sobre música en nuestra prueba |
+| Probabilidad por token | whisper.cpp la da en `--output-json-full`; `hyperframes transcribe` la descarta | **Hecho**: whisper corre directo (el mismo binario y modelo que compila Hyperframes) y cada palabra lleva `p` (la menor de sus tokens). DECISIONES §17 queda corregido: en los clips, una `p` < 0,35 hace la palabra «dudosa» (las mal oídas dieron 0,27–0,31; la mediana es 0,99). En voces TTS no se usa: ahí el texto sale del guion |
+| Diccionario como `--prompt` | Nombres propios que whisper escribiría mal | **Hecho, opcional, sólo clips**: `--glosario "GTA VI, Lucia"` en `scripts/importar-clip.ts` y `glosario` en `POST /api/clips`. Corrigió «hierguen» → «yerguen», pero también cambió «linternas» por «linterna» (p 0,27, que queda marcada). En el asistente de `/clips`, paso 4 «¿Se dicen nombres difíciles?» (opcional, vacío por defecto) con botones «+ nombre» sacados del título y el canal (`src/lib/glosario.ts`; de un título gritado sólo «sigla + número») |
+| (propio) Revisión de dudosas en clips | — | En un clip la palabra dudosa puede estar mal escrita: la revisión pregunta «¿dice "X"?» y ofrece «Sí, dice eso», «No, dice otra cosa…» (se escribe lo que se oye; `corregirSubtitulo` con `revisada: true` la saca de las dudosas en un solo paso del historial), «Recortarla» y «Saltar». «Preparar el estudio» baja el VAD y Sistema dice si está. Probado en el navegador con un clip real |
+| `--js-runtimes node:<execPath>` (`urlAudioDownloader.js:592`) | yt-dlp necesita un runtime de JS para YouTube y sólo trae Deno activado | **Hecho** en `fuentes.ts` y `tendencias.ts`. Sin él yt-dlp avisaba «some formats may be missing» y `--no-warnings` lo ocultaba; hoy faltaban formatos (18, 136, 247), no el 1080p, pero YouTube lo va a exigir |
+| Binarios de whisper.cpp con CUDA y Vulkan (`OpenWhispr/whisper.cpp`, releases con SHA-256; `whisperCudaManager.js`) | whisper en la GPU | **Para después**: el de Linux con CUDA pesa 800 MB, no está claro que traiga kernels para la RTX 5080 (sm_120), y la GPU es de MPT (`gpu-lock`). En CPU un short tarda 25–34 s |
+| Diarización local (`diarization.js`, sherpa-onnx con pyannote + embeddings) | Quién habla en cada tramo | **Para después**: sirve para clips de podcasts o con dos personas (color de subtítulo por voz). `hyperframes transcribe --speakers` sólo lo hace con HeyGen (de pago) |
+| `noSpeechSegments.js` (no_speech_prob > 0,6 y logprob ≤ −1) | Quitar segmentos «sin voz» de la API de OpenAI | No: whisper.cpp no da `no_speech_prob` por segmento en el JSON; el VAD cubre lo mismo |
+| Filtro de fragmentos en otro alfabeto (`meetingFragmentFilter.js`) | Quita «Да.», «うん。» inventados en reuniones | No: Geeper fija el idioma (`--language es`) |
+| Parakeet por sherpa-onnx | ASR más rápido | Ya está en Hyperframes 0.9.27 (`--engine parakeet`, instalado en la caché), pero no da probabilidad por palabra ni admite glosario: se queda whisper |
+| Dictado, atajos, reuniones, calendario, notas, nube, agentes, MCP, app móvil | El producto OpenWhispr | **No**: nada de eso es edición de video |
+
 ## ComfyUI (Comfy-Org, GPL-3.0) — revisión 2026-11-21
 
 Motor de nodos para imagen, video y audio con IA, commit `0072b86` (v0.46.0), y sus repos vecinos:
