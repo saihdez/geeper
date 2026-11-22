@@ -1,10 +1,12 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ErrorConexion, RECONECTANDO, mensajeHttp, traer } from "@/lib/conexion";
 
+/** Pide JSON. Los errores salen en palabras simples: sin conexión, «ya no existe», o el texto del servidor. */
 export async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(url, init);
-  const d = (await r.json().catch(() => ({}))) as T & { error?: string };
-  if (!r.ok) throw new Error(d.error ?? `Error ${r.status}`);
+  const r = await traer(url, init);
+  const d = (await r.json().catch(() => ({}))) as T & { error?: unknown };
+  if (!r.ok) throw new Error(mensajeHttp(r.status, d.error));
   return d;
 }
 
@@ -25,7 +27,7 @@ export function useSondeo<T>(url: string, ms = 3000) {
         setError(null);
       }
     } catch (e) {
-      if (vivo.current) setError(e instanceof Error ? e.message : String(e));
+      if (vivo.current) setError(e instanceof ErrorConexion ? RECONECTANDO : e instanceof Error ? e.message : String(e));
     }
   }, [url]);
   useEffect(() => {
