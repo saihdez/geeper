@@ -14,7 +14,7 @@
  * Cada paso primero comprueba; sólo instala lo que falta, así que se puede repetir sin miedo. Todo queda en
  * la carpeta de herramientas (rutas.ts ESTUDIO), nunca en el sistema. Una preparación a la vez por servidor.
  */
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -42,16 +42,38 @@ export const PAQUETES = {
 const VOZ_PRUEBA = { texto: "Hola, esto es una prueba de voz de Geeper.", voz: "ef_dora", idioma: "es" };
 
 /** Entorno de uv: el Python, su caché y los venvs quedan dentro de las herramientas. */
-export function entornoUv(base = ESTUDIO): Record<string, string> {
+export function entornoUv(base = ESTUDIO, disco: (p: string) => number | null = numeroDeDisco): Record<string, string> {
+  const cache = process.env.UV_CACHE_DIR ?? path.join(base, "uv-cache");
   return {
     UV_PYTHON_INSTALL_DIR: path.join(base, "python"),
-    UV_CACHE_DIR: process.env.UV_CACHE_DIR ?? path.join(base, "uv-cache"),
+    UV_CACHE_DIR: cache,
     // Sólo el Python que baja uv: uno del sistema (o el de la Tienda de Windows) podría no servir.
     UV_PYTHON_PREFERENCE: "only-managed",
-    // La caché y los venvs pueden quedar en discos distintos (OneDrive, otra unidad): copiar, no enlazar.
-    UV_LINK_MODE: "copy",
+    UV_LINK_MODE: modoEnlaceUv(cache, base, disco),
     UV_NO_PROGRESS: "1",
   };
+}
+
+/** El número del disco de una ruta (o de su carpeta más cercana que exista); null si no se sabe. */
+function numeroDeDisco(p: string): number | null {
+  for (let d = path.resolve(p); ; d = path.dirname(d)) {
+    try {
+      return statSync(d).dev;
+    } catch {
+      if (path.dirname(d) === d) return null;
+    }
+  }
+}
+
+/**
+ * TER-02: con «copy» la caché guardaba una segunda copia de todo lo instalado (13,4 GB en Wan2GP y ComfyUI).
+ * Si la caché y los venvs están en el mismo disco se enlazan (no ocupa dos veces); si no, o si no se sabe
+ * (OneDrive, otra unidad), se copia como antes. Si un enlace falla, uv copia solo.
+ */
+export function modoEnlaceUv(cache: string, base: string, disco: (p: string) => number | null = numeroDeDisco): "hardlink" | "copy" {
+  const a = disco(cache);
+  const b = disco(base);
+  return a !== null && a === b ? "hardlink" : "copy";
 }
 
 /** Comandos de uv para crear un venv desde cero e instalarle paquetes (función pura, para las pruebas). */

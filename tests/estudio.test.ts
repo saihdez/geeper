@@ -1,16 +1,26 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { comandosVenv, entornoUv, estadoEstudio, PAQUETES, prepararEstudio, PYTHON_VERSION } from "@/lib/estudio";
+import { comandosVenv, entornoUv, estadoEstudio, modoEnlaceUv, PAQUETES, prepararEstudio, PYTHON_VERSION } from "@/lib/estudio";
 import { pythonDeVenv } from "@/lib/plataforma";
 
 describe("Preparar el estudio", () => {
   it("uv deja Python, caché y venvs dentro de las herramientas, sin usar el Python del sistema", () => {
     const base = path.join("h", "herramientas");
-    const e = entornoUv(base);
+    const e = entornoUv(base, () => null);
     expect(e.UV_PYTHON_INSTALL_DIR).toBe(path.join(base, "python"));
     expect(e.UV_PYTHON_PREFERENCE).toBe("only-managed");
     expect(e.UV_LINK_MODE).toBe("copy");
+  });
+
+  it("la caché de uv se enlaza si está en el mismo disco que los venvs, y se copia si no (TER-02)", () => {
+    expect(modoEnlaceUv("/h/uv-cache", "/h", () => 7)).toBe("hardlink");
+    expect(modoEnlaceUv("/onedrive/uv-cache", "/h", (p) => (p.startsWith("/onedrive") ? 9 : 7))).toBe("copy");
+    expect(modoEnlaceUv("/h/uv-cache", "/h", () => null)).toBe("copy");
+    // Con el disco real: una carpeta temporal y su subcarpeta (aún sin crear) están en el mismo disco.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "geeper-uv-"));
+    expect(modoEnlaceUv(path.join(tmp, "uv-cache"), tmp)).toBe("hardlink");
   });
 
   it("crea el venv desde cero con la versión fijada y le instala los paquetes fijados", () => {
