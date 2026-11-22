@@ -33,7 +33,7 @@ export function Contadores({ r, compacto = false }: { r: Resumen; compacto?: boo
         <span key={k} className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums ${ESTILO[k].c} ${r[k] === 0 ? "opacity-40" : ""}`}>
           <span aria-hidden>{ESTILO[k].i}</span>
           {r[k]}
-          {!compacto && <span className="font-normal">{ESTILO[k].n.toLowerCase()}</span>}
+          <span className={compacto ? "sr-only" : "font-normal"}>{ESTILO[k].n.toLowerCase()}</span>
         </span>
       ))}
     </div>
@@ -66,7 +66,7 @@ export function Ayuda({ texto, de }: { texto: string; de: string }) {
         aria-expanded={abierta}
         aria-controls={id}
         aria-label={`Qué significa «${de}»`}
-        className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-500 text-[0.65rem] leading-none text-slate-300 hover:border-cyan-400 hover:text-white"
+        className="ml-1 inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-500 text-xs leading-none text-slate-300 hover:border-cyan-400 hover:text-white"
       >
         ?
       </button>

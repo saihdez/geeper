@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Aviso, Barra, archivo, pedir, postJson, useSondeo } from "./comun";
+import { textoEspera, useMotorVivo } from "./motor";
 
 interface WfV { id: string; titulo: string; descripcion: string; categoria: string; tipo: string; etiquetas: string[]; modelos: string[]; tamano: number; local: boolean; bloqueo: string | null; aviso: string | null; comunidad: boolean; entradas: number; uso: number; fecha: string | null; miniatura: string | null }
 interface CorridaV { id: string; workflow: string; titulo: string; creada: string; estado: "preparada" | "hecha" | "fallida"; salidas: { archivo: string; tipo: string }[]; segundos?: number; error?: string }
@@ -81,7 +82,7 @@ export function PaginaWorkflows() {
             {filtro !== "local" && <p className="text-xs text-tenue">Los de pago usan servicios de la nube de Comfy que cobran por uso: aparecen para que los conozcas, pero están bloqueados porque Geeper funciona gratis.</p>}
             <div className="flex flex-wrap gap-1">
               {[["Todas", lista.length] as const, ...categorias].map(([c, n]) => (
-                <button key={c} className={`rounded-full border px-3 py-1 text-xs ${categoria === c ? "border-cyan-500 bg-cyan-950/40" : "border-borde text-tenue hover:text-white"}`} onClick={() => { setCategoria(c); setCuantos(48); }}>
+                <button key={c} aria-pressed={categoria === c} className={`rounded-full border px-3 py-1 text-xs ${categoria === c ? "border-cyan-500 bg-cyan-950/40 ring-2 ring-cyan-500" : "border-borde text-tenue hover:text-white"}`} onClick={() => { setCategoria(c); setCuantos(48); }}>
                   {c}{c !== "Todas" ? ` · ${n}` : ""}
                 </button>
               ))}
@@ -91,7 +92,7 @@ export function PaginaWorkflows() {
             ) : (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                 {lista.slice(0, cuantos).map((w) => (
-                  <button key={w.id} type="button" onClick={() => setAbierto(w.id)} className={`tarjeta overflow-hidden text-left hover:bg-white/5 ${abierto === w.id ? "outline outline-2 outline-cyan-500" : ""}`}>
+                  <button key={w.id} type="button" onClick={() => setAbierto(w.id)} className={`tarjeta overflow-hidden text-left hover:bg-white/5 ${abierto === w.id ? "ring-2 ring-cyan-500" : ""}`}>
                     <div className="relative aspect-video bg-slate-800">
                       {w.miniatura && (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -319,6 +320,7 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
 }
 
 function Resultados({ corridas, trabajos, cambio }: { corridas: CorridaV[]; trabajos: TrabajoV[]; cambio: () => void }) {
+  const motorVivo = useMotorVivo();
   const visibles = corridas.filter((c) => c.estado !== "preparada" || trabajos.some((t) => t.corrida === c.id)).slice(0, 12);
   if (!visibles.length && !trabajos.length) return null;
   return (
@@ -332,8 +334,8 @@ function Resultados({ corridas, trabajos, cambio }: { corridas: CorridaV[]; trab
               <p className="text-sm font-medium">{c.titulo}</p>
               {t ? (
                 <div className="space-y-1">
-                  <p className="text-xs">{t.estado === "pendiente" ? "En espera: la tarjeta de video está ocupada." : t.etapa || "Trabajando…"}</p>
-                  <Barra valor={t.progreso} />
+                  <p className="text-xs">{t.estado === "pendiente" ? textoEspera(motorVivo) : t.etapa || "Trabajando…"}</p>
+                  <Barra valor={t.progreso} etiqueta={`Avance de «${c.titulo}»`} />
                   <button className="boton text-xs" onClick={async () => { if (confirm("¿Cancelar?")) { await postJson(`/api/trabajos/${t.id}`, { accion: "cancelar" }).catch(() => {}); cambio(); } }}>Cancelar</button>
                 </div>
               ) : c.estado === "fallida" ? (
