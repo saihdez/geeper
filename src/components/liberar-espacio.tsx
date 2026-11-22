@@ -31,6 +31,18 @@ export const QUE_ES: Record<QueLiberar, { titulo: string; detalle: (dias: number
     uno: "video de la papelera",
     varios: "videos de la papelera",
   },
+  fuentes: {
+    titulo: "Videos largos para sacar clips",
+    detalle: (d) => `Videos que subiste o bajaste para sacar clips y que no usas hace más de ${d} días. Los clips que ya hiciste se quedan; para sacar más de ese video, tendrás que subirlo o pegar el enlace otra vez.`,
+    uno: "video largo",
+    varios: "videos largos",
+  },
+  copias: {
+    titulo: "Copias repetidas de la IA",
+    detalle: () => "Los videos e imágenes que hizo la IA quedan guardados dos veces. Se borra sólo la copia de más: lo que está en tus videos y en los resultados se queda.",
+    uno: "copia repetida",
+    varios: "copias repetidas",
+  },
 };
 
 /** La pregunta antes de borrar: nombra cuánto y avisa que no tiene vuelta atrás. */

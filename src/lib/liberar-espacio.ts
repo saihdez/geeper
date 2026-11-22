@@ -6,20 +6,33 @@
  * 30 días: los videos viejos, los crudos del render (se rehacen al renderizar) y lo que lleva 30 días en la
  * papelera. Nada se borra solo: sólo con `liberar()`, que llama la pantalla Sistema después de que la
  * persona confirma. No toca un proyecto con trabajos en la fila o corriendo.
+ *
+ * DSC-11, lo que queda fuera de los proyectos:
+ * - Videos largos para sacar clips (los bajados en `_fuentes/<id>/fuente.mp4` y los subidos en
+ *   `_subidos/`) que nadie usó en 30 días y que ningún trabajo pendiente nombra. Cada clip ya creado
+ *   guarda su tramo en el proyecto (`assets/tramo.mp4`): sólo se pierde sacar más clips sin volver a
+ *   bajar o subir el video. Se quedan la ficha y los momentos encontrados. También las subidas y
+ *   bajadas cortadas (`.subiendo-*`, `.fuente.*`) de hace más de un día.
+ * - Copias repetidas de la IA: el video de Wan2GP que quedó en `build/planos/` y ya está copiado en
+ *   `assets/wan-<huella>` del proyecto, y lo que ComfyUI dejó en su carpeta `output/` y ya está copiado
+ *   en el resultado de su receta (mismo nombre y misma huella). Son copias idénticas: no esperan 30 días.
  */
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { db } from "./db";
 import { dirPapelera } from "./eliminar-proyecto";
+import { sha256Archivo } from "./archivos";
+import { COMFYUI_DIR, dirResultados } from "./comfyui";
 import { espacioLibre, type MedidaDisco } from "./espacio";
+import { dirFuentes, idFuente } from "./fuentes";
 import { dirDatos, dirProyecto } from "./rutas";
 
 /** Días que se guarda lo que se puede borrar (decisión del dueño). */
 export const DIAS_GUARDAR = 30;
 const DIA = 86_400_000;
 
-export type QueLiberar = "renders" | "crudos" | "papelera";
+export type QueLiberar = "renders" | "crudos" | "papelera" | "fuentes" | "copias";
 
 export interface EspacioProyecto {
   id: string;
@@ -129,12 +142,114 @@ async function proyectosLibres() {
   return { ps, ocupados };
 }
 
+/** Lo que nombran los trabajos en la fila o corriendo (rutas, ids de fuentes y de recetas). */
+async function enUso(): Promise<string> {
+  const ts = await db.trabajo.findMany({ where: { estado: { in: ["pendiente", "corriendo"] } }, select: { payload: true } });
+  return ts.map((t) => JSON.stringify(t.payload ?? null)).join("\n");
+}
+
+/** Última vez que se tocó algo directamente dentro de una carpeta (0 si no existe). Sin los temporales (`.…`). */
+async function ultimoUso(dir: string): Promise<number> {
+  const nombres = await fs.readdir(dir).catch(() => [] as string[]);
+  let t = 0;
+  for (const n of nombres) {
+    if (n.startsWith(".")) continue;
+    const st = await fs.lstat(path.join(dir, n)).catch(() => null);
+    if (st) t = Math.max(t, st.mtimeMs);
+  }
+  return t;
+}
+
+const UN_DIA = DIA;
+
+/** Videos largos para sacar clips que se pueden borrar (DSC-11). */
+async function fuentesViejas(ahora: Date, dias: number, usado: string): Promise<string[]> {
+  const out: string[] = [];
+  const viejo = (t: number, d: number) => ahora.getTime() - t >= d;
+  const base = dirFuentes();
+  for (const id of await fs.readdir(base).catch(() => [] as string[])) {
+    if (!/^[a-f0-9]{12}$/.test(id) || usado.includes(id)) continue;
+    const dir = path.join(base, id);
+    const nombres = await fs.readdir(dir).catch(() => [] as string[]);
+    for (const n of nombres.filter((x) => x.startsWith(".fuente."))) {
+      const st = await fs.lstat(path.join(dir, n)).catch(() => null);
+      if (st?.isFile() && viejo(st.mtimeMs, UN_DIA)) out.push(path.join(dir, n));
+    }
+    const video = path.join(dir, "fuente.mp4");
+    const st = await fs.lstat(video).catch(() => null);
+    if (st?.isFile() && viejo(await ultimoUso(dir), dias * DIA)) out.push(video);
+  }
+  const subidos = path.join(dirDatos(), "_subidos");
+  for (const n of await fs.readdir(subidos).catch(() => [] as string[])) {
+    const ruta = path.join(subidos, n);
+    const st = await fs.lstat(ruta).catch(() => null);
+    if (!st?.isFile() || usado.includes(ruta)) continue;
+    if (n.startsWith(".subiendo-")) {
+      if (viejo(st.mtimeMs, UN_DIA)) out.push(ruta);
+      continue;
+    }
+    const id = idFuente(ruta);
+    if (usado.includes(id)) continue;
+    if (viejo(Math.max(st.mtimeMs, await ultimoUso(path.join(base, id))), dias * DIA)) out.push(ruta);
+  }
+  return out;
+}
+
+const VIDEO_IA = /\.(mp4|webm|mkv|mov)$/i;
+
+/** Archivos de una carpeta y sus subcarpetas (hasta `hondo` niveles), sin seguir enlaces. */
+async function archivosDe(dir: string, hondo = 4): Promise<string[]> {
+  const out: string[] = [];
+  for (const e of await fs.readdir(dir, { withFileTypes: true }).catch(() => [])) {
+    const r = path.join(dir, e.name);
+    if (e.isFile()) out.push(r);
+    else if (e.isDirectory() && hondo > 0) out.push(...(await archivosDe(r, hondo - 1)));
+  }
+  return out;
+}
+
+/** Videos de Wan2GP en build/planos/ que ya están copiados en assets/ (misma huella). */
+async function planosRepetidos(dir: string): Promise<string[]> {
+  const out: string[] = [];
+  const assets = new Set(await fs.readdir(path.join(dir, "assets")).catch(() => [] as string[]));
+  for (const f of (await archivosDe(path.join(dir, "build", "planos"))).filter((x) => VIDEO_IA.test(x))) {
+    const h = (await sha256Archivo(f).catch(() => "")).slice(0, 12);
+    if (h && assets.has(`wan-${h}${path.extname(f).toLowerCase()}`)) out.push(f);
+  }
+  return out;
+}
+
+/** Lo que ComfyUI dejó en output/ y ya está copiado en el resultado de su receta (mismo nombre y huella). */
+async function comfyRepetidos(usado: string): Promise<string[]> {
+  const salidas = await archivosDe(path.join(COMFYUI_DIR, "output"));
+  if (!salidas.length) return [];
+  const porNombre = new Map<string, string[]>();
+  for (const s of salidas) porNombre.set(path.basename(s), [...(porNombre.get(path.basename(s)) ?? []), s]);
+  const out = new Set<string>();
+  for (const id of await fs.readdir(dirResultados()).catch(() => [] as string[])) {
+    if (usado.includes(id)) continue;
+    const corrida = path.join(dirResultados(), id);
+    for (const n of await fs.readdir(corrida).catch(() => [] as string[])) {
+      if (n === "corrida.json") continue;
+      const copia = path.join(corrida, n);
+      const st = await fs.lstat(copia).catch(() => null);
+      if (!st?.isFile()) continue;
+      for (const o of porNombre.get(n) ?? []) {
+        const so = await fs.lstat(o).catch(() => null);
+        if (so?.size === st.size && (await sha256Archivo(o)) === (await sha256Archivo(copia))) out.add(o);
+      }
+    }
+  }
+  return [...out];
+}
+
 /** Qué se borraría de cada proyecto (sin borrar nada). */
 async function candidatos(ahora: Date, dias: number) {
   const { ps, ocupados } = await proyectosLibres();
   const publicados = new Set((await db.publicacion.findMany({ select: { renderId: true } })).map((x) => x.renderId));
   const renders: { proyectoId: string; renderIds: string[]; archivos: string[] }[] = [];
   const crudos: { proyectoId: string; archivos: string[] }[] = [];
+  const copias: { proyectoId: string | null; archivos: string[] }[] = [];
   for (const p of ps) {
     if (ocupados.has(p.id)) continue;
     const dir = dirProyecto(p.slug);
@@ -147,9 +262,15 @@ async function candidatos(ahora: Date, dias: number) {
     }
     const cs = await crudosViejos(dir, ahora, dias);
     if (cs.length) crudos.push({ proyectoId: p.id, archivos: cs });
+    const planos = await planosRepetidos(dir);
+    if (planos.length) copias.push({ proyectoId: p.id, archivos: planos });
   }
   const papelera = (await enPapelera(ahora)).filter((x) => x.dias >= dias);
-  return { renders, crudos, papelera };
+  const usado = await enUso();
+  const comfy = await comfyRepetidos(usado);
+  if (comfy.length) copias.push({ proyectoId: null, archivos: comfy });
+  const fuentes = await fuentesViejas(ahora, dias, usado);
+  return { renders, crudos, papelera, fuentes, copias };
 }
 
 async function sumar(rutas: string[]): Promise<number> {
@@ -187,6 +308,8 @@ export async function medirEspacio(ahora = new Date(), dias = DIAS_GUARDAR): Pro
       renders: { cuantos: c.renders.reduce((s, x) => s + x.renderIds.length, 0), bytes: await sumar(archivosRenders) },
       crudos: { cuantos: c.crudos.reduce((s, x) => s + x.archivos.length, 0), bytes: await sumar(c.crudos.flatMap((x) => x.archivos)) },
       papelera: { cuantos: c.papelera.length, bytes: await sumar(c.papelera.map((x) => x.ruta)) },
+      fuentes: { cuantos: c.fuentes.length, bytes: await sumar(c.fuentes) },
+      copias: { cuantos: c.copias.reduce((s, x) => s + x.archivos.length, 0), bytes: await sumar(c.copias.flatMap((x) => x.archivos)) },
     },
     dias,
     disco: await espacioLibre(dirDatos()).catch(() => null),
@@ -231,6 +354,23 @@ export async function liberar(que: QueLiberar, confirmo: boolean, ahora = new Da
       bytes += await sumar(x.archivos);
       for (const a of x.archivos) await fs.rm(a, { force: true });
       cuantos += x.archivos.length;
+    }
+  } else if (que === "fuentes") {
+    // Se vuelve a mirar justo antes: un trabajo nuevo pudo pedir uno de estos videos.
+    const frescos = new Set(await fuentesViejas(ahora, dias, await enUso()));
+    for (const r of c.fuentes) {
+      if (!frescos.has(r)) continue;
+      bytes += await borrar(r);
+      if (!existsSync(r)) cuantos++;
+    }
+  } else if (que === "copias") {
+    const comfyOcupado = (await db.trabajo.count({ where: { tipo: "workflow.correr", estado: { in: ["pendiente", "corriendo"] } } })) > 0;
+    for (const x of c.copias) {
+      if (x.proyectoId ? await ocupado(x.proyectoId) : comfyOcupado) continue;
+      for (const a of x.archivos) {
+        bytes += await borrar(a);
+        if (!existsSync(a)) cuantos++;
+      }
     }
   } else {
     const base = path.resolve(dirPapelera());
