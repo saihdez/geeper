@@ -7,13 +7,11 @@
  * - developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/error-codes
  */
 import { credenciales, urlCallback } from "./config";
-import { TIMEOUT_SUBIDA_MS, errorDe, formulario, leerTramo, pedir, pedirJson } from "./http";
-import { registrarSecreto, tapar } from "./secretos";
+import { errorDe, formulario, pedir, pedirJson } from "./http";
+import { clasificarErrorGraph, crearGraph, cuota, GRAPH_VERSION, subirTramoRupload, textoSesion, uriSubida } from "./meta";
+import { registrarSecreto } from "./secretos";
 import { ErrorRed, type CuentaDescifrada, type CuentaNueva, type Red, type Sesion, type Tokens } from "./tipos";
 
-/** Última versión estable de Graph API (v27.0, 4 nov. 2026; es la de los ejemplos de la doc de Meta). */
-// VERIFICAR: la página de cambios de v27.0 aún daba 404 al implementar; la lista de versiones mostraba v26.0.
-export const GRAPH_VERSION = "v27.0";
 const GRAPH = `https://graph.instagram.com/${GRAPH_VERSION}`;
 const SCOPES = ["instagram_business_basic", "instagram_business_content_publish"];
 const MAX_CAPTION = 2200;
@@ -21,56 +19,16 @@ const DIA_MS = 24 * 60 * 60_000;
 /** Margen al buscar el media ya publicado tras un corte (relojes desfasados). */
 const MARGEN_PUBLICANDO_MS = 2 * 60_000;
 
-interface ErrorGraph {
-  error?: { message?: string; code?: number; error_subcode?: number; type?: string };
-}
-
 /** Clasifica los errores de Graph: 190 → auth; límite de publicación → cuota 24 h; límites de llamadas → cuota 1 h. */
 export function clasificarErrorInstagram(contexto: string) {
-  return (cuerpo: string): ErrorRed | null => {
-    let e: ErrorGraph["error"];
-    try {
-      e = (JSON.parse(cuerpo) as ErrorGraph).error;
-    } catch {
-      return null;
-    }
-    if (!e) return null;
-    const msg = tapar(`${contexto}: ${e.message ?? "error de Graph"} (code ${e.code ?? "?"}${e.error_subcode ? `/${e.error_subcode}` : ""})`);
-    if (e.code === 190 || e.code === 102) return new ErrorRed("auth", msg, undefined, 401);
-    // Límite de publicaciones de la Content Publishing API (50 en 24 h móviles según content_publishing_limit).
-    // Se espera 24 h: la ventana es móvil y el ejecutor no gasta intentos mientras espera.
-    if (e.code === 9 && e.error_subcode === 2207042) return new ErrorRed("cuota", msg, new Date(Date.now() + DIA_MS), 429);
-    if (e.code === 4 || e.code === 17 || e.code === 32 || e.code === 613) return new ErrorRed("cuota", msg, new Date(Date.now() + 60 * 60_000), 429);
-    return null;
-  };
+  // Límite de publicaciones de la Content Publishing API (50 en 24 h móviles según content_publishing_limit).
+  // Se espera 24 h: la ventana es móvil y el ejecutor no gasta intentos mientras espera.
+  return clasificarErrorGraph(contexto, (e, msg) => (e.code === 9 && e.error_subcode === 2207042 ? cuota(msg, DIA_MS) : null));
 }
 
-const bearer = (c: { acceso: string }) => ({ Authorization: `Bearer ${c.acceso}` });
-
-async function graph<T>(c: { acceso: string }, ruta: string, contexto: string, init: RequestInit = {}): Promise<T> {
-  registrarSecreto(c.acceso); // por si el cuerpo de un error lo repite
-  // VERIFICAR: graph.instagram.com acepta el token en `Authorization: Bearer` (así no viaja en la query).
-  return pedirJson<T>(`${GRAPH}${ruta}`, { ...init, headers: { ...bearer(c), ...(init.headers as Record<string, string> | undefined) } }, contexto, clasificarErrorInstagram(contexto));
-}
-
-function texto(s: Sesion, k: string): string {
-  const v = s[k];
-  if (typeof v !== "string" || !v) throw new ErrorRed("red", `La sesión de Instagram no tiene ${k}`);
-  return v;
-}
-
-/** URL de rupload del contenedor; sólo se acepta rupload.facebook.com (ahí va el token). */
-function uriSubida(uri: unknown, contenedor: string): string {
-  if (typeof uri === "string") {
-    try {
-      const u = new URL(uri);
-      if (u.protocol === "https:" && u.hostname === "rupload.facebook.com") return uri;
-    } catch {
-      /* se arma abajo */
-    }
-  }
-  return `https://rupload.facebook.com/ig-api-upload/${GRAPH_VERSION}/${contenedor}`;
-}
+// VERIFICAR: graph.instagram.com acepta el token en `Authorization: Bearer` (así no viaja en la query).
+const graph = crearGraph(GRAPH, clasificarErrorInstagram);
+const texto = (s: Sesion, k: string) => textoSesion(s, k, "Instagram");
 
 /** "2026-11-18T12:00:00+0000" → Date (Graph manda el huso sin dos puntos). */
 function fechaGraph(t: string | undefined): number {
@@ -186,7 +144,7 @@ export const instagram: Red = {
       body: formulario({ media_type: "REELS", upload_type: "resumable", caption, share_to_feed: "true" }),
     });
     if (!r.id) throw new ErrorRed("red", "Instagram no devolvió el id del contenedor");
-    return { contenedor: r.id, uri: uriSubida(r.uri, r.id) };
+    return { contenedor: r.id, uri: uriSubida(r.uri, "ig-api-upload", r.id) };
   },
 
   async bytesRecibidos(c, s, archivo) {
@@ -206,16 +164,8 @@ export const instagram: Red = {
   },
 
   async subirTramo(c, s, archivo, desde, hasta) {
-    const r = await pedir(uriSubida(s.uri, texto(s, "contenedor")), {
-      method: "POST",
-      headers: { Authorization: `OAuth ${c.acceso}`, offset: String(desde), file_size: String(archivo.bytes) },
-      body: leerTramo(archivo.ruta, desde, hasta),
-      duplex: "half",
-      timeout: TIMEOUT_SUBIDA_MS,
-    } as RequestInit & { duplex: "half"; timeout: number });
-    if (!r.ok) throw await errorDe(r, "Subida a Instagram", clasificarErrorInstagram("Subida a Instagram"));
-    await r.text().catch(() => "");
-    return { bytes: archivo.bytes };
+    const uri = uriSubida(s.uri, "ig-api-upload", texto(s, "contenedor"));
+    return subirTramoRupload(uri, c.acceso, archivo, desde, hasta, "Subida a Instagram", clasificarErrorInstagram("Subida a Instagram"));
   },
 
   async consultar(c, s) {
