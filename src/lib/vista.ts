@@ -13,19 +13,19 @@ import { obtenerPlantilla } from "./plantillas";
 import { cpsDeGrupos, escenasConSubtitulosRapidos, OBJETIVO } from "./qc";
 import { lineas } from "./subtitulos";
 import { KOKORO, listarGuardadas } from "./voces";
+import { claveVoz, vocesDeEscenas } from "./ediciones";
 
-/** UX-12: la voz con que se generó un audio, sin el prefijo del motor («kokoro:ef_dora» = «ef_dora»). */
-export function idDeVoz(v: unknown): string | null {
-  return typeof v === "string" && v.trim() ? v.trim().replace(/^kokoro:/, "") : null;
-}
-
-/** Nombre para la persona: el de Kokoro, el de una voz diseñada, o null si no se conoce. */
+/**
+ * Nombre para la persona: el de Kokoro, el de una voz diseñada, o null si no se conoce. `id` viene ya
+ * normalizado con claveVoz (UX-12: la misma cuenta que la revisión final, sin prefijo y en minúsculas).
+ */
 export function nombreDeVoz(id: string, guardadas: { id: string; nombre: string }[] = []): string | null {
+  const k = claveVoz(id);
   for (const vs of Object.values(KOKORO)) {
-    const k = vs.find((x) => x.voz === id);
-    if (k) return k.nombre;
+    const x = vs.find((v) => claveVoz(v.voz) === k);
+    if (x) return x.nombre;
   }
-  return guardadas.find((g) => g.id === id)?.nombre ?? null;
+  return guardadas.find((g) => claveVoz(g.id) === k)?.nombre ?? null;
 }
 
 /**
@@ -66,6 +66,8 @@ export async function vistaProyecto(id: string) {
     const cpl = caracteresPorLinea(proyecto.formato, opcionesDe(proyecto));
     const { W, H } = metricas(proyecto.formato, opcionesDe(proyecto));
     const es = escenasEnLinea(proyecto);
+    // UX-12: con qué voz suena cada escena, con la misma cuenta que ediciones.ts (null si es voz real).
+    const vozDe = new Map(vocesDeEscenas(proyecto).map((x) => [x.escena, x.voz]));
     const todos = todosLosGrupos(proyecto);
     const finSubs = duracionEscenas(proyecto);
     total = finSubs + (plantilla?.datos.tarjetaFinal.duracion ?? 0);
@@ -103,7 +105,7 @@ export async function vistaProyecto(id: string) {
         efectos: { transicion: v.transicion ?? null, movimiento: v.movimiento ?? null, velocidad: v.velocidad ?? 1, color: v.color ?? null, efectos: v.efectos ?? null },
         visual: { asset: a.id, ruta: a.ruta, source: a.source, licencia: a.licencia, tipo: a.tipo, inicio: e.visual.rango.inicio, ajuste: e.visual.ajuste ?? "auto", ancla: e.visual.ancla ?? "centro", prompt: a.regenerar.prompt ?? null, encuadre: encuadreDe(e.visual, a, W, H), aspecto: a.ancho && a.alto ? a.ancho / a.alto : null },
         // UX-12: con qué voz suena hoy la escena (null en clips o audios propios), para avisar de mezclas.
-        voz: { asset: vozA.id, source: vozA.source, ruta: vozA.ruta, inicio: e.voz.rango.inicio, voz: vozA.source === "archivo" ? null : idDeVoz(vozA.regenerar.voz) },
+        voz: { asset: vozA.id, source: vozA.source, ruta: vozA.ruta, inicio: e.voz.rango.inicio, voz: vozDe.get(e.escena.id) ?? null },
         grupos: gruposDeEscena(proyecto, e, todos).map((g) => {
           // Si el grupo cruza al corte siguiente, aquí se edita la parte de esta escena.
           const propias = g.fichas.filter((f) => f.escena === e.escena.id);
@@ -151,7 +153,7 @@ export async function vistaProyecto(id: string) {
     : null;
   // UX-12: nombres de la voz elegida y de las que suenan (las diseñadas sólo se leen si hacen falta).
   const voces = p ? await (async () => {
-    const elegida = idDeVoz(p.voz.voz);
+    const elegida = typeof p.voz.voz === "string" && p.voz.voz.trim() ? claveVoz(p.voz.voz) : null;
     const ids = [...new Set([elegida, ...(escenas as { voz: { voz: string | null } }[]).map((e) => e.voz.voz)].filter((x): x is string => !!x))];
     let guardadas: { id: string; nombre: string }[] = [];
     if (ids.some((x) => !nombreDeVoz(x))) guardadas = await listarGuardadas().catch(() => []);
