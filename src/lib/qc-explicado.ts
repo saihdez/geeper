@@ -112,3 +112,33 @@ export function resumirQc(reglas: { id: string; nombre: string; ok: boolean; avi
   if (avisos.length) return { estado: "con-avisos", titulo: "Listo para publicar, con cosas para mirar", bloquean, avisos };
   return { estado: "listo", titulo: "Listo para publicar", bloquean, avisos };
 }
+
+/** Lo que la vista sabe antes de renderizar (REN-04): escenas con subtítulos de más de 17 letras por segundo. */
+export interface SubtitulosRapidos {
+  limite: number;
+  /** El QC lo rechazaría (en clips de material ajeno sólo avisa: la voz del creador no se puede frenar). */
+  bloquea: boolean;
+  escenas: { id: string; indice: number; cps: number }[];
+}
+
+const enLista = (n: number[]) => (n.length <= 1 ? String(n[0] ?? "") : `${n.slice(0, -1).join(", ")} y ${n[n.length - 1]}`);
+const coma = (x: number) => x.toFixed(1).replace(".", ",");
+
+/**
+ * REN-04: el aviso junto a «Crear el video» y la pregunta antes de crearlo si el QC lo va a rechazar.
+ * No cambia el umbral (DECISIONES, 6.3 n.º 14): sólo avisa antes de esperar el render.
+ */
+export function avisoSubtitulosRapidos(sr: SubtitulosRapidos | null | undefined): { texto: string; confirmar: string | null } | null {
+  const escenas = (sr?.escenas ?? []).filter((e) => e.indice >= 0);
+  if (!sr || !escenas.length) return null;
+  const nums = escenas.map((e) => e.indice + 1);
+  const donde = `${nums.length === 1 ? "la escena" : "las escenas"} ${enLista(nums)}`;
+  const peor = Math.max(...escenas.map((e) => e.cps));
+  if (!sr.bloquea) {
+    return { texto: `Los subtítulos pasan rápido en ${donde} (hasta ${coma(peor)} letras por segundo). Es la voz del creador: sólo es un aviso, el video se podrá descargar.`, confirmar: null };
+  }
+  return {
+    texto: `Antes de crear el video: los subtítulos pasan muy rápido en ${donde} (hasta ${coma(peor)} letras por segundo; lo cómodo es hasta ${sr.limite}). Así no se podrá descargar. Acorta un poco esas frases (no cambia lo que se oye).`,
+    confirmar: `Los subtítulos pasan muy rápido en ${donde}: el video saldrá rechazado y no se podrá descargar. ¿Crearlo igual?`,
+  };
+}

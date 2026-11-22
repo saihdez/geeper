@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Aviso, Estado, archivo, pedir, postJson, segundos, useSondeo } from "./comun";
 import { ACCEPT_IMAGEN, esVector } from "@/lib/formatos-vector";
-import { explicarRegla, porQueFalla, resumirQc, type FraseQc } from "@/lib/qc-explicado";
+import { avisoSubtitulosRapidos, explicarRegla, LIMITES_SUBTITULOS, porQueFalla, resumirQc, type FraseQc, type SubtitulosRapidos } from "@/lib/qc-explicado";
 import { VistaEnVivo } from "./vista-en-vivo";
 import { ListaTrabajos } from "./lista-trabajos";
 import { ListaPublicaciones, PanelPublicar, type PublicacionV } from "./panel-publicar";
@@ -35,6 +35,8 @@ interface Grupo {
   lineas: number;
   cruza: boolean;
   mostradoPropio: string;
+  /** Letras por segundo con que pasa (la misma cuenta que la regla del QC). */
+  cps: number;
 }
 interface EscenaV {
   id: string;
@@ -77,6 +79,8 @@ interface Vista {
   extras: ExtrasV | null;
   /** Importado antes del reencuadre por cara: se analiza una vez al abrirlo. */
   carasPendientes: boolean;
+  /** REN-04: escenas con subtítulos rápidos, sabido antes de renderizar. */
+  subtitulosRapidos: SubtitulosRapidos | null;
 }
 
 /** Mensaje de una subida: el de éxito más lo que VectorCraft avisó al convertir (p. ej. una fuente que faltaba). */
@@ -213,6 +217,9 @@ export function EditorGrupo({ g, onGuardar, onQuitar, corregido }: { g: Grupo; c
       {corregido && !cambiado && <button type="button" className="boton py-1" onClick={() => void onQuitar()} title={`Se oye: «${g.oido}»`}>Deshacer</button>}
       {g.cruza && <span className="text-xs text-tenue">sigue en la escena siguiente</span>}
       {error && <span id={idError} className="w-full pl-[4.5rem] text-xs text-red-300">{error}</span>}
+      {!cambiado && g.cps > LIMITES_SUBTITULOS.maxCps && (
+        <span className="w-full pl-[4.5rem] text-xs text-amber-200">Pasa muy rápido ({g.cps.toFixed(1).replace(".", ",")} letras por segundo): acórtalo un poco para que dé tiempo a leerlo.</span>
+      )}
       {g.oido !== g.mostradoPropio && <span className="w-full pl-[4.5rem] text-xs text-tenue">Se oye: «{g.oido}»</span>}
     </li>
   );
@@ -364,7 +371,12 @@ export function EditorProyecto({ id }: { id: string }) {
     await editar({ tipo: "cambiarVoz", motor, voz });
     if (confirm(`Listo: la voz del video ahora es «${nombre}». ¿La ponemos ya? Se vuelve a decir todo el guion con esa voz, se acomodan los subtítulos y se renderiza (unos minutos).`)) await regenerarVoz(null);
   };
-  const renderizar = () => hacer(() => postJson(`/api/proyectos/${id}/render`, {}), "Render en cola: sólo compila y renderiza, no genera nada con la GPU.");
+  const renderizar = async () => {
+    // REN-04: si el QC lo va a rechazar por subtítulos rápidos, se pregunta antes de esperar el render.
+    const aviso = avisoSubtitulosRapidos(v?.subtitulosRapidos);
+    if (aviso?.confirmar && !confirm(aviso.confirmar)) return;
+    await hacer(() => postJson(`/api/proyectos/${id}/render`, {}), "Render en cola: sólo compila y renderiza, no genera nada con la GPU.");
+  };
   const alinearMusica = () => hacer(async () => {
     const r = await postJson<{ cambio: boolean; motivo?: string }>(`/api/proyectos/${id}/musica`, {});
     if (!r.cambio) throw new Error(r.motivo ?? "No se pudo alinear la música");
@@ -397,6 +409,7 @@ export function EditorProyecto({ id }: { id: string }) {
   // Por defecto: el render si está al día; si hay cambios sin renderizar, la vista en vivo.
   const modo = pestana ?? (render && render.versionNumero === fila.versionActual ? "render" : "vivo");
   const activos = fila.trabajos.filter((t) => t.estado === "pendiente" || t.estado === "corriendo");
+  const avisoRapidos = avisoSubtitulosRapidos(v.subtitulosRapidos);
   const textoMostrar = mostrarTxt ?? (p?.mostrar ?? []).map((m) => `${m.de}=${m.a}`).join("\n");
 
   return (
@@ -419,6 +432,16 @@ export function EditorProyecto({ id }: { id: string }) {
           <button type="button" className="boton boton-primario" disabled={ocupado || !p} onClick={() => void renderizar()}>Renderizar (sin GPU para generar)</button>
         </div>
       </header>
+      {avisoRapidos && (
+        <Aviso tipo={v.subtitulosRapidos?.bloquea ? "alerta" : "info"}>
+          <p>{avisoRapidos.texto}</p>
+          <p className="mt-1 flex flex-wrap gap-2">
+            {v.subtitulosRapidos!.escenas.filter((e) => e.indice >= 0).map((e) => (
+              <a key={e.id} className="text-acento hover:underline" href={`#escena-${e.id}`}>Ir a la escena {e.indice + 1}</a>
+            ))}
+          </p>
+        </Aviso>
+      )}
       {caras?.fase === "buscando" && <p className="text-sm text-tenue" role="status">Revisando los clips para encuadrar mejor las caras…</p>}
       {caras?.fase === "listo" && (
         <Aviso tipo="ok">
