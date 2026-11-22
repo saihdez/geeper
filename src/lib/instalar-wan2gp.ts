@@ -17,18 +17,16 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { instalarAtencionRapida } from "./atencion";
-import { entornoUv } from "./estudio";
-import { bajar, carpetaRaiz } from "./instalar-craft";
+import { bajarArchivoCodigo, comandosPython, crearInstaladorPython, MARCA_COMMIT, modulosListos, pythonListo, torchListo, type EstadoPython, type PasoPython } from "./instalar-python";
 import { aplicarParchesWan2gp } from "./parches-wan2gp";
-import { SISTEMA } from "./plataforma";
 import { correr, type Registro } from "./proceso";
-import { UV, WAN2GP_DIR } from "./rutas";
+import { WAN2GP_DIR } from "./rutas";
 import { ajustesWan2gp, faltaEnInstalacion, instalacionWan2gp, modeloPlano, MODELO_POR_DEFECTO, probarWan2gp, type InstalacionWan2gp } from "./wan2gp";
+
+export { rutaRestricciones } from "./instalar-python";
 
 /** El código de un commit, sin Git. */
 export const urlArchivoWan2gp = (commit: string) => `https://codeload.github.com/deepbeepmeep/Wan2GP/tar.gz/${commit}`;
-/** Marca con el commit instalado desde el archivo (en un checkout de git, manda git). */
-const MARCA = ".geeper-commit";
 /** Commit fijado (v20, 2026-11-17). Subirlo es trabajo de /novedades (fuente «wan2gp»). */
 export const WAN2GP_COMMIT = "f4cfc1259215577be9a2ee280c41efbedfb4459a";
 export const WAN2GP_PYTHON_VERSION = "3.11";
@@ -42,24 +40,11 @@ export const INDICE_TORCH = "https://download.pytorch.org/whl/cu130";
  */
 export const FECHA_CORTE = "2026-11-18T00:00:00Z";
 
-export interface PasoWan2gp {
-  id: string;
-  nombre: string;
-  estado: "pendiente" | "trabajando" | "listo" | "error";
-}
+export type PasoWan2gp = PasoPython;
 
-export interface EstadoWan2gp {
-  /** false en macOS: Wan2GP necesita una GPU NVIDIA (o AMD con ROCm). */
-  disponible: boolean;
-  /** null si está instalado y validado. */
-  falta: string | null;
-  corriendo: boolean;
-  pasos: PasoWan2gp[];
-  error: string | null;
-  registro: string[];
+export interface EstadoWan2gp extends EstadoPython {
   /** Líneas anotadas desde el inicio (el registro guarda sólo las últimas). */
   lineas: number;
-  inicio: string | null;
 }
 
 const PASOS = [
@@ -70,9 +55,6 @@ const PASOS = [
   { id: "prueba", nombre: "Probar la GPU y Wan2GP" },
 ] as const;
 
-/** Archivo de restricciones: las dependencias no pueden cambiar el PyTorch del paso anterior. */
-export const rutaRestricciones = (dir: string) => path.join(dir, "venv", "geeper-restricciones.txt");
-
 /**
  * Comandos de uv, en orden (función pura, para las pruebas). Las dependencias van con la estrategia de
  * índices por defecto de uv (cada paquete sale del primer índice que lo tiene): mezclar índices por
@@ -80,43 +62,7 @@ export const rutaRestricciones = (dir: string) => path.join(dir, "venv", "geeper
  * cuele (revisión con Nemotron, 2026-11-20).
  */
 export function comandosWan2gp(dir: string, python: string): { paso: string; args: string[] }[] {
-  return [
-    { paso: "python", args: ["venv", "--python", WAN2GP_PYTHON_VERSION, path.join(dir, "venv")] },
-    { paso: "pytorch", args: ["pip", "install", "--python", python, ...TORCH, "--index-url", INDICE_TORCH] },
-    {
-      paso: "dependencias",
-      // PyTorch ya está (con CUDA 13); las restricciones lo dejan como está.
-      args: ["pip", "install", "--python", python, "-r", path.join(dir, "requirements.txt"), "-c", rutaRestricciones(dir), "--exclude-newer", FECHA_CORTE],
-    },
-  ];
-}
-
-const REGISTRO_MAX = 300;
-interface Memoria {
-  estado: EstadoWan2gp;
-  enCurso: Promise<void> | null;
-}
-const g = globalThis as unknown as { __wan2gp?: Memoria };
-
-function memoria(): Memoria {
-  return (g.__wan2gp ??= {
-    estado: { disponible: SISTEMA !== "mac", falta: null, corriendo: false, pasos: PASOS.map((p) => ({ ...p, estado: "pendiente" })), error: null, registro: [], lineas: 0, inicio: null },
-    enCurso: null,
-  });
-}
-
-function anotar(linea: string) {
-  const e = memoria().estado;
-  for (const l of linea.split(/\r?\n|\r/).map((x) => x.trimEnd()).filter(Boolean)) {
-    e.registro.push(l.slice(0, 300));
-    e.lineas++;
-  }
-  if (e.registro.length > REGISTRO_MAX) e.registro.splice(0, e.registro.length - REGISTRO_MAX);
-}
-
-function poner(id: string, estado: PasoWan2gp["estado"]) {
-  const p = memoria().estado.pasos.find((x) => x.id === id);
-  if (p) p.estado = estado;
+  return comandosPython(dir, python, { versionPython: WAN2GP_PYTHON_VERSION, torch: TORCH, indiceTorch: INDICE_TORCH, extraDependencias: ["--exclude-newer", FECHA_CORTE] });
 }
 
 /** Commit del código instalado: el de git si es un checkout; si no, el de la marca que deja el archivo. */
@@ -125,38 +71,24 @@ async function commitActual(dir: string): Promise<string | null> {
     const r = await correr("git", ["-C", dir, "rev-parse", "HEAD"], { permitirFallo: true }).catch(() => null);
     return r?.codigo === 0 ? r.stdout.trim() : null;
   }
-  return fs.readFile(path.join(dir, MARCA), "utf8").then((t) => t.trim(), () => null);
+  return fs.readFile(path.join(dir, MARCA_COMMIT), "utf8").then((t) => t.trim(), () => null);
 }
 
 export async function bajarCodigo(dir: string, log: Registro) {
   if ((await commitActual(dir)) === WAN2GP_COMMIT && existsSync(path.join(dir, "wgp.py"))) return log("El código ya está en la versión fijada.");
   if (existsSync(path.join(dir, ".git"))) return bajarConGit(dir, log);
-  if (existsSync(dir) && !existsSync(path.join(dir, MARCA))) {
-    // Ni checkout ni instalado por Geeper: sólo se usa si está vacía (o tiene sólo el venv de un intento anterior).
-    const dentro = (await fs.readdir(dir)).filter((n) => n !== "venv");
-    if (dentro.length) throw new Error(`Ya hay una carpeta ${dir} que no es de Wan2GP. Muévela o bórrala y vuelve a intentar.`);
-  }
-  log(`Descargando Wan2GP (${WAN2GP_COMMIT.slice(0, 7)})…`);
-  const r = await bajar(urlArchivoWan2gp(WAN2GP_COMMIT));
-  if (!r.ok) throw new Error(`GitHub respondió ${r.status} al descargar Wan2GP`);
-  await fs.mkdir(path.dirname(dir), { recursive: true });
-  const tmp = await fs.mkdtemp(path.join(path.dirname(dir), ".wan2gp-"));
-  try {
-    const archivo = path.join(tmp, "wan2gp.tar.gz");
-    await fs.writeFile(archivo, Buffer.from(await r.arrayBuffer()));
-    await fs.mkdir(path.join(tmp, "x"));
-    // tar viene con Windows 10+ y macOS; en Linux siempre está.
-    await correr("tar", ["-xzf", archivo, "-C", path.join(tmp, "x")], { log, timeout: 10 * 60_000 });
-    const raiz = path.join(tmp, "x", await carpetaRaiz(path.join(tmp, "x"), ""));
-    if (!existsSync(path.join(raiz, "wgp.py"))) throw new Error("El archivo de Wan2GP no trae wgp.py: no se instaló.");
+  await bajarArchivoCodigo({
+    dir,
+    commit: WAN2GP_COMMIT,
+    url: urlArchivoWan2gp(WAN2GP_COMMIT),
+    nombre: "Wan2GP",
+    principal: "wgp.py",
+    // Ni checkout ni instalado por Geeper.
+    ajena: `Ya hay una carpeta ${dir} que no es de Wan2GP. Muévela o bórrala y vuelve a intentar.`,
     // Encima de lo que haya: el venv y los pesos (ckpts/) de una versión anterior se conservan.
-    await fs.cp(raiz, dir, { recursive: true, force: true });
-    await fs.writeFile(path.join(dir, MARCA), `${WAN2GP_COMMIT}\n`);
-    await aplicarParchesWan2gp(dir, log);
-    log("Código de Wan2GP listo.");
-  } finally {
-    await fs.rm(tmp, { recursive: true, force: true });
-  }
+    despues: aplicarParchesWan2gp,
+    log,
+  });
 }
 
 /** El estudio de desarrollo puede tener Wan2GP como checkout de git: se actualiza con git. */
@@ -169,23 +101,6 @@ async function bajarConGit(dir: string, log: Registro) {
   // Sólo ese commit, sin la historia: es mucho más liviano.
   await correr("git", ["-C", dir, "fetch", "--depth", "1", "origin", WAN2GP_COMMIT], { log, timeout: 30 * 60_000 });
   await correr("git", ["-C", dir, "checkout", "-q", "--detach", "FETCH_HEAD"], { log });
-}
-
-async function pythonListo(python: string): Promise<boolean> {
-  if (!existsSync(python)) return false;
-  const r = await correr(python, ["-c", "import sys; print(sys.version_info[:2] == (3, 11))"], { permitirFallo: true }).catch(() => null);
-  return r?.stdout.trim() === "True";
-}
-
-async function torchListo(python: string): Promise<string | null> {
-  const r = await correr(python, ["-c", "import torch; print(torch.__version__)"], { permitirFallo: true, timeout: 120_000 }).catch(() => null);
-  return r?.codigo === 0 && r.stdout.trim().startsWith("2.10.") ? r.stdout.trim() : null;
-}
-
-async function dependenciasListas(i: InstalacionWan2gp): Promise<boolean> {
-  // mmgp viene dentro de la carpeta de Wan2GP: se importa desde ahí.
-  const r = await correr(i.python, ["-c", "import diffusers, transformers, mmgp, gradio, decord, cv2; print('ok')"], { cwd: i.dir, permitirFallo: true, timeout: 180_000 }).catch(() => null);
-  return r?.codigo === 0 && r.stdout.includes("ok");
 }
 
 async function probar(i: InstalacionWan2gp, log: Registro) {
@@ -210,69 +125,31 @@ async function probar(i: InstalacionWan2gp, log: Registro) {
   }
 }
 
+const instalador = crearInstaladorPython<EstadoWan2gp>({
+  clave: "__wan2gp",
+  pasos: PASOS,
+  sinMac: "Wan2GP necesita una GPU NVIDIA: en macOS no se puede.",
+  contarLineas: true,
+  // Lo que falta (null si está instalado: código, Python y wgp.py). La GPU se prueba al instalar.
+  falta: () => faltaEnInstalacion(instalacionWan2gp()),
+  ubicacion: () => instalacionWan2gp(WAN2GP_DIR),
+  bajarCodigo,
+  comandos: comandosWan2gp,
+  comprobar: (dir, python) => ({
+    python: () => pythonListo(python, WAN2GP_PYTHON_VERSION),
+    pytorch: async () => Boolean(await torchListo(python, "2.10.")),
+    // mmgp viene dentro de la carpeta de Wan2GP: se importa desde ahí.
+    dependencias: () => modulosListos(dir, python, ["diffusers", "transformers", "mmgp", "gradio", "decord", "cv2"]),
+  }),
+  restricciones: TORCH,
+  extra: instalarAtencionRapida,
+  probar: (dir, python, log) => probar(instalacionWan2gp(dir, python), log),
+  listo: "Listo: ya puedes animar escenas.",
+});
+
 /** Lo que falta (null si está instalado: código, Python y wgp.py). La GPU se prueba al instalar. */
-export function revisarWan2gp(): EstadoWan2gp {
-  const m = memoria();
-  if (!m.enCurso) m.estado.falta = m.estado.disponible ? faltaEnInstalacion(instalacionWan2gp()) : "Wan2GP necesita una GPU NVIDIA: en macOS no se puede.";
-  return m.estado;
-}
-
+export const revisarWan2gp = (): EstadoWan2gp => instalador.revisar();
 /** Empieza la instalación (si no hay otra) y vuelve enseguida; el avance se lee con revisarWan2gp(). */
-export function instalarWan2gp(): EstadoWan2gp {
-  const m = memoria();
-  if (!m.estado.disponible) throw new Error("Wan2GP necesita una GPU NVIDIA: en macOS no se puede.");
-  if (m.enCurso) return m.estado;
-  const e = m.estado;
-  Object.assign(e, { corriendo: true, error: null, registro: [], lineas: 0, inicio: new Date().toISOString(), pasos: PASOS.map((p) => ({ ...p, estado: "pendiente" })) });
-  const i = instalacionWan2gp(WAN2GP_DIR);
-  const env = entornoUv();
-  m.enCurso = (async () => {
-    let actual = "codigo";
-    try {
-      const log: Registro = (l) => anotar(l);
-      poner("codigo", "trabajando");
-      await bajarCodigo(i.dir, log);
-      poner("codigo", "listo");
-
-      const comprobar: Record<string, () => Promise<boolean>> = {
-        python: () => pythonListo(i.python),
-        pytorch: async () => Boolean(await torchListo(i.python)),
-        dependencias: () => dependenciasListas(i),
-      };
-      for (const c of comandosWan2gp(i.dir, i.python)) {
-        actual = c.paso;
-        poner(c.paso, "trabajando");
-        if (await comprobar[c.paso]!()) log(`${c.paso}: ya estaba.`);
-        else {
-          if (c.paso === "dependencias") await fs.writeFile(rutaRestricciones(i.dir), `${TORCH.join("\n")}\n`);
-          await correr(UV, c.args, { env, log, timeout: 90 * 60_000 });
-          if (!(await comprobar[c.paso]!())) throw new Error("Se instaló pero no responde; mira el registro.");
-        }
-        poner(c.paso, "listo");
-      }
-      // Opcional: FlashAttention desde una rueda guardada (nunca hace fallar la instalación).
-      await instalarAtencionRapida(i.python, log, env);
-      actual = "prueba";
-      poner("prueba", "trabajando");
-      await probar(i, log);
-      poner("prueba", "listo");
-      log("Listo: ya puedes animar escenas.");
-    } catch (x) {
-      const msg = x instanceof Error ? x.message : String(x);
-      poner(actual, "error");
-      anotar(`Error: ${msg}`);
-      e.error = msg.trim().split("\n").filter(Boolean).slice(-1)[0]?.slice(0, 300) ?? msg;
-    }
-  })().finally(() => {
-    e.corriendo = false;
-    e.falta = faltaEnInstalacion(i);
-    m.enCurso = null;
-  });
-  return e;
-}
-
+export const instalarWan2gp = (): EstadoWan2gp => instalador.instalar();
 /** Espera a que termine la instalación en curso (scripts y pruebas). */
-export async function esperarWan2gp(): Promise<EstadoWan2gp> {
-  await memoria().enCurso;
-  return memoria().estado;
-}
+export const esperarWan2gp = (): Promise<EstadoWan2gp> => instalador.esperar();
