@@ -43,6 +43,6 @@ function apagar() {
 process.on("SIGINT", apagar);
 process.on("SIGTERM", apagar);
 
-lanzar("web", "36", ["exec", "next", "dev", "--port", "3300"]);
+lanzar("web", "36", ["exec", "next", "dev", "--hostname", "127.0.0.1", "--port", "3300"]);
 lanzar("worker", "35", ["exec", "tsx", "worker/index.ts"]);
 console.log("Geeper: http://localhost:3300  (Ctrl+C para apagar web y worker)");
