@@ -10,7 +10,10 @@ import { PrepararEstudio } from "./preparar-estudio";
 
 interface Chequeo { nombre: string; ok: boolean; aviso?: boolean; detalle: string; arreglo?: string }
 
-interface Revision { chequeos: Chequeo[]; revisado: string }
+/** Cómo va la copia de seguridad diaria (lo arma estadoRespaldo en el servidor). */
+export interface Respaldo { hecho: string | null; dias: number | null; copia: string | null; error: string | null; aviso: string | null; otroDisco: boolean }
+
+interface Revision { chequeos: Chequeo[]; revisado: string; respaldo?: Respaldo }
 
 /** Revisa al entrar y con «Volver a revisar» (sin repetir solo: cada revisión lanza varios programas). */
 function useRevision() {
@@ -51,6 +54,35 @@ export function estadoChequeo(c: Pick<Chequeo, "ok" | "aviso">): { signo: string
   return { signo: "✗", texto: "Falta o falla", clase: "text-red-400" };
 }
 
+const fechaLarga = (iso: string) => new Date(iso).toLocaleString("es", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+
+/** Qué decir de la copia de seguridad: aviso si no hay, si tiene más de 2 días o si no llegó al otro disco. */
+export function textoRespaldo(r: Respaldo, fecha: (iso: string) => string = fechaLarga): { tipo: "ok" | "alerta"; titulo: string; detalle: string } {
+  if (r.aviso) {
+    const detalle =
+      r.dias === null || r.dias > 2
+        ? "Se hace sola una vez al día mientras Geeper está abierto. Déjalo abierto un rato para que haga una."
+        : "Revisa que el otro disco esté conectado. La copia de la base sí quedó en esta computadora.";
+    return { tipo: "alerta", titulo: r.aviso, detalle };
+  }
+  const donde = r.copia
+    ? "También quedó guardada en el otro disco."
+    : r.otroDisco
+      ? "La próxima también se guardará en el otro disco."
+      : "Se guarda sólo en esta computadora: no hay otro disco elegido.";
+  return { tipo: "ok", titulo: `Copia de seguridad al día: la última es del ${r.hecho ? fecha(r.hecho) : "—"}.`, detalle: donde };
+}
+
+function CopiaSeguridad({ respaldo }: { respaldo: Respaldo }) {
+  const t = textoRespaldo(respaldo);
+  return (
+    <Aviso tipo={t.tipo}>
+      <p className="font-medium">{t.titulo}</p>
+      <p className="text-tenue">{t.detalle}</p>
+    </Aviso>
+  );
+}
+
 const hora = (iso: string) => new Date(iso).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
 
 export function Sistema() {
@@ -67,6 +99,7 @@ export function Sistema() {
       </div>
       <PrepararEstudio alTerminar={() => void recargar()} />
       <AvisoPrivados alCambiar={() => void recargar()} />
+      {datos?.respaldo && <CopiaSeguridad respaldo={datos.respaldo} />}
       {error && <Aviso tipo="error">{error}</Aviso>}
       {!datos && !error && <Cargando>Revisando… puede tardar unos segundos.</Cargando>}
       <ul className="space-y-2">
