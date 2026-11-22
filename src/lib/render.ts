@@ -23,7 +23,7 @@ import { cortesDe, medirRitmo, type Ritmo } from "./pulsos";
 import { asegurarPicoReal, correrQc, duplicadosEsperados, ENTREGA, normalizarAudio, TOPES_PICO, type InformeQc } from "./qc";
 import { HYPERFRAMES_VERSION, dirProyecto } from "./rutas";
 import { correrHf } from "./hyperframes";
-import { banderasRender } from "./render-gpu";
+import { banderasRender, hayNvidia, renderConRespaldo } from "./render-gpu";
 import { SISTEMA } from "./plataforma";
 import { origenClip, reglaClip } from "./clips";
 
@@ -162,14 +162,17 @@ export async function renderEntregar(
     [crudo],
     async ([tmp]) => {
       // NVENC sólo con NVIDIA: en macOS el render va por CPU (VideoToolbox queda para cuando se pruebe en un Mac).
-      const candado = SISTEMA === "mac" ? null : await tomarGpu(`render ${fila.slug}`, { esperar: false, signal: ctx.signal });
+      // Con GEEPER_RENDER_DETECTAR_NVIDIA=1 (REN-03) tampoco se pide en un equipo sin NVIDIA (render-gpu.ts).
+      const nvidia = await hayNvidia(SISTEMA);
+      const candado = !nvidia ? null : await tomarGpu(`render ${fila.slug}`, { esperar: false, signal: ctx.signal });
       gpu = candado !== null;
-      ctx.log(gpu ? "GPU libre: render con NVENC (gpu-lock tomado)" : SISTEMA === "mac" ? "macOS: render con CPU (libx264)" : "GPU ocupada: render con CPU (libx264), sin esperar");
+      ctx.log(gpu ? "GPU libre: render con NVENC (gpu-lock tomado)" : SISTEMA === "mac" ? "macOS: render con CPU (libx264)" : !nvidia ? "Sin tarjeta NVIDIA: render con CPU (libx264)" : "GPU ocupada: render con CPU (libx264), sin esperar");
       try {
-        // Sin NVENC, la captura la elige banderasRender (REN-01, apagado por defecto).
-        const b = banderasRender(gpu, SISTEMA);
-        const args = ["render", "--output", tmp!, "--quality", "delivery", "--fps", String(p.fps), "--quiet", ...b.args];
-        await correrHf(args, { cwd: dirBuild, env: { ...ENV_HF, ...b.env }, log: ctx.log, signal: ctx.signal, timeout: 60 * 60_000 });
+        gpu = await renderConRespaldo(gpu, async (conGpu) => {
+          const b = banderasRender(conGpu, SISTEMA);
+          const args = ["render", "--output", tmp!, "--quality", "delivery", "--fps", String(p.fps), "--quiet", ...b.args];
+          await correrHf(args, { cwd: dirBuild, env: { ...ENV_HF, ...b.env }, log: ctx.log, signal: ctx.signal, timeout: 60 * 60_000 });
+        }, ctx.log, process.env, ctx.signal);
       } finally {
         candado?.liberar();
       }
