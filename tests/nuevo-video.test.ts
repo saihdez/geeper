@@ -28,3 +28,21 @@ describe("Nuevo video", () => {
     expect(envolturas(pintar())).toEqual(["oculto", "visible"]);
   });
 });
+
+describe("semántica de Nuevo (A11-09)", () => {
+  it("el enlace a Clips no está dentro del grupo de opciones", () => {
+    const html = pintar();
+    const grupo = html.match(/<div[^>]*role="radiogroup"[^>]*>([\s\S]*?)<\/div><a /)?.[1] ?? "";
+    expect(grupo).toContain('role="radio"');
+    expect(grupo).not.toContain("<a ");
+    expect(html).toMatch(/<\/div><a [^>]*href="\/clips"/);
+  });
+
+  it("sólo la opción elegida entra con Tab (las otras, con las flechas)", () => {
+    const grupo = pintar().match(/<div[^>]*role="radiogroup"[^>]*>([\s\S]*?)<\/div><a /)?.[1] ?? "";
+    const radios = [...grupo.matchAll(/<button[^>]*role="radio"[^>]*>/g)].map((m) => m[0]);
+    expect(radios).toHaveLength(2);
+    expect(radios[0]).toMatch(/aria-checked="true"[^>]*tabindex="0"/);
+    expect(radios[1]).toMatch(/aria-checked="false"[^>]*tabindex="-1"/);
+  });
+});
