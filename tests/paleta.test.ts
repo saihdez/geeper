@@ -25,3 +25,13 @@ describe("buscador de acciones", () => {
     expect(filtrar(acciones, "pizza")).toEqual([]);
   });
 });
+
+describe("registro de acciones (WEB-06)", () => {
+  it("la firma no cambia si sólo cambian las funciones, y sí si cambia lo que se ve", async () => {
+    const { firmaAcciones } = await import("@/components/paleta");
+    const base = [a("x", "Hacer x")];
+    expect(firmaAcciones(base)).toBe(firmaAcciones([{ ...base[0]!, hacer: () => undefined }]));
+    expect(firmaAcciones(base)).not.toBe(firmaAcciones([{ ...base[0]!, deshabilitada: true }]));
+    expect(firmaAcciones(base)).not.toBe(firmaAcciones([...base, a("y", "Hacer y")]));
+  });
+});

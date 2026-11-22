@@ -37,15 +37,24 @@ const suscribir = (o: () => void) => {
 };
 const VACIO: AccionPaleta[] = [];
 
+/** Lo visible de una lista de acciones (sin `hacer`): si no cambia, no hace falta avisar a la paleta. */
+export function firmaAcciones(acciones: AccionPaleta[]): string {
+  return JSON.stringify(acciones.map(({ id, titulo, grupo, palabras, detalle, confirmar, deshabilitada }) => [id, titulo, grupo, palabras, detalle, confirmar, deshabilitada]));
+}
+
 /** Suma acciones a la paleta mientras el componente esté montado. */
 export function useAccionesPaleta(clave: string, acciones: AccionPaleta[]) {
   const ref = useRef(acciones);
   useEffect(() => {
     ref.current = acciones;
-    // Se envuelven para llamar siempre a la versión más nueva (los cierres cambian en cada render).
-    registradas.set(clave, acciones.map((a, i) => ({ ...a, hacer: () => ref.current[i]?.hacer() })));
-    avisar();
   });
+  // Sólo se vuelve a registrar (y a repintar la paleta) si cambia lo que se ve, no en cada render.
+  const firma = firmaAcciones(acciones);
+  useEffect(() => {
+    // Se envuelven para llamar siempre a la versión más nueva (los cierres cambian en cada render).
+    registradas.set(clave, ref.current.map((a, i) => ({ ...a, hacer: () => ref.current[i]?.hacer() })));
+    avisar();
+  }, [clave, firma]);
   useEffect(() => () => {
     registradas.delete(clave);
     avisar();
