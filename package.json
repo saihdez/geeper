@@ -26,6 +26,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:reales": "node scripts/pruebas-reales.mjs",
     "test:escritorio": "vitest run tests/escritorio.test.ts tests/plataforma.test.ts tests/gpu.test.ts tests/instalar-craft.test.ts tests/craft-web.test.ts tests/novedades.test.ts tests/estudio.test.ts tests/craft-escritorio.test.ts tests/python-utf8.test.ts",
     "postinstall": "prisma generate"
   },

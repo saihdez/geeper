@@ -129,8 +129,9 @@ mkdir -p $V && tar -xzf photocraft-$V-linux-x86_64.tar.gz -C $V
 ln -sfn $D/$V/photocraft-$V-linux-x86_64 $D/actual
 ```
 
-Para cambiar de versión: subir `PHOTOCRAFT_VERSION`, instalar con el botón y correr `pnpm test`. El
-test «PhotoCraft real» compone una portada de verdad. Además, `DISENO_BASE` (portada) y
+Para cambiar de versión: subir `PHOTOCRAFT_VERSION`, instalar con el botón y correr
+`pnpm run test:reales -- tests/photocraft.test.ts` (`pnpm test` salta las pruebas reales). El test
+«PhotoCraft real» compone una portada de verdad. Además, `DISENO_BASE` (portada) y
 `VERSION_COLOR` (looks) invalidan sus cachés. `GEEPER_PHOTOCRAFT` apunta a otro binario.
 
 **MCP para Claude (opcional):**
