@@ -27,6 +27,7 @@ export const TIPOS_TRABAJO: Record<TipoTrabajo, string> = {
   "proyecto.traducir": "Traduciendo el video",
   "voz.disenar": "Creando una voz nueva",
   "efecto.generar": "Creando un efecto de sonido",
+  "efectos.preparar": "Preparando los sonidos listos",
   "render.entregar": "Armando el video final y revisándolo",
   "publicar.subir": "Subiendo el video a tus redes",
 };
