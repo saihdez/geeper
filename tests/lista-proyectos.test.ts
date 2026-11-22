@@ -32,3 +32,18 @@ describe("lista de proyectos (UX-20)", () => {
     expect(NOMBRES.generando).toBe("Haciendo el video");
   });
 });
+
+describe("lista de proyectos (A11-12)", () => {
+  it("mientras carga lo anuncia y no deja una lista vacía", () => {
+    const html = renderToStaticMarkup(createElement(ListaProyectos));
+    expect(html).toContain('role="status"');
+    expect(html).toContain("Cargando tus videos");
+    expect(html).not.toContain("<ul");
+  });
+
+  it("la lista vacía dice qué hacer", () => {
+    const s = fs.readFileSync(path.join(process.cwd(), "src", "components", "lista-proyectos.tsx"), "utf8");
+    expect(s).toContain("Todavía no tienes videos.");
+    expect(s).toContain("Haz el primero");
+  });
+});

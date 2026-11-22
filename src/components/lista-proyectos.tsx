@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { Barra, Estado, useSondeo } from "./comun";
+import { Aviso, Barra, Cargando, Estado, useSondeo } from "./comun";
 
 interface Fila {
   id: string;
@@ -32,14 +32,21 @@ export function ListaProyectos() {
         <h1 className="text-xl font-semibold">Mis videos</h1>
         <Link href="/nuevo" className="boton boton-primario">Nuevo video</Link>
       </div>
-      {error && <p className="text-red-300">{error}</p>}
+      {error && (
+        <Aviso tipo="error">
+          No se pudo traer la lista de tus videos. Geeper lo vuelve a intentar solo en unos segundos.
+          <details className="mt-1 text-xs text-tenue"><summary className="cursor-pointer">Detalle técnico</summary>{error}</details>
+        </Aviso>
+      )}
+      {!datos && !error && <Cargando>Cargando tus videos…</Cargando>}
       {datos && datos.proyectos.length === 0 && (
         <div className="tarjeta p-6 text-center text-tenue">
-          Todavía no hay proyectos. <Link className="text-acento underline" href="/nuevo">Crea el primero</Link>.
+          <p>Todavía no tienes videos.</p>
+          <p className="mt-1">Eliges un tema y Geeper arma el video por ti. <Link className="text-acento underline" href="/nuevo">Haz el primero</Link>.</p>
         </div>
       )}
-      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {datos?.proyectos.map((p) => {
+      {datos && datos.proyectos.length > 0 && <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {datos.proyectos.map((p) => {
           const t = p.trabajos[0];
           const activo = t && (t.estado === "corriendo" || t.estado === "pendiente");
           const r = p.renders[0];
@@ -68,7 +75,7 @@ export function ListaProyectos() {
             </li>
           );
         })}
-      </ul>
+      </ul>}
     </section>
   );
 }
