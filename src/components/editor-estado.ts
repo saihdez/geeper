@@ -108,10 +108,22 @@ export function textoFalloCreacion(t: Pick<TrabajoV, "estado"> | null): string {
 
 /**
  * WEB-10: la lista de trabajos pide /api/trabajos cada 2 s mientras está montada. Se monta sólo si la
- * persona la abrió o si hay algo en marcha (o el proyecto aún se está creando); en reposo, cero.
+ * persona la abrió, si hay algo en marcha, si el proyecto aún se está creando o si el último trabajo
+ * acaba de fallar (para que su registro se vea sin buscarlo); en reposo, cero.
  */
-export function verTrabajos(abiertaPorPersona: boolean | null, hayActivos: boolean, creando: boolean): boolean {
-  return abiertaPorPersona ?? (hayActivos || creando);
+export function verTrabajos(abiertaPorPersona: boolean | null, hayActivos: boolean, creando: boolean, falloReciente = false): boolean {
+  return abiertaPorPersona ?? (hayActivos || creando || falloReciente);
+}
+
+/** Cuánto sigue abierta sola la lista tras un fallo: después vuelve a no pedir nada en reposo. */
+export const MINUTOS_FALLO_VISIBLE = 10;
+
+/** WEB-10: el último trabajo del proyecto falló o se cortó hace menos de MINUTOS_FALLO_VISIBLE. */
+export function falloReciente(trabajos: TrabajoV[], ahora: number = Date.now()): boolean {
+  const c = estadoCreacion(trabajos);
+  if (c.fase !== "fallo" || c.trabajo?.estado === "cancelado") return false;
+  const cuando = c.trabajo?.terminado ?? c.trabajo?.creado;
+  return !!cuando && ahora - new Date(cuando).getTime() < MINUTOS_FALLO_VISIBLE * 60_000;
 }
 
 /** «2», «2 y 5», «2, 4 y 5». */

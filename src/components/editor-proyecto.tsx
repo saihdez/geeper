@@ -19,7 +19,7 @@ import { SelectorEncuadre, type EncuadreV } from "./selector-encuadre";
 import { PanelOtroEditor } from "./panel-otro-editor";
 import { useAccionesProyecto } from "./acciones-proyecto";
 import { FranjaAviso, type MensajeEditor } from "./franja-aviso";
-import { avisoGuardado, textoFalloCreacion, renderFallido, avisoRitmo, correccionesVacias, enLista, haceCuanto, mensajeSinCambios, opcionesRitmo, versionParaDeshacer, errorSubtitulo, escenasConOtraVoz, estaActivo, estadoCreacion, mismoContenido, pasoRender, preguntaVozEscena, renderEnCurso, verTrabajos, TEXTO_RITMO_GUARDADO, type TrabajoV, type VocesV } from "./editor-estado";
+import { avisoGuardado, falloReciente, textoFalloCreacion, renderFallido, avisoRitmo, correccionesVacias, enLista, haceCuanto, mensajeSinCambios, opcionesRitmo, versionParaDeshacer, errorSubtitulo, escenasConOtraVoz, estaActivo, estadoCreacion, mismoContenido, pasoRender, preguntaVozEscena, renderEnCurso, verTrabajos, TEXTO_RITMO_GUARDADO, type TrabajoV, type VocesV } from "./editor-estado";
 import { Plegable } from "./plegable";
 import { EdicionPorTexto, EfectosEscena, PanelAvanzado, PanelEstilo, type EfectosV, type EstiloV, type ExtrasV, type PalabraV } from "./edicion-avanzada";
 
@@ -779,7 +779,7 @@ export function EditorProyecto({ id }: { id: string }) {
           )}
         </div>
         <Plegable id="trabajos" titulo="Trabajos de este proyecto" detalle="Lo que Geeper hizo o está haciendo con este video, con su registro."
-          abierto={verTrabajos(trabajosAbiertos, activos.length > 0, !p)} alCambiar={setTrabajosAbiertos}>
+          abierto={verTrabajos(trabajosAbiertos, activos.length > 0, !p, falloReciente(fila.trabajos))} alCambiar={setTrabajosAbiertos}>
           <ListaTrabajos proyectoId={id} />
         </Plegable>
       </section>
