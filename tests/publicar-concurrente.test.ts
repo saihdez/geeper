@@ -30,12 +30,13 @@ const TSX = path.join(process.cwd(), "node_modules", ".bin", "tsx");
 const TOMAR = path.join(process.cwd(), "tests", "ayudas", "tomar-base.ts");
 
 /** Lanza un proceso que toma la base escribiendo durante `ms`; resuelve cuando ya la tiene, con su fin. */
-function tomarBase(ms: number): Promise<Promise<void>> {
+function tomarBase(ms: number): Promise<{ fin: Promise<void> }> {
   return new Promise((resolve, reject) => {
     const h = spawn(TSX, [TOMAR, process.env.GEEPER_DB!, String(ms)], { stdio: ["ignore", "pipe", "inherit"] });
     const fin = new Promise<void>((ok) => h.on("exit", () => ok()));
     h.on("error", reject);
-    h.stdout.once("data", () => resolve(fin));
+    // Un objeto y no la promesa: resolve(fin) la adoptaría y el POST correría con la base ya libre.
+    h.stdout.once("data", () => resolve({ fin }));
   });
 }
 
@@ -51,7 +52,7 @@ describe("publicar con la base ocupada por otro proceso (SEG-04)", () => {
     // Otro proceso (el worker) tiene la base tomada escribiendo mientras publicar empieza.
     const otro = await tomarBase(800);
     const r = await ruta.POST(pedido("c1"), ctx);
-    await otro;
+    await otro.fin;
     expect(r.status).toBe(201);
     expect(await r.json()).toMatchObject({ publicaciones: [{ cuentaId: "c1", estado: "pendiente" }] });
     // Lo ve otra conexión (otro proceso): quedó guardado de verdad, no en una transacción a medias.
