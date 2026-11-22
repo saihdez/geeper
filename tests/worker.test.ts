@@ -76,4 +76,10 @@ describe.skipIf(process.platform === "win32")("worker como proceso", () => {
     w.hijo.kill("SIGTERM");
     expect(await w.fin).toBe(0);
   }, 60_000);
+
+  it("no arranca dentro de gpu-lock: avisa y sale (GPU-11)", async () => {
+    const w = lanzarWorker({ GPU_LOCK_ACTIVE: "1" });
+    expect(await w.fin).toBe(1);
+    expect(w.salida()).toContain("dentro de gpu-lock");
+  });
 });

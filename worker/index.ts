@@ -122,6 +122,12 @@ async function bucle(motor: Motor) {
 }
 
 async function main() {
+  // Dentro de gpu-lock (GPU_LOCK_ACTIVE=1), cada gpu-lock que lance el worker pasaría sin esperar y los
+  // trabajos de tarjeta correrían a la vez (GPU-11). No se quita la variable: se avisa y no se sigue.
+  if (process.env.GPU_LOCK_ACTIVE === "1") {
+    avisar("Se lanzó dentro de gpu-lock (GPU_LOCK_ACTIVE=1): así no se respetaría el turno de la tarjeta. Lánzalo sin gpu-lock.");
+    process.exit(1);
+  }
   await prepararDb();
   const r = await recuperarAlArrancar();
   avisar(`id ${workerId}. ${r.reinicio.hubo ? "REINICIO DETECTADO: " + r.reinicio.motivo : "Sin reinicio desde la última corrida"}.`);
