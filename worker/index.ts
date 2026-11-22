@@ -6,12 +6,15 @@ import { appendFileSync } from "node:fs";
 import path from "node:path";
 import {
   Espera, esperar, fallar, guardarLatidoWorker, latido, LATIDO_MS, marcarEtapa, MOTORES, nuevoWorkerId, reclamar,
-  recuperarAlArrancar, recuperarVencidos, terminar, type Motor, type Payload, type TipoTrabajo,
+  recuperarAlArrancar, terminar, type Motor, type Payload, type TipoTrabajo,
 } from "@/lib/cola";
 import { db, prepararDb } from "@/lib/db";
+import { enTrabajo } from "@/lib/proceso";
+import { cerrarHuerfanos } from "@/lib/procesos-largos";
 import { tapar } from "@/lib/redes/secretos";
 import { dirProyecto } from "@/lib/rutas";
 import { EJECUTORES, rutaLog } from "./ejecutores";
+import { barrerLeases, esperarVacio, REVISAR_CANCELADOS_MS, tomarCandadoWorker, TOPE_APAGAR_MS, yaNoSonNuestros } from "./sistema";
 
 const workerId = nuevoWorkerId();
 let apagando = false;
@@ -25,34 +28,48 @@ function avisar(msg: string) {
   console.log(`[worker ${hora()}] ${msg}`);
 }
 
+const mensaje = (e: unknown) => (e instanceof Error ? e.message.split("\n")[0] : String(e));
+
 async function correrUno(motor: Motor): Promise<boolean> {
   const t = await reclamar(motor, workerId);
   if (!t) return false;
-  const log = await rutaLog({ ...t, payload: t.payload as Payload });
-  await db.trabajo.update({ where: { id: t.id }, data: { log: log.rel } });
+  let logAbs: string | undefined;
   const escribir = (linea: string) => {
+    if (!logAbs) return;
     try {
       // Ningún token llega al log (PUBLICAR.md §6).
-      appendFileSync(log.abs, `${hora()} ${tapar(linea)}\n`);
+      appendFileSync(logAbs, `${hora()} ${tapar(linea)}\n`);
     } catch {
       /* el log no debe tumbar el trabajo */
     }
   };
-  avisar(`${motor}: empieza ${t.tipo} ${t.id}`);
-  escribir(`== ${t.tipo} (${t.id}), intento ${t.intentos}, worker ${workerId}`);
   const ctrl = new AbortController();
   enCurso.set(t.id, ctrl);
-  const pulso = setInterval(() => {
-    void latido(t.id, workerId).then((sigue) => {
-      if (!sigue && !ctrl.signal.aborted) {
-        escribir("El trabajo ya no está corriendo (cancelado): se detiene");
-        ctrl.abort();
-      }
-    });
-  }, LATIDO_MS);
-  const proyecto = t.proyectoId ? await db.proyecto.findUnique({ where: { id: t.proyectoId } }) : null;
+  // Reclamado justo mientras se apagaba: se corta ya para que el apagado no lo espere entero.
+  if (apagando) ctrl.abort();
+  let pulso: ReturnType<typeof setInterval> | undefined;
+  let proyecto: Awaited<ReturnType<typeof db.proyecto.findUnique>> = null;
   try {
-    const salida = await EJECUTORES[t.tipo as TipoTrabajo](
+    const log = await rutaLog({ ...t, payload: t.payload as Payload });
+    logAbs = log.abs;
+    await db.trabajo.update({ where: { id: t.id }, data: { log: log.rel } });
+    avisar(`${motor}: empieza ${t.tipo} ${t.id}`);
+    escribir(`== ${t.tipo} (${t.id}), intento ${t.intentos}, worker ${workerId}`);
+    pulso = setInterval(() => {
+      latido(t.id, workerId).then(
+        (sigue) => {
+          if (!sigue && !ctrl.signal.aborted) {
+            escribir("El trabajo ya no está corriendo (cancelado): se detiene");
+            ctrl.abort();
+          }
+        },
+        // Un fallo de la base (bloqueo largo, disco lleno) no tumba el worker: el latido reintenta.
+        (e: unknown) => escribir(`(el latido no pudo escribir en la base: ${mensaje(e)}; se reintenta)`),
+      );
+    }, LATIDO_MS);
+    proyecto = t.proyectoId ? await db.proyecto.findUnique({ where: { id: t.proyectoId } }) : null;
+    // Dentro de enTrabajo, cancelar llega a todo correr() del ejecutor, aunque no reciba la señal (WRK-05).
+    const salida = await enTrabajo(ctrl.signal, () => EJECUTORES[t.tipo as TipoTrabajo](
       { id: t.id, tipo: t.tipo, proyectoId: t.proyectoId, payload: t.payload as Payload },
       {
         dir: proyecto ? dirProyecto(proyecto.slug) : dirProyecto("sistema"),
@@ -60,10 +77,11 @@ async function correrUno(motor: Motor): Promise<boolean> {
         signal: ctrl.signal,
         etapa: async (e, p) => {
           escribir(`— ${e}`);
-          await marcarEtapa(t.id, e, p);
+          // La etapa es sólo informativa: si la base falla, el trabajo sigue.
+          await marcarEtapa(t.id, e, p).catch((err: unknown) => escribir(`(no se pudo anotar la etapa: ${mensaje(err)})`));
         },
       },
-    );
+    ));
     await terminar(t.id, workerId, salida.resultado, salida.siguiente && { ...salida.siguiente, proyectoId: t.proyectoId });
     escribir(`== hecho${salida.siguiente ? `; sigue ${salida.siguiente.tipo}` : ""}`);
     avisar(`${motor}: terminó ${t.tipo} ${t.id}`);
@@ -104,27 +122,77 @@ async function bucle(motor: Motor) {
 }
 
 async function main() {
+  // Dentro de gpu-lock (GPU_LOCK_ACTIVE=1), cada gpu-lock que lance el worker pasaría sin esperar y los
+  // trabajos de tarjeta correrían a la vez (GPU-11). No se quita la variable: se avisa y no se sigue.
+  if (process.env.GPU_LOCK_ACTIVE === "1") {
+    avisar("Se lanzó dentro de gpu-lock (GPU_LOCK_ACTIVE=1): así no se respetaría el turno de la tarjeta. Lánzalo sin gpu-lock.");
+    process.exit(1);
+  }
+  // Un worker por cola: con dos, habría dos trabajos de CPU por fila y uno podría correr código viejo (WRK-10).
+  const espera = Number(process.env.GEEPER_WORKER_ESPERA_MS) || undefined;
+  const turno = await tomarCandadoWorker({ esperaMs: espera });
+  if ("otro" in turno) {
+    avisar(`Ya hay otro worker atendiendo esta cola${turno.otro ? ` (proceso ${turno.otro})` : ""}. Ciérralo antes de abrir otro; éste no arranca.`);
+    process.exit(1);
+  }
   await prepararDb();
   const r = await recuperarAlArrancar();
   avisar(`id ${workerId}. ${r.reinicio.hubo ? "REINICIO DETECTADO: " + r.reinicio.motivo : "Sin reinicio desde la última corrida"}.`);
   if (r.interrumpidos || r.reencolados) avisar(`Recuperación: ${r.interrumpidos} interrumpidos (esperan que los relances), ${r.reencolados} devueltos a la cola`);
+  // ComfyUI o Wan2GP de un worker anterior que murió sin cerrarlos: tienen la tarjeta tomada (WRK-04).
+  const huerfanos = cerrarHuerfanos(avisar);
+  if (huerfanos.length) avisar(`Cerrados ${huerfanos.length} proceso(s) de tarjeta sin dueño: ${huerfanos.join(", ")}`);
   await guardarLatidoWorker();
   const latidoSistema = setInterval(() => {
-    void guardarLatidoWorker();
-    void recuperarVencidos().then((n) => n && avisar(`${n} trabajo(s) con lease vencido recuperados`));
+    guardarLatidoWorker().catch((e: unknown) => avisar(`No se pudo guardar el latido del worker: ${mensaje(e)} (se reintenta en ${LATIDO_MS / 1000} s)`));
+    barrerLeases(enCurso.keys(), workerId).then(
+      ({ recuperados, perdidos }) => {
+        if (recuperados) avisar(`${recuperados} trabajo(s) con lease vencido recuperados`);
+        for (const id of perdidos) enCurso.get(id)?.abort();
+      },
+      (e: unknown) => avisar(`No se pudo revisar los leases vencidos: ${mensaje(e)} (se reintenta en ${LATIDO_MS / 1000} s)`),
+    );
   }, LATIDO_MS);
+  const vigiaCancelados = setInterval(() => {
+    if (!enCurso.size) return;
+    yaNoSonNuestros(enCurso.keys(), workerId).then(
+      (ids) => {
+        for (const id of ids) {
+          const c = enCurso.get(id);
+          if (c && !c.signal.aborted) {
+            avisar(`${id}: cancelado; se detiene`);
+            c.abort();
+          }
+        }
+      },
+      () => undefined, // el latido de cada trabajo lo vuelve a mirar
+    );
+  }, REVISAR_CANCELADOS_MS);
   const apagar = async (senal: string) => {
     if (apagando) return;
     apagando = true;
     avisar(`${senal}: apagando; los trabajos en curso quedan «interrumpidos»`);
     for (const c of enCurso.values()) c.abort();
     clearInterval(latidoSistema);
-    setTimeout(() => process.exit(0), 4000).unref();
+    clearInterval(vigiaCancelados);
+    // Se espera a que cada trabajo cortado termine (sus procesos salieron, p. ej. gpu-solo ya volvió a
+    // encender la IA de MPT, y quedó anotado «interrumpido»), con un tope de 12 s (WRK-07).
+    const vacio = await esperarVacio(enCurso);
+    if (!vacio) avisar(`${enCurso.size} trabajo(s) no terminaron en ${TOPE_APAGAR_MS / 1000} s: se sale igual`);
+    process.exit(0);
   };
   process.on("SIGINT", () => void apagar("SIGINT"));
   process.on("SIGTERM", () => void apagar("SIGTERM"));
+  // Cerrar la ventana de la terminal manda SIGHUP: sin esto el worker moría sin apagar sus procesos.
+  process.on("SIGHUP", () => void apagar("SIGHUP"));
   avisar(`Ejecutores: ${MOTORES.join(", ")}. Datos en ${path.dirname(dirProyecto("x"))}`);
   await Promise.all(MOTORES.map((m) => bucle(m)));
 }
 
-void main();
+// Una promesa rechazada sin atender no debe tumbar el worker entero (y con él hasta 4 trabajos).
+process.on("unhandledRejection", (e) => avisar(`AVISO: error sin atender (el worker sigue): ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`));
+
+main().catch((e: unknown) => {
+  avisar(`No pudo arrancar: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`);
+  process.exit(1);
+});

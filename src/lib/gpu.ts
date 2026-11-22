@@ -20,6 +20,11 @@ export interface OpcionesCandado {
   /** Se llama cada vez que gpu-lock avisa que está esperando. */
   alEsperar?: (quien: string) => void;
   signal?: AbortSignal;
+  /**
+   * Por defecto, cancelar suelta el candado. Con false, cancelar sólo corta la espera: una vez tomado, lo
+   * suelta quien llama, p. ej. cuando MPT de verdad terminó con lo que tenía en la tarjeta (GPU-03).
+   */
+  soltarAlCancelar?: boolean;
 }
 
 export function tomarGpu(descripcion: string, op: OpcionesCandado): Promise<Candado | null> {
@@ -82,7 +87,7 @@ export function tomarGpu(descripcion: string, op: OpcionesCandado): Promise<Cand
         resuelto = true;
         matarGrupo();
         mal(new Error("Cancelado mientras esperaba la GPU"));
-      } else liberar();
+      } else if (op.soltarAlCancelar !== false) liberar();
     });
   });
 }
@@ -96,6 +101,19 @@ interface DuenoCandado {
 /** Cada cuánto el dueño renueva el candado, y cuánto sin renovar lo da por abandonado. */
 const LATIDO_GPU_MS = 10_000;
 const VENCE_GPU_MS = 60_000;
+
+/** Un candado recién creado puede leerse vacío o a medio escribir: hasta esta edad cuenta como ocupado. */
+const ESCRIBIENDO_MS = 5000;
+
+/** Lee el dueño del candado; null si no existe o no se puede leer (vacío, a medio escribir, roto). */
+async function leerDueno(archivo: string): Promise<DuenoCandado | null> {
+  try {
+    const d = JSON.parse(await fs.readFile(archivo, "utf8")) as DuenoCandado;
+    return d && typeof d.pid === "number" ? d : null;
+  } catch {
+    return null;
+  }
+}
 
 const vivo = (pid: number) => {
   try {
@@ -131,27 +149,26 @@ export async function candadoArchivo(archivo: string, descripcion: string, op: O
         clearInterval(latido);
         void (async () => {
           // Sólo se borra si sigue siendo nuestro.
-          const d = await fs.readFile(archivo, "utf8").then((t) => JSON.parse(t) as DuenoCandado, () => null);
+          const d = await leerDueno(archivo);
           if (d?.pid === yo.pid && d.desde === yo.desde) await fs.rm(archivo, { force: true });
-        })();
+        })().catch(() => {});
       };
-      op.signal?.addEventListener("abort", liberar, { once: true });
+      if (op.soltarAlCancelar !== false) op.signal?.addEventListener("abort", liberar, { once: true });
       return { liberar };
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
     }
-    const [dueno, st] = await Promise.all([
-      fs.readFile(archivo, "utf8").then((t) => JSON.parse(t) as DuenoCandado, () => null),
-      fs.stat(archivo).catch(() => null),
-    ]);
+    const [dueno, st] = await Promise.all([leerDueno(archivo), fs.stat(archivo).catch(() => null)]);
     if (!st) continue; // se soltó entre medio
-    const abandonado = !dueno || !vivo(dueno.pid) || Date.now() - st.mtimeMs > VENCE_GPU_MS;
+    const edad = Date.now() - st.mtimeMs;
+    // Ilegible y recién creado: otro lo está escribiendo (antes daba «Unexpected end of JSON input»).
+    const abandonado = dueno ? !vivo(dueno.pid) || edad > VENCE_GPU_MS : edad > ESCRIBIENDO_MS;
     if (abandonado) {
       await fs.rm(archivo, { force: true });
       continue;
     }
     if (!op.esperar) return null;
-    op.alEsperar?.(dueno.quien);
+    op.alEsperar?.(dueno?.quien ?? "otro trabajo");
     await new Promise((r) => setTimeout(r, 2000));
   }
 }

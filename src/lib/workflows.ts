@@ -15,9 +15,11 @@ import {
   aFormatoApi, aplicarCambios, arrancarComfyui, COMFYUI_DIR, dirResultados, estadoModelos, leerCatalogo, leerWorkflowJson, modelosDeWorkflow, PUERTO_TRABAJOS, salidasDeHistorial, textosDeWorkflow,
   type Workflow,
 } from "./comfyui";
+import { tomarGpu } from "./gpu";
 import { resolverArchivo } from "./hub-comfy";
 import { argsNodos, fijadoDe, infoNodos, instalarNodo } from "./nodos-comfy";
 import type { Contexto } from "./pasos";
+import { GPU_SOLO_BIN } from "./rutas";
 
 export const PedidoWorkflow = z.object({
   workflow: z.string().regex(/^[\w.-]+$/),
@@ -207,6 +209,14 @@ export async function correrWorkflow(ctx: ContextoWorkflow, id: string, pedido: 
     // 3. ComfyUI, conversión y ejecución.
     avanzar("Arrancando ComfyUI (pausa la IA de MPT mientras trabaja)", 0.33);
     let ultimo = "";
+    // Sin gpu-solo (Windows, macOS, la app), el turno de la tarjeta lo da el candado de gpu.ts (GPU-08).
+    const candado = existsSync(GPU_SOLO_BIN)
+      ? null
+      : await tomarGpu(`comfyui ${wf.id}`, {
+          esperar: true,
+          signal: ctx.signal,
+          alEsperar: (quien) => avanzar(`Esperando la tarjeta (la tiene: ${quien.slice(0, 80)})`, 0.33),
+        });
     const srv = await arrancarComfyui({
       puerto: PUERTO_TRABAJOS,
       signal: ctx.signal,
@@ -219,6 +229,9 @@ export async function correrWorkflow(ctx: ContextoWorkflow, id: string, pedido: 
           if (e !== ultimo) avanzar((ultimo = e), 0.4 + 0.55 * (p.paso / Math.max(1, p.pasos)));
         } else if (/Requested to load|loaded completely|Loading/.test(l) && ultimo !== "Cargando el modelo") avanzar((ultimo = "Cargando el modelo"), 0.38);
       },
+    }).catch((e: unknown) => {
+      candado?.liberar();
+      throw e;
     });
     const cancelar = () => void srv.detener();
     ctx.signal?.addEventListener("abort", cancelar, { once: true });
@@ -259,6 +272,7 @@ export async function correrWorkflow(ctx: ContextoWorkflow, id: string, pedido: 
     } finally {
       ctx.signal?.removeEventListener("abort", cancelar);
       await srv.detener();
+      candado?.liberar();
     }
   } catch (e) {
     await escribirCorrida({ ...base, estado: "fallida", error: (e instanceof Error ? e.message : String(e)).slice(0, 1000) }).catch(() => {});

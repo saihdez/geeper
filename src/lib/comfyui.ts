@@ -16,9 +16,11 @@ import { existsSync, readdirSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { comandoGpuSolo } from "./gpu-solo";
 import { bajarHub, dirHub, HUB_COMMIT, resolverArchivo, unirHub } from "./hub-comfy";
 import { pythonDeVenv } from "./plataforma";
-import { correr } from "./proceso";
+import { correr, matarArbol, patronComando } from "./proceso";
+import { anotarProceso } from "./procesos-largos";
 import { CACHE_HF, dirDatos, ESTUDIO, GPU_SOLO_BIN, RAIZ_REPO } from "./rutas";
 
 export const COMFYUI_DIR = process.env.GEEPER_COMFYUI ?? path.join(ESTUDIO, "ComfyUI");
@@ -317,49 +319,50 @@ export interface Servidor {
  * `nodos`: argumentos de nodos extra (argsNodos de nodos-comfy.ts). Por defecto no carga ninguno:
  * el código de la comunidad sólo corre cuando el workflow lo pide y la persona lo permitió.
  */
-export async function arrancarComfyui(op: { puerto: number; gpuSolo?: boolean; log?: (l: string) => void; signal?: AbortSignal; dir?: string; python?: string; nodos?: string[] }): Promise<Servidor> {
+export async function arrancarComfyui(op: { puerto: number; gpuSolo?: boolean; arranqueMs?: number; log?: (l: string) => void; signal?: AbortSignal; dir?: string; python?: string; nodos?: string[] }): Promise<Servidor> {
   const dir = op.dir ?? COMFYUI_DIR;
   const python = op.python ?? COMFYUI_PYTHON;
   const falta = faltaComfyui(dir, python);
   if (falta) throw new Error(falta);
   const args = [path.join(dir, "main.py"), "--listen", "127.0.0.1", "--port", String(op.puerto), "--disable-auto-launch", "--output-directory", path.join(dir, "output"), ...(op.nodos ?? ["--disable-all-custom-nodes"])];
   const conGpuSolo = op.gpuSolo ?? existsSync(GPU_SOLO_BIN);
-  const [cmd, ...resto] = conGpuSolo ? [GPU_SOLO_BIN, python, ...args] : [python, ...args];
-  const hijo = spawn(cmd!, resto, { cwd: dir, env: { ...process.env, PYTHONUNBUFFERED: "1", PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" }, detached: process.platform !== "win32" });
+  const c = conGpuSolo ? comandoGpuSolo(python, args) : { cmd: python, args };
+  const hijo = spawn(c.cmd, c.args, { cwd: dir, env: { ...process.env, PYTHONUNBUFFERED: "1", PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" }, detached: process.platform !== "win32" });
+  // «close»: el hijo salió y nadie más (un Python que siguiera vivo) tiene abierta su salida.
+  let salio = false;
+  hijo.once("close", () => (salio = true));
+  anotarProceso(hijo, "ComfyUI");
   let salida = "";
+  // Con gpu-solo, el plazo de arranque cuenta desde que tiene la tarjeta («gpu-solo: pausados»), no desde
+  // que hace fila: si la tarjeta lleva más de 5 min ocupada, el workflow sólo esperaba su turno (GPU-08).
+  let desde: number | null = conGpuSolo ? null : Date.now();
   const leer = (d: Buffer) => {
     const t = d.toString();
+    if (desde === null && t.includes("gpu-solo: pausados")) desde = Date.now();
     salida = (salida + t).slice(-200_000);
     for (const l of t.split(/\r?\n/)) if (l.trim()) op.log?.(l.trimEnd());
   };
   hijo.stdout?.on("data", leer);
   hijo.stderr?.on("data", leer);
   const url = `http://127.0.0.1:${op.puerto}`;
+  // Todo el grupo (gpu-lock, gpu-solo y Python). Con gpu-solo, el SIGKILL va sólo al Python: matar su bash
+  // antes del `trap` dejaría apagada la IA de MPT (WRK-03).
   const detener = async () => {
-    if (hijo.exitCode !== null || hijo.signalCode !== null) return;
-    try {
-      if (process.platform === "win32") spawn("taskkill", ["/pid", String(hijo.pid), "/T", "/F"], { stdio: "ignore" });
-      else process.kill(-hijo.pid!, "SIGTERM");
-    } catch {
-      /* ya terminó */
-    }
-    await new Promise<void>((ok) => {
-      const t = setTimeout(() => {
-        try {
-          if (process.platform !== "win32") process.kill(-hijo.pid!, "SIGKILL");
-        } catch {
-          /* ya terminó */
-        }
-        ok();
-      }, 8000);
+    if (salio) return;
+    const cerrado = new Promise<void>((ok) => {
+      const t = setTimeout(ok, 10_000);
       hijo.once("close", () => {
         clearTimeout(t);
         ok();
       });
     });
+    matarArbol(hijo, { graciaMs: 8000, patronDuro: conGpuSolo ? patronComando(python) : undefined });
+    await cerrado;
   };
-  const limite = Date.now() + 5 * 60_000;
-  while (Date.now() < limite) {
+  const ARRANQUE_MS = op.arranqueMs ?? 5 * 60_000;
+  // Tope de la fila por si gpu-solo nunca avisa: una hora.
+  const topeFila = Date.now() + 60 * 60_000;
+  while (desde === null ? Date.now() < topeFila : Date.now() < desde + ARRANQUE_MS) {
     if (op.signal?.aborted) {
       await detener();
       throw new Error("Cancelado");
