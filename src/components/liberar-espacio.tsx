@@ -5,16 +5,11 @@
  */
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { bytesLegibles, faltaParaUsar, textoLibre } from "@/lib/espacio-texto";
 import type { Espacio, QueLiberar } from "@/lib/liberar-espacio";
 import { Aviso, Cargando, pedir, postJson } from "./comun";
 
-/** Bytes en palabras: «1,4 GB», «320 MB», «12 KB». */
-export function bytesLegibles(n: number): string {
-  if (n >= 1e9) return `${(n / 1e9).toLocaleString("es", { maximumFractionDigits: 1 })} GB`;
-  if (n >= 1e6) return `${Math.round(n / 1e6).toLocaleString("es")} MB`;
-  if (n >= 1e3) return `${Math.round(n / 1e3).toLocaleString("es")} KB`;
-  return `${n} bytes`;
-}
+export { bytesLegibles };
 
 /** Qué es cada cosa que se puede borrar, en palabras simples. */
 export const QUE_ES: Record<QueLiberar, { titulo: string; detalle: (dias: number) => string; uno: string; varios: string }> = {
@@ -87,6 +82,12 @@ export function LiberarEspacio() {
       {error && <Aviso tipo="error">{error}</Aviso>}
       {hecho && <Aviso tipo="ok">{hecho}</Aviso>}
       {!datos && !error && <Cargando>Midiendo cuánto ocupa cada cosa…</Cargando>}
+      {datos?.disco && (
+        <Aviso tipo={faltaParaUsar(datos.disco, 0) > 0 ? "alerta" : "info"}>
+          <p className="font-medium">{textoLibre(datos.disco)}</p>
+          {faltaParaUsar(datos.disco, 0) > 0 && <p className="text-tenue">Es muy poco: no se podrán bajar modelos, subir videos largos ni crear videos. Borra lo que no uses aquí abajo.</p>}
+        </Aviso>
+      )}
       {datos && (
         <>
           <ul className="space-y-2">

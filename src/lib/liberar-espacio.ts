@@ -12,7 +12,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { db } from "./db";
 import { dirPapelera } from "./eliminar-proyecto";
-import { dirProyecto } from "./rutas";
+import { espacioLibre, type MedidaDisco } from "./espacio";
+import { dirDatos, dirProyecto } from "./rutas";
 
 /** Días que se guarda lo que se puede borrar (decisión del dueño). */
 export const DIAS_GUARDAR = 30;
@@ -39,6 +40,8 @@ export interface Espacio {
   /** Lo que se puede borrar hoy con confirmación, por tipo. */
   borrable: Record<QueLiberar, Borrable>;
   dias: number;
+  /** Lo libre donde están los datos (DSC-05); en WSL, lo de C: si es menos (DSC-06). Null si no se pudo medir. */
+  disco: MedidaDisco | null;
 }
 
 /** Bytes de un archivo o carpeta, sin seguir enlaces simbólicos. */
@@ -186,6 +189,7 @@ export async function medirEspacio(ahora = new Date(), dias = DIAS_GUARDAR): Pro
       papelera: { cuantos: c.papelera.length, bytes: await sumar(c.papelera.map((x) => x.ruta)) },
     },
     dias,
+    disco: await espacioLibre(dirDatos()).catch(() => null),
   };
 }
 

@@ -3,13 +3,15 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { correr } from "./proceso";
 import { apiViva } from "./mpt";
-import { CACHE_HF, FFMPEG, GPU_LOCK_BIN, GPU_LOCK_FILE, HYPERFRAMES_VERSION, MPT_API, PHOTOCRAFT_CLI, PHOTOCRAFT_VERSION, PYTHON_VOZ, RAIZ_REPO, VECTORCRAFT_CLI, VECTORCRAFT_VERSION, dirDatos } from "./rutas";
+import { CACHE_HF, FFMPEG, GPU_LOCK_BIN, GPU_LOCK_FILE, HYPERFRAMES_VERSION, MPT_API, PHOTOCRAFT_CLI, PHOTOCRAFT_VERSION, PYTHON_VOZ, RAIZ_REPO, ESTUDIO, VECTORCRAFT_CLI, VECTORCRAFT_VERSION, dirDatos } from "./rutas";
 import { correrHf } from "./hyperframes";
 import { ESCRITORIO, PYTHON_SISTEMA, SISTEMA } from "./plataforma";
 import { MODELO_WHISPER } from "./voz";
 import { versionPhotocraft } from "./photocraft";
 import { versionVectorcraft } from "./vectorcraft";
 import { existe, sha256Archivo } from "./archivos";
+import { espacioLibre } from "./espacio";
+import { estadoDisco } from "./espacio-texto";
 import { rutaVad, VAD_SILERO } from "./whisper";
 import { PYTHON_CLIPS } from "./fuentes";
 import { db } from "./db";
@@ -227,6 +229,8 @@ export async function diagnosticar(): Promise<Chequeo[]> {
   } catch {
     c.push({ nombre: "Carpeta de datos", ok: false, detalle: `${datos} no existe o no se puede escribir`, arreglo: ESCRITORIO ? "Revisa que esa carpeta exista y que tu usuario pueda escribir en ella (OneDrive a veces la bloquea)." : `mkdir -p ${datos} && pnpm run setup` });
   }
+  // Espacio en disco (DSC-05, DSC-06): en WSL cuenta lo libre en C:, donde vive el disco de Linux.
+  c.push(...(await chequeosDisco([datos, ESTUDIO])));
   // Alineación guion ↔ whisper (py/alineacion.py): en la app, con el Python de la voz.
   const pyAlinear = ESCRITORIO ? PYTHON_VOZ : PYTHON_SISTEMA;
   const al = await correr(pyAlinear, [path.join(RAIZ_REPO, "py", "geeper_py.py"), "alinear"], { entrada: '{"guion":"hola","palabras":[{"text":"hola","start":0,"end":0.3}]}', permitirFallo: true }).catch(
@@ -240,6 +244,22 @@ export async function diagnosticar(): Promise<Chequeo[]> {
 
   c.push(...(await diagnosticarRedes()));
   return c;
+}
+
+/**
+ * Un chequeo por disco: los datos y las herramientas (modelos) suelen estar en el mismo, pero en la app
+ * de escritorio o con GEEPER_DATA en otro disco pueden no estarlo.
+ */
+export async function chequeosDisco(rutas: string[], medir: typeof espacioLibre = espacioLibre): Promise<Chequeo[]> {
+  const vistos = new Map<string, Chequeo>();
+  for (const r of rutas) {
+    const m = await medir(r).catch(() => null);
+    if (!m) continue;
+    const clave = `${m.disco}|${m.libre}|${m.total}`;
+    if (vistos.has(clave)) continue;
+    vistos.set(clave, { nombre: m.disco === "el disco" ? "Espacio en disco" : `Espacio en disco (${m.disco})`, ...estadoDisco(m) });
+  }
+  return [...vistos.values()];
 }
 
 /** Publicar en redes (PUBLICAR.md §6, §8): credenciales presentes, clave, VPN y cuentas. Nunca muestra secretos. */
