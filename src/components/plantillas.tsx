@@ -24,6 +24,12 @@ function Resumen({ p, abierta, alEditar, alDuplicar, alColor }: { p: FilaPlantil
   );
 }
 
+/** Nombre propuesto para la copia: «<nombre> (copia)», sin pasar de las 80 letras que acepta la API. */
+export function nombreCopia(nombre: string): string {
+  const sufijo = " (copia)";
+  return nombre.trim().slice(0, 80 - sufijo.length) + sufijo;
+}
+
 export function Plantillas() {
   const { datos, recargar } = useSondeo<{ plantillas: FilaPlantilla[] }>("/api/plantillas", 600_000);
   const [abierta, setAbierta] = useState<string | null>(null);
@@ -31,16 +37,25 @@ export function Plantillas() {
   const [color, setColor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function duplicar(p: FilaPlantilla) {
-    const nombre = prompt("Nombre de la copia:", `${p.nombre} (copia)`);
-    if (!nombre?.trim()) return;
+  // «Duplicar» abre un campo en la tarjeta: la ventanita del navegador para pedir un texto no existe en la app de escritorio (el botón no hacía nada).
+  const [copia, setCopia] = useState<{ base: string; nombre: string } | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+
+  async function duplicar() {
+    const nombre = copia?.nombre.trim();
+    if (!copia || !nombre) return;
     setError(null);
+    setOcupado(true);
     try {
-      const r = await postJson<{ plantilla: { slug: string } }>("/api/plantillas", { nombre: nombre.trim(), base: p.slug });
+      const r = await postJson<{ plantilla: { slug: string } }>("/api/plantillas", { nombre, base: copia.base });
       await recargar();
+      setCopia(null);
+      setColor(null);
       setAbierta(r.plantilla.slug);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOcupado(false);
     }
   }
 
@@ -54,7 +69,18 @@ export function Plantillas() {
       {!datos && <p className="text-sm text-tenue">Cargando…</p>}
       {datos?.plantillas.map((p) => (
         <div key={p.slug} className="tarjeta space-y-4 p-4">
-          <Resumen p={p} abierta={abierta === p.slug} alEditar={() => { setColor(null); setAbierta(p.slug); }} alDuplicar={() => void duplicar(p)} alColor={() => { setAbierta(null); setColor(color === p.slug ? null : p.slug); }} />
+          <Resumen p={p} abierta={abierta === p.slug} alEditar={() => { setColor(null); setAbierta(p.slug); }} alDuplicar={() => setCopia({ base: p.slug, nombre: nombreCopia(p.nombre) })} alColor={() => { setAbierta(null); setColor(color === p.slug ? null : p.slug); }} />
+          {copia?.base === p.slug && (
+            <form className="flex flex-wrap items-end gap-2 border-t border-borde pt-4" onSubmit={(e) => { e.preventDefault(); void duplicar(); }}>
+              <label className="min-w-0 flex-1">
+                <span className="etiqueta">Nombre de la copia</span>
+                <input autoFocus className="campo" value={copia.nombre} maxLength={80} onChange={(e) => setCopia({ ...copia, nombre: e.target.value })} />
+              </label>
+              <button type="submit" className="boton boton-primario" disabled={ocupado || !copia.nombre.trim()}>{ocupado ? "Creando…" : "Crear copia"}</button>
+              <button type="button" className="boton" onClick={() => setCopia(null)}>Cancelar</button>
+              {!copia.nombre.trim() && <p className="w-full text-xs text-tenue">Escribe un nombre para la copia.</p>}
+            </form>
+          )}
           {abierta === p.slug && <EditorPlantilla key={p.slug} fila={p} alGuardar={() => void recargar()} alCerrar={() => setAbierta(null)} />}
           {color === p.slug && (
             <div className="space-y-3 border-t border-borde pt-4">
