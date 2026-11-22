@@ -154,12 +154,13 @@ export async function probarPlanoEscena(dir: string, p: Proyecto, escena: string
 
 /**
  * Pone el plano generado como el visual de la escena sobre `base` (la versión de ahora). Lanza si la
- * escena ya no está o si su visual ya no es el de partida (la persona puso otra imagen mientras tanto).
+ * escena ya no está o si su visual ya no es `visualDe` (la persona puso otra imagen mientras tanto). Se
+ * comprueba siempre, también al animar desde el texto: el video nuevo reemplaza el visual que haya.
  */
-export function ponerPlano(base: Proyecto, plan: Pick<PlanPlano, "escena" | "numero" | "modelo" | "conImagen">, asset: Asset, imagenDe: string | null): { p: Proyecto; velocidad: number | null } {
+export function ponerPlano(base: Proyecto, plan: Pick<PlanPlano, "escena" | "numero" | "modelo">, asset: Asset, visualDe: string): { p: Proyecto; velocidad: number | null } {
   const es = escenasEnLinea(base).find((x) => x.escena.id === plan.escena);
   if (!es) throw new Error(`Mientras se animaba se quitó la escena ${plan.numero}: el video nuevo no se puso (queda en la carpeta del proyecto).`);
-  if (plan.conImagen && imagenDe && es.visual.asset !== imagenDe) {
+  if (es.visual.asset !== visualDe) {
     throw new Error(`Mientras se animaba cambiaste la imagen de la escena ${plan.numero}: el video nuevo no se puso para no borrar tu cambio.`);
   }
   const nuevo = structuredClone(reemplazarVisual(base, plan.escena, asset));
@@ -187,8 +188,10 @@ export async function generarPlanoEscena(ctx: ContextoPlano, proyectoId: string,
   const corrida = dirCorrida(ctx.dir, plan.escena);
   const ajustes = ajustesDe(p, plan, op, await imagenDeInicio(ctx.dir, p, plan, corrida, op.imagen));
   ctx.log(`Escena ${plan.numero}: ${plan.modelo.nombre}, ${ajustes.resolution}, ${ajustes.video_length} cuadros. Prompt: ${plan.prompt}`);
-  // El visual del que se partió: si la persona lo cambia mientras se anima, no se pisa su cambio.
-  const imagenDe = plan.conImagen ? buscarEscena(p, plan.escena).visual.asset : null;
+  // El visual que había al empezar: si la persona lo cambia mientras se anima, no se pisa su cambio
+  // (haya imagen de partida o no). imagenDe sólo queda en los datos para rehacer el plano.
+  const visualDe = buscarEscena(p, plan.escena).visual.asset;
+  const imagenDe = plan.conImagen ? visualDe : null;
   const t0 = Date.now();
   const video = await generarPlano({ instalacion: instalacionWan2gp(), ajustes, dirCorrida: corrida, signal: ctx.signal, log: ctx.log, alAvanzar: ctx.alAvanzar });
   const hash = await sha256Archivo(video);
@@ -208,7 +211,7 @@ export async function generarPlanoEscena(ctx: ContextoPlano, proyectoId: string,
   const version = await guardarEncima(
     proyectoId,
     op.nota ?? `Escena ${plan.numero} animada (${plan.modelo.nombre})`,
-    (base) => (final = ponerPlano(base, plan, asset, imagenDe)).p,
+    (base) => (final = ponerPlano(base, plan, asset, visualDe)).p,
     { guardada, copia: p },
   );
   await registrarAssetsEnDb(proyectoId, final.p);
