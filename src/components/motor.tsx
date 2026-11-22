@@ -8,6 +8,11 @@ export function useMotorVivo(): boolean | null {
   return datos ? datos.vivo : null;
 }
 
+/** Qué decir de un trabajo que espera su turno: si el motor está apagado, no culpar a la tarjeta de video. */
+export function textoEspera(vivo: boolean | null): string {
+  return vivo === false ? "En espera: Geeper está en pausa (mira el aviso de arriba)." : "En espera: la tarjeta de video está ocupada.";
+}
+
 export function AvisoMotor() {
   const vivo = useMotorVivo();
   if (vivo !== false) return null;

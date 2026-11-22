@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Aviso, Barra, archivo, pedir, postJson, useSondeo } from "./comun";
+import { textoEspera, useMotorVivo } from "./motor";
 
 interface WfV { id: string; titulo: string; descripcion: string; categoria: string; tipo: string; etiquetas: string[]; modelos: string[]; tamano: number; local: boolean; bloqueo: string | null; aviso: string | null; comunidad: boolean; entradas: number; uso: number; fecha: string | null; miniatura: string | null }
 interface CorridaV { id: string; workflow: string; titulo: string; creada: string; estado: "preparada" | "hecha" | "fallida"; salidas: { archivo: string; tipo: string }[]; segundos?: number; error?: string }
@@ -319,6 +320,7 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
 }
 
 function Resultados({ corridas, trabajos, cambio }: { corridas: CorridaV[]; trabajos: TrabajoV[]; cambio: () => void }) {
+  const motorVivo = useMotorVivo();
   const visibles = corridas.filter((c) => c.estado !== "preparada" || trabajos.some((t) => t.corrida === c.id)).slice(0, 12);
   if (!visibles.length && !trabajos.length) return null;
   return (
@@ -332,7 +334,7 @@ function Resultados({ corridas, trabajos, cambio }: { corridas: CorridaV[]; trab
               <p className="text-sm font-medium">{c.titulo}</p>
               {t ? (
                 <div className="space-y-1">
-                  <p className="text-xs">{t.estado === "pendiente" ? "En espera: la tarjeta de video está ocupada." : t.etapa || "Trabajando…"}</p>
+                  <p className="text-xs">{t.estado === "pendiente" ? textoEspera(motorVivo) : t.etapa || "Trabajando…"}</p>
                   <Barra valor={t.progreso} />
                   <button className="boton text-xs" onClick={async () => { if (confirm("¿Cancelar?")) { await postJson(`/api/trabajos/${t.id}`, { accion: "cancelar" }).catch(() => {}); cambio(); } }}>Cancelar</button>
                 </div>

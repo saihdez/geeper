@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Aviso, Barra, postJson, useSondeo } from "./comun";
+import { textoEspera, useMotorVivo } from "./motor";
 
 interface AvatarV { id: string; nombre: string; retrato: string; estiloNombre: string }
 interface MovimientoV { id: number; nombre: string; vista: string }
@@ -32,6 +33,7 @@ export function PanelRehacer({ proyectoId, escena, numero, ocupado, miniatura }:
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [enviado, setEnviado] = useState(false);
+  const motorVivo = useMotorVivo();
   const trabajo = datos?.trabajos.find((t) => t.escena === escena) ?? null;
   const plan = modo ? datos?.planes[modo] : null;
   const listo = modo === "persona" ? !!avatar : modo === "camara" ? movimiento !== null : false;
@@ -62,7 +64,7 @@ export function PanelRehacer({ proyectoId, escena, numero, ocupado, miniatura }:
           {!datos.wan2gp.listo && <Aviso tipo="alerta">Para esto hace falta Wan2GP: instálalo desde <Link className="underline" href="/sistema">Sistema</Link>.</Aviso>}
           {trabajo ? (
             <div className="space-y-1">
-              <p className="text-xs">{trabajo.estado === "pendiente" ? "En espera: la tarjeta de video está ocupada." : trabajo.etapa || "Trabajando…"}</p>
+              <p className="text-xs">{trabajo.estado === "pendiente" ? textoEspera(motorVivo) : trabajo.etapa || "Trabajando…"}</p>
               <Barra valor={trabajo.progreso} />
               <p className="text-xs text-tenue">Cuando termine, la escena {numero} cambia sola. Si no te gusta, vuelve atrás en el historial.</p>
             </div>
