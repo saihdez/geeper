@@ -1,4 +1,6 @@
 /** Página «Nuevo video»: lo que ve y usa la persona (UX-42, A11-09, UX-31, A11-08, UX-39, A11-06). */
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -44,5 +46,34 @@ describe("semántica de Nuevo (A11-09)", () => {
     expect(radios).toHaveLength(2);
     expect(radios[0]).toMatch(/aria-checked="true"[^>]*tabindex="0"/);
     expect(radios[1]).toMatch(/aria-checked="false"[^>]*tabindex="-1"/);
+  });
+});
+
+describe("lo elegido no se pinta como el botón principal (A11-08)", () => {
+  const css = readFileSync(path.join(process.cwd(), "src", "app", "globals.css"), "utf8");
+  const fuente = (f: string) => readFileSync(path.join(process.cwd(), "src", "components", f), "utf8");
+
+  it("globals.css marca lo elegido desde aria-pressed, aria-checked o el radio marcado, con ✓", () => {
+    for (const clase of [".opcion:is(", ".opcion-tarjeta:is("]) {
+      const regla = css.slice(css.indexOf(clase)).split("{")[0]!;
+      expect(regla).toContain('[aria-pressed="true"]');
+      expect(regla).toContain('[aria-checked="true"]');
+      expect(regla).toContain(":has(> input:checked)");
+    }
+    expect(css).toMatch(/content: "✓"/);
+  });
+
+  it("en Nuevo, boton-primario sólo se usa en el botón de enviar", () => {
+    for (const f of ["form-nuevo.tsx", "form-demo.tsx", "nuevo.tsx"]) {
+      const usos = fuente(f).split("\n").filter((l) => l.includes("boton-primario"));
+      expect(usos.every((l) => /<button className="boton boton-primario"/.test(l)), f).toBe(true);
+      expect(fuente(f), f).not.toMatch(/\? "boton-primario"|ring-2 ring-(cyan|acento)/);
+    }
+  });
+
+  it("las formas del video y los estilos son opciones con su estado", () => {
+    const html = pintar();
+    expect(html).toMatch(/<label class="opcion"><input type="radio"[^>]*name="formato"[^>]*checked=""[^>]*value="9:16"/);
+    expect(html).toMatch(/class="opcion-tarjeta p-3"/);
   });
 });

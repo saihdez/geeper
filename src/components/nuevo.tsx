@@ -32,7 +32,7 @@ export function Nuevo() {
           }}>
           {MODOS.map((m) => (
             <button key={m.id} type="button" role="radio" aria-checked={modo === m.id} tabIndex={modo === m.id ? 0 : -1} data-modo={m.id}
-              className={`tarjeta p-3 text-left ${modo === m.id ? "ring-2 ring-cyan-600" : "hover:bg-white/5"}`}
+              className="opcion-tarjeta p-3"
               onClick={() => elegir(m.id)}>
               <span className="block text-sm font-medium">{m.titulo}</span>
               <span className="block text-xs text-tenue">{m.desc}</span>

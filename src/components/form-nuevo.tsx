@@ -58,7 +58,7 @@ export function FormNuevo() {
           <legend className="etiqueta">Formato</legend>
           <div className="flex gap-2">
             {["9:16", "16:9", "1:1"].map((f) => (
-              <label key={f} className={`boton cursor-pointer ${formato === f ? "boton-primario" : ""}`}>
+              <label key={f} className="opcion">
                 <input type="radio" name="formato" value={f} checked={formato === f} onChange={() => setFormato(f)} className="sr-only" />
                 {f}
               </label>
@@ -78,10 +78,10 @@ export function FormNuevo() {
           <legend className="etiqueta">¿Sale tu avatar? (opcional)</legend>
           <div className="flex flex-wrap gap-2">
             <button type="button" aria-pressed={!avatar} onClick={() => setAvatar(null)}
-              className={`flex h-24 w-20 items-center justify-center rounded border text-center text-xs ${!avatar ? "border-acento ring-2 ring-acento" : "border-borde"}`}>Sin avatar</button>
+              className="opcion-tarjeta flex h-24 w-20 items-center justify-center text-center text-xs">Sin avatar</button>
             {lib.avatares.map((a) => (
               <button key={a.id} type="button" aria-pressed={avatar === a.id} onClick={() => setAvatar(a.id)}
-                className={`w-20 overflow-hidden rounded border text-left ${avatar === a.id ? "border-acento ring-2 ring-acento" : "border-borde"}`}>
+                className="opcion-tarjeta w-20 overflow-hidden">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={a.retrato} alt="" className="h-[4.5rem] w-full object-cover" />
                 <span className="block truncate px-1 text-xs">{a.nombre}</span>
@@ -97,7 +97,7 @@ export function FormNuevo() {
           <div className="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="¿Qué tan real?">
             {Object.values(ESTILOS_GENERACION).map((d) => (
               <button key={d.id} type="button" role="radio" aria-checked={estilo === d.id} onClick={() => setEstilo(d.id)}
-                className={`tarjeta p-3 text-left ${estilo === d.id ? "ring-2 ring-cyan-600" : "hover:bg-white/5"}`}>
+                className="opcion-tarjeta p-3">
                 <span className="block text-sm font-medium">{d.nombre}</span>
                 <span className="block text-xs text-tenue">{d.descripcion}</span>
               </button>

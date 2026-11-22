@@ -83,7 +83,7 @@ export function FormDemo() {
             <legend className="etiqueta">Forma del video</legend>
             <div className="flex flex-wrap gap-2">
               {([["9:16", "Vertical (TikTok, Reels, Shorts)"], ["16:9", "Horizontal (YouTube, web)"]] as const).map(([f, nombre]) => (
-                <label key={f} className={`boton cursor-pointer ${formato === f ? "boton-primario" : ""}`}>
+                <label key={f} className="opcion">
                   <input type="radio" name="demo-formato" value={f} checked={formato === f} onChange={() => setFormato(f)} className="sr-only" />
                   {nombre}
                 </label>
@@ -102,7 +102,7 @@ export function FormDemo() {
           <legend className="etiqueta">Movimiento</legend>
           <div className="grid gap-3 sm:grid-cols-2">
             {([["3d", "Cinematográfico", "La página flota en perspectiva y la cámara se acerca a lo importante."], ["plano", "Sencillo", "La página de frente; se acerca cada vez que se hace clic."]] as const).map(([v, nombre, desc]) => (
-              <label key={v} className={`tarjeta cursor-pointer p-2 ${estilo === v ? "ring-2 ring-cyan-600" : ""}`}>
+              <label key={v} className="opcion-tarjeta p-2">
                 <input type="radio" name="demo-estilo" value={v} checked={estilo === v} onChange={() => setEstilo(v)} className="sr-only" />
                 <Muestra estilo={v} vertical={formato === "9:16"} />
                 <span className="mt-2 block text-sm font-medium">{nombre}</span>
