@@ -21,6 +21,10 @@ body { background: var(--color-fondo); color: #e6e9ef; }
 .boton-peligro { background: #3b1219; border-color: #7f1d1d; }
 .campo { width: 100%; background: #0f131a; border: 1px solid var(--color-borde); border-radius: 8px; padding: .5rem .65rem; font-size: .9rem; }
 .campo:focus { outline: 2px solid #0891b2; outline-offset: 0; }
+/* Foco del teclado: visible también en las opciones hechas con un input oculto dentro de un label
+   (formato, subir archivo, tarjetas elegibles), que si no quedaban sin anillo. */
+:where(a, button, summary, select, [tabindex]:not([tabindex="-1"])):focus-visible { outline: 2px solid var(--color-acento); outline-offset: 2px; }
+label:has(input.sr-only:focus-visible), label:has(input[type="file"]:focus-visible) { outline: 2px solid var(--color-acento); outline-offset: 2px; }
 .etiqueta { font-size: .8rem; color: var(--color-tenue); display: block; margin-bottom: .25rem; }
 
 /* «Rehacer la toma»: vista previa de cada movimiento de cámara sobre la imagen de la escena. */
