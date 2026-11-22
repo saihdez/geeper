@@ -83,23 +83,16 @@ export async function conReintentos<T>(fn: () => Promise<T>, intentos = 3): Prom
   }
 }
 
+/**
+ * Índice de assets en la tabla Asset: APAGADO (SRV-03). Nadie lee esa tabla y su clave (`id` global)
+ * mezclaba proyectos: `clip-01` o `musica` de un proyecto le quitaba la fila al anterior. Cada guardado
+ * hacía de 2 a 10 escrituras sueltas para nada. Se deja la función para no tocar a quienes la llaman.
+ * Si algún día la usa la biblioteca de assets (docs/BRECHAS.md), cambiar antes la clave a proyecto + id
+ * y escribir todo en una sola transacción.
+ */
 export async function registrarAssetsEnDb(proyectoId: string, p: Proyecto): Promise<void> {
-  for (const a of Object.values(p.assets)) {
-    const r = a.regenerar;
-    const datos = {
-      proyectoId,
-      tipo: a.tipo,
-      ruta: a.ruta,
-      hash: a.hash,
-      source: a.source,
-      prompt: typeof r.prompt === "string" ? r.prompt : null,
-      semilla: typeof r.semilla === "number" ? r.semilla : null,
-      modelo: typeof r.modelo === "string" ? r.modelo : null,
-      licencia: a.licencia,
-      procedencia: r as object,
-    };
-    await db.asset.upsert({ where: { id: a.id }, create: { id: a.id, ...datos }, update: datos });
-  }
+  void proyectoId;
+  void p;
 }
 
 /** Describe un archivo ya copiado dentro del proyecto como Asset de geeper.json. */

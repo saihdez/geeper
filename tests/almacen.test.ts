@@ -37,6 +37,15 @@ function hijo(cuantos: number, quien: string): Promise<{ fallos: number; errores
   });
 }
 
+describe("tabla Asset (SRV-03)", () => {
+  it("registrarAssetsEnDb ya no escribe filas que nadie lee", async () => {
+    const { registrarAssetsEnDb } = await import("@/lib/almacen");
+    const { proyectoDePrueba } = await import("./fixtures");
+    await registrarAssetsEnDb("p1", proyectoDePrueba());
+    expect(await db.asset.count()).toBe(0);
+  });
+});
+
 describe("guardarProyecto con varios procesos a la vez (SEG-04)", () => {
   it("ningún guardado falla y no se repite ningún número de versión", async () => {
     const N = 25;
