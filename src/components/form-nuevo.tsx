@@ -11,6 +11,14 @@ interface Plantilla {
   datos: { descripcion: string };
 }
 
+/** Lo que falta para poder enviar, en palabras de la persona (UX-31): va debajo del botón apagado. */
+export function faltaNuevo(o: { temas: number; necesitaGpu: boolean; aceptoGpu: boolean }): string[] {
+  const falta: string[] = [];
+  if (o.temas === 0) falta.push("escribir el tema");
+  if (o.necesitaGpu && !o.aceptoGpu) falta.push("marcar la casilla de arriba");
+  return falta;
+}
+
 export function FormNuevo() {
   const router = useRouter();
   const { datos } = useSondeo<{ plantillas: Plantilla[] }>("/api/plantillas", 60_000);
@@ -30,6 +38,7 @@ export function FormNuevo() {
   const lista = temas.split("\n").map((t) => t.trim()).filter(Boolean);
   const importa = mptTaskId.trim().length > 0;
   const necesitaGpu = !importa;
+  const faltan = faltaNuevo({ temas: lista.length, necesitaGpu, aceptoGpu });
 
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
@@ -127,9 +136,12 @@ export function FormNuevo() {
         </Aviso>
       )}
       {error && <Aviso tipo="error">{error}</Aviso>}
-      <button className="boton boton-primario" disabled={enviando || lista.length === 0 || (necesitaGpu && !aceptoGpu)}>
-        {enviando ? "Creando…" : importa ? "Importar" : lista.length > 1 ? `Crear lote de ${lista.length}` : "Crear y generar"}
-      </button>
+      <div className="space-y-1">
+        <button className="boton boton-primario" disabled={enviando || faltan.length > 0} aria-describedby={faltan.length ? "nuevo-falta" : undefined}>
+          {enviando ? "Creando…" : importa ? "Importar" : lista.length > 1 ? `Crear lote de ${lista.length}` : "Crear y generar"}
+        </button>
+        {faltan.length > 0 && <p id="nuevo-falta" className="text-xs text-amber-300">Para continuar falta: {faltan.join(" · ")}.</p>}
+      </div>
     </form>
   );
 }

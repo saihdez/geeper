@@ -77,3 +77,31 @@ describe("lo elegido no se pinta como el botón principal (A11-08)", () => {
     expect(html).toMatch(/class="opcion-tarjeta p-3"/);
   });
 });
+
+describe("el botón apagado dice qué falta (UX-31)", () => {
+  it("Desde un tema: el tema y la casilla", async () => {
+    const { faltaNuevo } = await import("@/components/form-nuevo");
+    expect(faltaNuevo({ temas: 0, necesitaGpu: true, aceptoGpu: false })).toEqual(["escribir el tema", "marcar la casilla de arriba"]);
+    expect(faltaNuevo({ temas: 1, necesitaGpu: true, aceptoGpu: true })).toEqual([]);
+    expect(faltaNuevo({ temas: 1, necesitaGpu: false, aceptoGpu: false })).toEqual([]);
+  });
+
+  it("Desde una página web: el link, un link completo, la voz y el estilo", async () => {
+    const { faltaDemo } = await import("@/components/form-demo");
+    expect(faltaDemo({ url: "", linkOk: false, largo: 0, plantilla: "a" })).toEqual(["el link de la página", "lo que dice la voz"]);
+    expect(faltaDemo({ url: "hola", linkOk: false, largo: 10, plantilla: "" })).toEqual(["un link completo", "el estilo del canal"]);
+    expect(faltaDemo({ url: "https://x.com", linkOk: true, largo: 10, plantilla: "a" })).toEqual([]);
+  });
+
+  it("la línea va debajo del botón y el botón la nombra", () => {
+    const html = pintar();
+    expect(html).toMatch(/aria-describedby="nuevo-falta"[^>]*>Crear y generar<\/button><p id="nuevo-falta"[^>]*>Para continuar falta: escribir el tema · marcar la casilla de arriba\.<\/p>/);
+    expect(html).toMatch(/aria-describedby="demo-falta"[^>]*>Crear video de la página<\/button><p id="demo-falta"[^>]*>Para continuar falta: el link de la página · lo que dice la voz/);
+  });
+
+  it("el aviso del link sale justo debajo de su campo, con borde rojo", () => {
+    params = new URLSearchParams("modo=web&url=hola");
+    const html = pintar();
+    expect(html).toMatch(/<input[^>]*id="demo-url"[^>]*aria-invalid="true"[^>]*aria-describedby="demo-url-error"[^>]*style="border-color:#f87171"[^>]*\/><p id="demo-url-error"[^>]*>Ese link no parece completo/);
+  });
+});
