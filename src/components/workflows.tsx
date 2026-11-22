@@ -5,7 +5,7 @@ import { textoEspera, useMotorVivo } from "./motor";
 import { entradasSinArchivo, textoFaltaArchivo, tuArchivo } from "@/lib/workflows-texto";
 
 interface WfV { id: string; titulo: string; descripcion: string; categoria: string; tipo: string; etiquetas: string[]; modelos: string[]; tamano: number; local: boolean; bloqueo: string | null; aviso: string | null; comunidad: boolean; entradas: number; uso: number; fecha: string | null; miniatura: string | null }
-interface CorridaV { id: string; workflow: string; titulo: string; creada: string; estado: "preparada" | "hecha" | "fallida"; salidas: { archivo: string; tipo: string }[]; segundos?: number; error?: string; trabajo: string | null }
+interface CorridaV { id: string; workflow: string; titulo: string; creada: string; estado: "preparada" | "hecha" | "fallida"; salidas: { archivo: string; tipo: string }[]; segundos?: number; error?: string; trabajo: string | null; cancelada?: boolean }
 interface TrabajoV { id: string; estado: string; etapa: string; progreso: number; corrida: string | null; workflow: string | null }
 interface Datos { comfy: { listo: boolean; falta: string | null; instalando: boolean; disponible: boolean }; workflows: WfV[]; corridas: CorridaV[]; trabajos: TrabajoV[] }
 interface Detalle {
@@ -199,6 +199,7 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
   async function crear() {
     if (!d) return;
     setError(null);
+    setListo(false);
     setEnviando(true);
     try {
       const f = new FormData();
@@ -350,7 +351,11 @@ function Resultados({ corridas, trabajos, cambio }: { corridas: CorridaV[]; trab
                 </div>
               ) : c.estado !== "hecha" ? (
                 <div className="space-y-2">
-                  <Aviso tipo="error">{c.estado === "preparada" ? "Se cortó antes de terminar." : c.error?.split("\n")[0] ?? "No se pudo crear."}</Aviso>
+                  {c.cancelada ? (
+                    <Aviso tipo="info">Lo cancelaste antes de terminar.</Aviso>
+                  ) : (
+                    <Aviso tipo="error">{c.estado === "preparada" ? "Se cortó antes de terminar." : c.error?.split("\n")[0] ?? "No se pudo crear."}</Aviso>
+                  )}
                   {c.trabajo && <Reintentar trabajo={c.trabajo} cambio={cambio} />}
                 </div>
               ) : (

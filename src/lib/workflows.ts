@@ -79,6 +79,13 @@ export function aviso(w: Workflow): string | null {
   return null;
 }
 
+/** La corrida que terminó bien (función pura): sin el error de un intento anterior (retoque de UX-30). */
+export function corridaHecha(base: Corrida, salidas: Corrida["salidas"], segundos: number): Corrida {
+  const { error: _viejo, ...resto } = base;
+  void _viejo;
+  return { ...resto, estado: "hecha", salidas, segundos };
+}
+
 export async function escribirCorrida(c: Corrida) {
   const dir = dirCorrida(c.id);
   await fs.mkdir(dir, { recursive: true });
@@ -268,7 +275,7 @@ export async function correrWorkflow(ctx: ContextoWorkflow, id: string, pedido: 
         salidas.push({ archivo: nombre, tipo: tipoDeArchivo(nombre) });
       }
       if (!salidas.length) throw new Error("El workflow terminó pero no dejó ningún archivo.");
-      const c: Corrida = { ...base, estado: "hecha", salidas, segundos: Math.round((Date.now() - t0) / 1000) };
+      const c = corridaHecha(base, salidas, Math.round((Date.now() - t0) / 1000));
       await escribirCorrida(c);
       return c;
     } finally {
