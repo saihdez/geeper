@@ -38,6 +38,15 @@ describe("proxy: pedidos de otros sitios y rebinding (SEG-06)", () => {
     expect(motivoDeRechazo(p({ host: "geeper.casa:3300", origen: "http://geeper.casa:3300" }))).toBeNull();
     expect(motivoDeRechazo(p({ host: "[::1]:3300" }))).toBeNull();
   });
+
+  it("sin puerto escrito toma el de su protocolo (443 en https)", () => {
+    process.env.GEEPER_URL = "https://geeper.casa";
+    expect(motivoDeRechazo(p({ host: "geeper.casa", origen: "https://geeper.casa" }))).toBeNull();
+    expect(motivoDeRechazo(p({ host: "geeper.casa:443", origen: "https://geeper.casa" }))).toBeNull();
+    expect(motivoDeRechazo(p({ host: "localhost", origen: "http://localhost" }))).toBeNull();
+    expect(motivoDeRechazo(p({ host: "geeper.casa:3300", origen: "https://geeper.casa" }))).toMatch(/otra página/);
+    expect(motivoDeRechazo(p({ host: "localhost:80", origen: "https://localhost" }))).toMatch(/otra página/);
+  });
 });
 
 describe("matcher del proxy: las subidas no pasan por la copia de 10 MB", () => {
@@ -56,6 +65,18 @@ describe("matcher del proxy: las subidas no pasan por la copia de 10 MB", () => 
   it("el matcher general deja fuera las subidas y cubre lo demás", () => {
     for (const s of subidas) expect(general.test(s), s).toBe(false);
     for (const s of ["/api/proyectos", "/api/proyectos/p1", "/api/workflows/w1/cancelar", "/api/clips/subir/otra", "/api/plantillas/x"]) expect(general.test(s), s).toBe(true);
+  });
+
+  it("el filtro de Host de las subidas sólo da por locales a los hosts locales (igual que Next)", () => {
+    type Regla = { missing?: { type: string; value?: string }[] };
+    const valor = (config.matcher as (string | Regla)[])
+      .flatMap((m) => (typeof m === "string" ? [] : (m.missing ?? [])))
+      .find((x) => x.type === "host")?.value;
+    expect(valor).toBeDefined();
+    // Lo mismo que hace Next en matchHas: corta en el primer «:», pasa a minúsculas y arma ^valor$.
+    const esLocal = (host: string) => new RegExp(`^${valor}$`).test(host.split(":", 1)[0]!.toLowerCase());
+    for (const h of ["localhost", "localhost:3300", "LOCALHOST:3300", "127.0.0.1:3300", "[::1]:3300"]) expect(esLocal(h), h).toBe(true);
+    for (const h of ["localhost.atacante.com", "atacante.com", "x127.0.0.1", "127.0.0.1.atacante.com:3300", "evil.localhost", "127a0b0c1"]) expect(esLocal(h), h).toBe(false);
   });
 
   it("toda ruta que lee el cuerpo como archivo está en la lista de subidas", () => {

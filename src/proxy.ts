@@ -57,8 +57,10 @@ export function motivoDeRechazo(p: Pedido): string | null {
     } catch {
       return "Pedido rechazado: viene de otra página web, no de Geeper."; // «null» y otros orígenes opacos
     }
-    const puertoOrigen = o.port || (o.protocol === "https:" ? "443" : "80");
-    const puertoHost = host.puerto || "80";
+    // Sin puerto escrito vale el de su protocolo; Host no dice el protocolo, así que se toma el del Origin.
+    const porDefecto = o.protocol === "https:" ? "443" : "80";
+    const puertoOrigen = o.port || porDefecto;
+    const puertoHost = host.puerto || porDefecto;
     if (!permitidos.has(o.hostname.toLowerCase()) || puertoOrigen !== puertoHost) return "Pedido rechazado: viene de otra página web, no de Geeper.";
   }
   return null;
@@ -93,10 +95,12 @@ export const config = {
       has: [{ type: "header", key: "origin" }],
       missing: [{ type: "header", key: "origin", value: "https?://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:\\d+)?" }],
     },
-    // …o si llegan con un Host que no es local (rebinding de DNS, o el host de GEEPER_URL).
+    // …o si llegan con un Host que no es local (rebinding de DNS, o el host de GEEPER_URL). Next arma
+    // new RegExp(`^${value}$`) (por eso el grupo: sin él, «localhost.atacante.com» contaría como local) y
+    // antes corta el Host en el primer «:», así que de «[::1]:3300» sólo le llega «[».
     {
       source: "/api/(clips/subir|avatares|paleta|anuncios/[^/]+/imagen|plantillas/[^/]+/logo|plantillas/[^/]+/portada-propia|proyectos/[^/]+/clip|workflows/[^/]+)",
-      missing: [{ type: "host", value: "localhost|127\\.0\\.0\\.1|\\[::1\\]" }],
+      missing: [{ type: "host", value: "(localhost|127\\.0\\.0\\.1|\\[)" }],
     },
   ],
 };
