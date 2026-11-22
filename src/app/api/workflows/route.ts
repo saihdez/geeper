@@ -1,4 +1,4 @@
-import { leerCatalogo } from "@/lib/comfyui";
+import { A_MEDIAS, leerCatalogo } from "@/lib/comfyui";
 import { db } from "@/lib/db";
 import { json, manejar } from "@/lib/http";
 import { revisarComfyui } from "@/lib/instalar-comfyui";
@@ -10,9 +10,16 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   return manejar(async () => {
     const e = revisarComfyui();
-    const comfy = { listo: !e.falta && !e.corriendo, falta: e.falta, instalando: e.corriendo, disponible: e.disponible };
+    const comfy = { listo: !e.falta && !e.corriendo, falta: e.falta, instalando: e.corriendo, disponible: e.disponible, aMedias: e.falta === A_MEDIAS };
     if (!comfy.listo) return json({ comfy, workflows: [], corridas: [], trabajos: [] });
-    const { workflows } = await leerCatalogo();
+    let workflows: Awaited<ReturnType<typeof leerCatalogo>>["workflows"];
+    try {
+      ({ workflows } = await leerCatalogo());
+    } catch (x) {
+      // Sin catálogo no hay salida desde la página: se ofrece reparar la instalación en vez de un error (UX-06).
+      const detalle = x instanceof Error ? x.message : String(x);
+      return json({ comfy: { ...comfy, listo: false, falta: A_MEDIAS, aMedias: true, detalle }, workflows: [], corridas: [], trabajos: [] });
+    }
     const trabajos = await db.trabajo.findMany({ where: { tipo: "workflow.correr", estado: { in: ["pendiente", "corriendo"] } }, select: { id: true, estado: true, etapa: true, progreso: true, payload: true } });
     // Para «Volver a intentar» una corrida que falló o se cortó (UX-30): el último trabajo que la corrió.
     const ultimos = await db.trabajo.findMany({ where: { tipo: "workflow.correr", estado: { in: [...REINTENTABLES] } }, orderBy: { creado: "desc" }, take: 100, select: { id: true, estado: true, payload: true } });

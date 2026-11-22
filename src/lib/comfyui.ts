@@ -30,10 +30,28 @@ export const COMFYUI_PYTHON = process.env.GEEPER_COMFYUI_PYTHON ?? pythonDeVenv(
 export const PUERTO_TRABAJOS = 8189;
 export const PUERTO_EDITOR = 8190;
 
-export function faltaComfyui(dir = COMFYUI_DIR, python = COMFYUI_PYTHON): string | null {
+/**
+ * El catálogo ya leído (caché). Lo escribe la última prueba de la instalación y se borra al bajar otra
+ * versión del código: también es la marca de «la instalación terminó» (UX-06).
+ */
+export const CACHE_CATALOGO = ".geeper-catalogo.json";
+/** Lo que dice `falta` cuando hay código y Python pero la instalación no llegó al final (UX-06). */
+export const A_MEDIAS = "La instalación de ComfyUI quedó a medias";
+
+/** Lo mínimo para arrancar `main.py` o leer el catálogo: el código y su Python. */
+function faltaBase(dir: string, python: string): string | null {
   if (!existsSync(path.join(dir, "main.py"))) return "ComfyUI no está instalado";
   if (!existsSync(python)) return "Falta el Python de ComfyUI";
   return null;
+}
+
+/**
+ * Qué falta para usar los workflows (null si nada). Una instalación cortada en los pasos largos (PyTorch,
+ * dependencias) deja `main.py` y el Python, pero no la marca del final: entonces está «a medias» y la
+ * página vuelve a ofrecer el instalador, que salta lo ya hecho (UX-06).
+ */
+export function faltaComfyui(dir = COMFYUI_DIR, python = COMFYUI_PYTHON): string | null {
+  return faltaBase(dir, python) ?? (existsSync(path.join(dir, CACHE_CATALOGO)) ? null : A_MEDIAS);
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -146,13 +164,14 @@ const FORMATO_CATALOGO = 2;
 
 /** El catálogo de la versión instalada (se calcula una vez por versión del paquete de plantillas). */
 export async function leerCatalogo(dir = COMFYUI_DIR, python = COMFYUI_PYTHON): Promise<CacheCatalogo> {
-  const falta = faltaComfyui(dir, python);
+  // La instalación lo lee en su último paso, antes de que exista la marca del final.
+  const falta = faltaBase(dir, python);
   if (falta) throw new Error(falta);
   const marca = path.join(dir, ".geeper-commit");
   const hub = path.join(dirHub(dir), "templates", "index.json");
   const clave = `${dir}:${await fs.readFile(marca, "utf8").catch(() => "?")}:${HUB_COMMIT}:${existsSync(hub)}:v${FORMATO_CATALOGO}`;
   if (g.__catalogoComfy?.clave === clave) return g.__catalogoComfy;
-  const cache = path.join(dir, ".geeper-catalogo.json");
+  const cache = path.join(dir, CACHE_CATALOGO);
   let datos: { indice: CategoriaIndice[]; archivos: Record<string, string> } | null = null;
   try {
     const c = JSON.parse(await fs.readFile(cache, "utf8")) as { clave: string; indice: CategoriaIndice[]; archivos: Record<string, string> };
@@ -323,7 +342,7 @@ export interface Servidor {
 export async function arrancarComfyui(op: { puerto: number; gpuSolo?: boolean; arranqueMs?: number; log?: (l: string) => void; signal?: AbortSignal; dir?: string; python?: string; nodos?: string[] }): Promise<Servidor> {
   const dir = op.dir ?? COMFYUI_DIR;
   const python = op.python ?? COMFYUI_PYTHON;
-  const falta = faltaComfyui(dir, python);
+  const falta = faltaBase(dir, python);
   if (falta) throw new Error(falta);
   const args = [path.join(dir, "main.py"), "--listen", "127.0.0.1", "--port", String(op.puerto), "--disable-auto-launch", "--output-directory", path.join(dir, "output"), ...argsAtencionComfyui(elegirAtencion(atencionInstalada(python))), ...(op.nodos ?? ["--disable-all-custom-nodes"])];
   const conGpuSolo = op.gpuSolo ?? existsSync(GPU_SOLO_BIN);

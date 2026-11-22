@@ -7,7 +7,7 @@ import { entradasSinArchivo, textoFaltaArchivo, tuArchivo } from "@/lib/workflow
 interface WfV { id: string; titulo: string; descripcion: string; categoria: string; tipo: string; etiquetas: string[]; modelos: string[]; tamano: number; local: boolean; bloqueo: string | null; aviso: string | null; comunidad: boolean; entradas: number; uso: number; fecha: string | null; miniatura: string | null }
 interface CorridaV { id: string; workflow: string; titulo: string; creada: string; estado: "preparada" | "hecha" | "fallida"; salidas: { archivo: string; tipo: string }[]; segundos?: number; error?: string; trabajo: string | null; cancelada?: boolean }
 interface TrabajoV { id: string; estado: string; etapa: string; progreso: number; corrida: string | null; workflow: string | null }
-interface Datos { comfy: { listo: boolean; falta: string | null; instalando: boolean; disponible: boolean }; workflows: WfV[]; corridas: CorridaV[]; trabajos: TrabajoV[] }
+interface Datos { comfy: { listo: boolean; falta: string | null; instalando: boolean; disponible: boolean; aMedias?: boolean; detalle?: string }; workflows: WfV[]; corridas: CorridaV[]; trabajos: TrabajoV[] }
 interface Detalle {
   workflow: WfV & { miniaturas: string[] };
   textos: { nodo: string; indice: number; etiqueta: string; valor: string }[];
@@ -135,11 +135,21 @@ function Instalar({ comfy, alTerminar }: { comfy: Datos["comfy"]; alTerminar: ()
   if (!comfy.disponible) return <Aviso tipo="info">Los workflows necesitan una tarjeta de video NVIDIA: en este equipo no se pueden usar.</Aviso>;
   return (
     <section className="tarjeta space-y-3 p-4">
-      <h2 className="font-semibold">Instalar ComfyUI (una sola vez)</h2>
-      <p className="text-sm text-tenue">
-        ComfyUI es el programa gratuito que ejecuta estas recetas con la tarjeta de video de este equipo. Ocupa unos 10 GB y tarda entre 15 y 30 minutos; puedes seguir
-        usando Geeper mientras tanto. Después, cada receta baja sus modelos (de 1 a 50 GB) sólo cuando la usas.
-      </p>
+      <h2 className="font-semibold">{comfy.aMedias ? "Terminar de instalar ComfyUI" : "Instalar ComfyUI (una sola vez)"}</h2>
+      {comfy.aMedias ? (
+        <p className="text-sm text-tenue">
+          La instalación anterior no llegó al final (por ejemplo, se apagó la computadora, se cortó internet o se cerró Geeper). Con «Reparar la instalación» sigue
+          donde quedó: lo que ya bajó no se vuelve a bajar.
+        </p>
+      ) : (
+        <p className="text-sm text-tenue">
+          ComfyUI es el programa gratuito que ejecuta estas recetas con la tarjeta de video de este equipo. Ocupa unos 10 GB y tarda entre 15 y 30 minutos; puedes seguir
+          usando Geeper mientras tanto. Después, cada receta baja sus modelos (de 1 a 50 GB) sólo cuando la usas.
+        </p>
+      )}
+      {comfy.detalle && !e?.corriendo && !e?.error && (
+        <details className="text-xs"><summary className="cursor-pointer text-tenue">Qué pasó (para pedir ayuda)</summary><p className="mt-1 font-mono">{comfy.detalle}</p></details>
+      )}
       {!e?.corriendo && (
         <button className="boton boton-primario" onClick={async () => {
           setError(null);
@@ -150,7 +160,7 @@ function Instalar({ comfy, alTerminar }: { comfy: Datos["comfy"]; alTerminar: ()
           } catch (x) {
             setError((x as Error).message);
           }
-        }}>{e?.error ? "Volver a intentar" : "Instalar con un clic"}</button>
+        }}>{e?.error ? "Volver a intentar" : comfy.aMedias ? "Reparar la instalación" : "Instalar con un clic"}</button>
       )}
       {e && (e.corriendo || e.error) && (
         <ol className="space-y-0.5 text-xs" aria-live="polite">
