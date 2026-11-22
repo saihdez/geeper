@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { AvatarV } from "./avatares";
 import { Aviso, Barra, postJson, useSondeo } from "./comun";
 import type { MotorVoz } from "./elegir-voz";
-import { Marco, type Formato } from "@/lib/esquema";
+import type { Formato, Marco } from "@/lib/esquema";
 import { metricas } from "@/lib/formatos";
 import { cajaMarco } from "@/lib/marco";
 
@@ -221,7 +221,7 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
                     </button>
                   </div>
                   <div className="flex flex-wrap items-start gap-4">
-                  <Vista formato={d.formato} modo={modo} marco={Marco.parse({ esquina, forma, tamano })} retrato={d.avatares.find((a) => a.id === elegido)?.retrato} />
+                  <Vista formato={d.formato} modo={modo} marco={{ esquina, forma, tamano } satisfies Marco} retrato={d.avatares.find((a) => a.id === elegido)?.retrato} />
                   <div className="min-w-0 flex-1">
                   {modo === "burbuja" ? (
                     <div className="flex flex-wrap gap-3">
