@@ -14,16 +14,19 @@ interface Vista { video: string; poster: string; desde: number; hasta: number }
 interface Candidato { n: number; inicio: number; fin: number; puntaje: number; motivos: string[]; texto?: string; vista?: Vista }
 interface Fuente {
   id: string;
-  info: { url: string; titulo: string; canal: string | null; plataforma: string | null; duracion: number };
+  info: { url: string; src?: string; titulo: string; canal: string | null; plataforma: string | null; duracion: number };
   candidatos: Candidato[] | null;
   idioma: string | null;
+  /** Con qué opciones se buscó (análisis viejos: sin el dato). */
+  opciones?: { top: number; min: number; max: number } | null;
   /** Segundos que se revisaron (menos que la duración si el video pasa del tope). */
   revisado?: number;
 }
 interface TrabajoM {
   id: string; estado: string; etapa: string; progreso: number; error: string | null;
-  payload: { src?: string; idioma?: string; min?: number; max?: number; maxMinutos?: number }; resultado: { fuente?: string } | null;
+  payload: PedidoAnalisis; resultado: { fuente?: string } | null;
 }
+interface PedidoAnalisis { src?: string; idioma?: string; top?: number; min?: number; max?: number; maxMinutos?: number }
 interface Datos { fuentes: Fuente[]; trabajos: TrabajoM[]; workerVivo: boolean }
 interface Tendencia { url: string; titulo: string; canal: string; vistas: number; horas: number; vistasPorHora: number; minutos: number; loMasVisto: boolean; fueDirecto: boolean }
 
@@ -50,11 +53,13 @@ export function PaginaClips() {
   const q = useSearchParams();
   const fuenteId = q.get("fuente");
   const momento = q.get("momento") ? Number(q.get("momento")) : null;
+  const trabajoPedido = q.get("trabajo"); // el análisis que el paso 1 sigue al volver de «Revisar todo»
   const { datos, recargar } = useSondeo<Datos>("/api/clips", 3000);
-  const ir = (f: string | null, m: number | null = null) => {
+  const ir = (f: string | null, m: number | null = null, trabajo: string | null = null) => {
     const p = new URLSearchParams();
     if (f) p.set("fuente", f);
     if (m) p.set("momento", String(m));
+    if (trabajo) p.set("trabajo", trabajo);
     router.push(p.size ? `${ruta}?${p}` : ruta);
   };
   const fuente = datos?.fuentes.find((f) => f.id === fuenteId) ?? null;
@@ -75,8 +80,8 @@ export function PaginaClips() {
         </Aviso>
       )}
       {!datos && <p className="text-tenue">Cargando…</p>}
-      {datos && paso === 1 && <Paso1 datos={datos} recargar={recargar} elegir={(id) => ir(id)} />}
-      {datos && paso === 2 && fuente && <Paso2 f={fuente} elegir={(n) => ir(fuente.id, n)} volver={() => ir(null)} />}
+      {datos && paso === 1 && <Paso1 datos={datos} recargar={recargar} elegir={(id) => ir(id)} trabajoInicial={trabajoPedido} />}
+      {datos && paso === 2 && fuente && <Paso2 f={fuente} elegir={(n) => ir(fuente.id, n)} volver={(trabajo) => ir(null, null, trabajo ?? null)} />}
       {datos && paso === 3 && fuente && cand && <Paso3 f={fuente} c={cand} volver={() => ir(fuente.id)} />}
       {datos && fuenteId && !fuente && <Aviso tipo="error">No encuentro ese video. <button className="underline" onClick={() => ir(null)}>Volver al inicio</button></Aviso>}
     </div>
@@ -105,14 +110,15 @@ function Pasos({ actual, ir }: { actual: number; ir: (n: number) => void }) {
 
 // ---- Paso 1 ---------------------------------------------------------------------------------------
 
-function Paso1({ datos, recargar, elegir }: { datos: Datos; recargar: () => Promise<void>; elegir: (id: string) => void }) {
+export function Paso1({ datos, recargar, elegir, trabajoInicial = null }: { datos: Datos; recargar: () => Promise<void>; elegir: (id: string) => void; trabajoInicial?: string | null }) {
   const [modo, setModo] = useState<"enlace" | "archivo">("enlace");
   const [url, setUrl] = useState("");
   const [idioma, setIdioma] = useState("es");
   const [min, setMin] = useState(15);
   const [max, setMax] = useState(40);
   const [subida, setSubida] = useState<number | null>(null);
-  const [esperando, setEsperando] = useState<string | null>(null);
+  // UX-24: al volver de «Revisar todo el video» sigue ese análisis (avance, ir a los momentos o el fallo).
+  const [esperando, setEsperando] = useState<string | null>(trabajoInicial);
   const [error, setError] = useState<string | null>(null);
   const [arrastrando, setArrastrando] = useState(false);
   const entrada = useRef<HTMLInputElement>(null);
@@ -135,7 +141,7 @@ function Paso1({ datos, recargar, elegir }: { datos: Datos; recargar: () => Prom
     }
   }
 
-  async function analizar(pedido: { src: string; idioma?: string; min?: number; max?: number; maxMinutos?: number }) {
+  async function analizar(pedido: PedidoAnalisis & { src: string }) {
     const r = await postJson<{ trabajo: string }>("/api/clips/momentos", pedido);
     setEsperando(r.trabajo);
     void recargar();
@@ -146,7 +152,7 @@ function Paso1({ datos, recargar, elegir }: { datos: Datos; recargar: () => Prom
     setError(null);
     try {
       if (!t.payload.src) throw new Error("No sé qué video era: pega el enlace o súbelo otra vez.");
-      await analizar({ src: t.payload.src, idioma: t.payload.idioma, min: t.payload.min, max: t.payload.max, maxMinutos: t.payload.maxMinutos });
+      await analizar({ src: t.payload.src, idioma: t.payload.idioma, top: t.payload.top, min: t.payload.min, max: t.payload.max, maxMinutos: t.payload.maxMinutos });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -291,7 +297,7 @@ export function FalloAnalisis({ t, reintentar, ocupado = false }: { t: Pick<Trab
 /** Nombre del video que se está analizando: su título si ya se sabe, si no el archivo o el enlace. */
 export function nombreAnalisis(src: string | undefined, fuentes: Pick<Fuente, "info">[]): string {
   if (!src) return "tu video";
-  const f = fuentes.find((x) => x.info.url === src);
+  const f = fuentes.find((x) => x.info.src === src || x.info.url === src);
   if (f?.info.titulo) return f.info.titulo;
   if (!/^https?:\/\//i.test(src)) return (src.split(/[\\/]/).pop() ?? src).replace(/^[a-f0-9]{8,}-/, "");
   return src.replace(/^https?:\/\/(www\.)?/i, "");
@@ -377,7 +383,7 @@ function Radar({ alElegir }: { alElegir: (url: string) => void }) {
 
 // ---- Paso 2 ---------------------------------------------------------------------------------------
 
-function Paso2({ f, elegir, volver }: { f: Fuente; elegir: (n: number) => void; volver: () => void }) {
+function Paso2({ f, elegir, volver }: { f: Fuente; elegir: (n: number) => void; volver: (trabajo?: string) => void }) {
   const cands = f.candidatos ?? [];
   const orden = [...cands].sort((a, b) => b.puntaje - a.puntaje);
   const sinVista = cands.some((c) => !c.vista);
@@ -388,8 +394,8 @@ function Paso2({ f, elegir, volver }: { f: Fuente; elegir: (n: number) => void; 
     setReanalizando(true);
     setErrorTodo(null);
     try {
-      await postJson("/api/clips/momentos", { src: f.info.url, idioma: f.idioma ?? "es", maxMinutos: Math.min(600, Math.ceil(f.info.duracion / 60) + 1) });
-      volver(); // el paso 1 enseña el avance
+      const r = await postJson<{ trabajo: string }>("/api/clips/momentos", pedidoOtraVez(f, Math.min(600, Math.ceil(f.info.duracion / 60) + 1)));
+      volver(r.trabajo); // el paso 1 enseña el avance de ese trabajo
     } catch (err) {
       setErrorTodo(err instanceof Error ? err.message : String(err));
       setReanalizando(false);
@@ -400,7 +406,7 @@ function Paso2({ f, elegir, volver }: { f: Fuente; elegir: (n: number) => void; 
       <div className="flex flex-wrap items-baseline gap-3">
         <h2 className="text-lg font-medium">{f.info.titulo}</h2>
         <span className="text-sm text-tenue">{f.info.canal ?? "Video tuyo"} · {segundos(f.info.duracion)}</span>
-        <button type="button" className="boton ml-auto" onClick={volver}>← Elegir otro video</button>
+        <button type="button" className="boton ml-auto" onClick={() => volver()}>← Elegir otro video</button>
       </div>
       {corto && (
         <Aviso tipo="info">
@@ -419,7 +425,7 @@ function Paso2({ f, elegir, volver }: { f: Fuente; elegir: (n: number) => void; 
       {sinVista && (
         <Aviso tipo="info">
           Este video se analizó antes de las vistas previas.{" "}
-          <button type="button" className="underline" disabled={reanalizando} onClick={() => { setReanalizando(true); void postJson("/api/clips/momentos", { src: f.info.url, idioma: f.idioma ?? "es" }); }}>
+          <button type="button" className="underline" disabled={reanalizando} onClick={() => { setReanalizando(true); void postJson("/api/clips/momentos", pedidoOtraVez(f)); }}>
             {reanalizando ? "Analizando otra vez… (vuelve al paso 1 para ver el avance)" : "Analizarlo otra vez"}
           </button>
         </Aviso>
@@ -442,6 +448,19 @@ function Paso2({ f, elegir, volver }: { f: Fuente; elegir: (n: number) => void; 
       </ul>
     </div>
   );
+}
+
+/**
+ * UX-24: pedir otra vez el análisis de una fuente con lo mismo de antes: lo que pegó la persona (no la
+ * `webpage_url`, que daría otra fuente), su idioma y sus duraciones de clip.
+ */
+export function pedidoOtraVez(f: Pick<Fuente, "info" | "idioma" | "opciones">, maxMinutos?: number): PedidoAnalisis & { src: string } {
+  return {
+    src: f.info.src ?? f.info.url,
+    idioma: f.idioma ?? "es",
+    ...(f.opciones ? { top: f.opciones.top, min: f.opciones.min, max: f.opciones.max } : {}),
+    ...(maxMinutos ? { maxMinutos } : {}),
+  };
 }
 
 /** UX-24: «la primera hora y media» si de un video largo se revisó sólo una parte; si no, null. */

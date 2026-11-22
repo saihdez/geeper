@@ -22,6 +22,11 @@ export const PYTHON_CLIPS = process.env.GEEPER_PYTHON_CLIPS ?? pythonDeVenv(VENV
 export interface InfoFuente {
   /** URL de la página o ruta del archivo. */
   url: string;
+  /**
+   * Lo que pidió la persona (el enlace tal como lo pegó o la ruta del archivo). Con un enlace no siempre
+   * es `url`, que es la `webpage_url` de yt-dlp: para volver a pedir la misma fuente hay que usar éste.
+   */
+  src?: string;
   titulo: string;
   canal: string | null;
   plataforma: string | null;
@@ -62,6 +67,27 @@ export function idFuente(src: string): string {
 
 export function dirFuentes(): string {
   return path.join(dirDatos(), "_fuentes");
+}
+
+/**
+ * La carpeta de un enlace. Si nunca se pidió tal cual pero ya hay una fuente con esa página (se pegó
+ * youtu.be/… y ahora llega la `webpage_url`, o «Revisar todo» de un análisis viejo sin `src`), se
+ * reutiliza ésa en vez de bajar todo otra vez (UX-24).
+ */
+export async function idDeEnlace(src: string): Promise<string> {
+  const propio = idFuente(src);
+  const base = dirFuentes();
+  if ((await existe(path.join(base, propio, "info.json"))) || !(await existe(base))) return propio;
+  for (const id of await fs.readdir(base)) {
+    if (!/^[a-f0-9]{12}$/.test(id)) continue;
+    try {
+      const info = JSON.parse(await fs.readFile(path.join(base, id, "info.json"), "utf8")) as InfoFuente;
+      if (info.url === src || info.src === src) return id;
+    } catch {
+      /* fuente a medias */
+    }
+  }
+  return propio;
 }
 
 /**
@@ -125,7 +151,7 @@ export function faltaPorBajar(bajado: number, total: number, maxSegundos: number
 
 /** Trae (o reutiliza) la fuente. `maxMinutos` limita lo que se baja de un VOD largo. */
 export async function traerFuente(src: string, o: { maxMinutos?: number; log?: Registro; signal?: AbortSignal } = {}): Promise<Fuente> {
-  const id = idFuente(src);
+  const id = esUrl(src) ? await idDeEnlace(src) : idFuente(src);
   const dir = path.join(dirFuentes(), id);
   await fs.mkdir(dir, { recursive: true });
   const rutaInfo = path.join(dir, "info.json");
@@ -134,6 +160,7 @@ export async function traerFuente(src: string, o: { maxMinutos?: number; log?: R
     if (!(await existe(video))) throw errorExplicado("No encuentro ese archivo: puede que se haya movido o borrado. Súbelo otra vez.", `No existe el archivo ${video}`);
     const info: InfoFuente = {
       url: video,
+      src,
       titulo: path.parse(video).name.replace(/^[a-f0-9]{8}-/, ""),
       canal: null,
       plataforma: "archivo",
@@ -149,13 +176,19 @@ export async function traerFuente(src: string, o: { maxMinutos?: number; log?: R
   }
 
   let info: InfoFuente;
-  if (await existe(rutaInfo)) info = JSON.parse(await fs.readFile(rutaInfo, "utf8")) as InfoFuente;
-  else {
+  if (await existe(rutaInfo)) {
+    info = JSON.parse(await fs.readFile(rutaInfo, "utf8")) as InfoFuente;
+    if (!info.src) {
+      info = { ...info, src }; // análisis viejo, de antes de guardar lo pedido
+      await escribirAtomico(rutaInfo, JSON.stringify(info, null, 1));
+    }
+  } else {
     const r = await ytdlp(["-J", "--skip-download", src], undefined, o.signal);
     const j = JSON.parse(r.stdout) as Record<string, unknown>;
     if (j.is_live) throw new Error("Es un directo en vivo: Geeper no graba directos. Espera a que quede el VOD publicado.");
     info = {
       url: String(j.webpage_url ?? src),
+      src,
       titulo: String(j.title ?? ""),
       canal: (j.channel ?? j.uploader ?? null) as string | null,
       plataforma: (j.extractor_key ?? null) as string | null,
