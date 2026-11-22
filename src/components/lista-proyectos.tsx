@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { AvisoEstudio } from "./aviso-estudio";
 import { Aviso, Barra, Cargando, Estado, useSondeo } from "./comun";
 
 interface Fila {
@@ -32,6 +33,7 @@ export function ListaProyectos() {
         <h1 className="text-xl font-semibold">Mis videos</h1>
         <Link href="/nuevo" className="boton boton-primario">Nuevo video</Link>
       </div>
+      <AvisoEstudio />
       {error && (
         <Aviso tipo="error">
           No se pudo traer la lista de tus videos. Geeper lo vuelve a intentar solo en unos segundos.

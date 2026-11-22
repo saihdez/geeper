@@ -71,7 +71,7 @@ export function PrepararEstudio({ alTerminar }: { alTerminar?: () => void }) {
   }
 
   return (
-    <div className="tarjeta space-y-3 p-4">
+    <div id="preparar-estudio" className="tarjeta scroll-mt-4 space-y-3 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-semibold">Preparar el estudio</h2>
         <div className="flex gap-2">
