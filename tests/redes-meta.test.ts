@@ -250,3 +250,67 @@ describe("clasificación de errores", () => {
     await expect(facebook.refrescar(cuentaFb)).rejects.toMatchObject({ tipo: "auth" });
   });
 });
+
+describe("subida por tramos a rupload (Facebook e Instagram)", () => {
+  /** Un archivo de 10 bytes de verdad: leerTramo lo lee del disco. */
+  const archivo = () => {
+    const ruta = path.join(dir, "video.mp4");
+    fs.writeFileSync(ruta, "0123456789");
+    return { ruta, bytes: 10, perfil: "shorts-9x16" as const, duracion: 5 };
+  };
+
+  it("Facebook: sube a la URL de rupload con el token de la página, offset y tamaño", async () => {
+    simular(() => json({ success: true }));
+    const r = await facebook.subirTramo(cuentaFb, { videoId: "v1", uploadUrl: "https://rupload.facebook.com/video-upload/v27.0/v1?x=1" }, archivo(), 0, 10);
+    expect(r).toEqual({ bytes: 10 });
+    expect(llamadas[0]).toMatchObject({ url: "https://rupload.facebook.com/video-upload/v27.0/v1?x=1", metodo: "POST" });
+    expect(llamadas[0]!.headers).toMatchObject({ authorization: "OAuth PAGETOKEN-123456", offset: "0", file_size: "10" });
+  });
+
+  it("Instagram: reanuda desde el offset en la URL del contenedor", async () => {
+    simular(() => json({ success: true }));
+    await instagram.subirTramo(cuentaIg, { contenedor: "c9", uri: "https://rupload.facebook.com/ig-api-upload/v27.0/c9" }, archivo(), 4, 10);
+    expect(llamadas[0]!.url).toBe("https://rupload.facebook.com/ig-api-upload/v27.0/c9");
+    expect(llamadas[0]!.headers).toMatchObject({ authorization: "OAuth IGTOKEN-largo-123456", offset: "4", file_size: "10" });
+  });
+
+  it("nunca manda el token a otro sitio: una URL ajena se cambia por la de rupload", async () => {
+    simular(() => json({ success: true }));
+    await facebook.subirTramo(cuentaFb, { videoId: "v1", uploadUrl: "https://malo.example/robar" }, archivo(), 0, 10);
+    await instagram.subirTramo(cuentaIg, { contenedor: "c9", uri: "http://rupload.facebook.com/ig-api-upload/v27.0/c9" }, archivo(), 0, 10);
+    await instagram.subirTramo(cuentaIg, { contenedor: "c9" }, archivo(), 0, 10);
+    expect(llamadas.map((l) => l.url)).toEqual([
+      "https://rupload.facebook.com/video-upload/v27.0/v1",
+      "https://rupload.facebook.com/ig-api-upload/v27.0/c9",
+      "https://rupload.facebook.com/ig-api-upload/v27.0/c9",
+    ]);
+  });
+
+  it("sin el id en la sesión, error claro con el nombre de la red", async () => {
+    simular(() => json({ success: true }));
+    await expect(facebook.subirTramo(cuentaFb, {}, archivo(), 0, 10)).rejects.toThrow("La sesión de Facebook no tiene videoId");
+    await expect(instagram.subirTramo(cuentaIg, {}, archivo(), 0, 10)).rejects.toThrow("La sesión de Instagram no tiene contenedor");
+    expect(llamadas).toHaveLength(0);
+  });
+
+  it("un error de la subida se clasifica con los códigos de cada red", async () => {
+    simular(() => json({ error: { message: "Page limit", code: 80001 } }, 400));
+    const fb = (await facebook.subirTramo(cuentaFb, { videoId: "v1" }, archivo(), 0, 10).catch((x: unknown) => x)) as ErrorRed;
+    expect(fb.tipo).toBe("cuota");
+    expect(fb.message).toContain("Subida a Facebook");
+    // 80001 es sólo de Facebook: en Instagram queda como error común de la red.
+    const ig = (await instagram.subirTramo(cuentaIg, { contenedor: "c9" }, archivo(), 0, 10).catch((x: unknown) => x)) as ErrorRed;
+    expect(ig.tipo).not.toBe("cuota");
+    expect(ig.message).toContain("Subida a Instagram");
+
+    vi.unstubAllGlobals();
+    simular(() => json({ error: { message: "Invalid token PAGETOKEN-123456", code: 102 } }, 400));
+    const auth = (await facebook.subirTramo(cuentaFb, { videoId: "v1" }, archivo(), 0, 10).catch((x: unknown) => x)) as ErrorRed;
+    expect(auth.tipo).toBe("auth");
+    expect(auth.message).not.toContain("PAGETOKEN-123456");
+  });
+
+  it("las dos redes usan la misma versión de Graph en la conexión y en la subida", () => {
+    expect(new URL(facebook.urlConexion("s", "")).pathname).toBe("/v27.0/dialog/oauth");
+  });
+});
