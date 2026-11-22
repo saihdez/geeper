@@ -1,6 +1,66 @@
 /**
  * Reglas de la carcasa de escritorio (escritorio/main.ts) sin Electron, para poder probarlas.
  */
+import type { MenuItemConstructorOptions } from "electron";
+
+interface AccionesMenu {
+  abrirProyectos: () => void;
+  abrirRegistros: () => void;
+  herramientasDesarrollo: () => void;
+}
+
+/**
+ * Menú de la app, todo en español: los roles de Electron sin `label` salen en inglés («Edit», «Undo»,
+ * «Zoom In»), así que cada uno lleva el suyo.
+ */
+export function plantillaMenu(esMac: boolean, a: AccionesMenu): MenuItemConstructorOptions[] {
+  const app: MenuItemConstructorOptions = {
+    label: "Geeper",
+    submenu: [
+      { role: "about", label: "Acerca de Geeper" },
+      { type: "separator" },
+      { role: "hide", label: "Ocultar Geeper" },
+      { role: "hideOthers", label: "Ocultar los demás" },
+      { role: "unhide", label: "Mostrar todo" },
+      { type: "separator" },
+      { role: "quit", label: "Salir de Geeper" },
+    ],
+  };
+  return [
+    ...(esMac ? [app] : [{ label: "Archivo", submenu: [{ role: "quit" as const, label: "Salir" }] }]),
+    {
+      label: "Editar",
+      submenu: [
+        { role: "undo", label: "Deshacer" },
+        { role: "redo", label: "Rehacer" },
+        { type: "separator" },
+        { role: "cut", label: "Cortar" },
+        { role: "copy", label: "Copiar" },
+        { role: "paste", label: "Pegar" },
+        { role: "selectAll", label: "Seleccionar todo" },
+      ],
+    },
+    {
+      label: "Ver",
+      submenu: [
+        { role: "reload", label: "Recargar" },
+        { role: "togglefullscreen", label: "Pantalla completa" },
+        { type: "separator" },
+        { role: "resetZoom", label: "Tamaño real" },
+        { role: "zoomIn", label: "Acercar" },
+        { role: "zoomOut", label: "Alejar" },
+      ],
+    },
+    {
+      label: "Ayuda",
+      submenu: [
+        { label: "Abrir la carpeta de proyectos", click: a.abrirProyectos },
+        { label: "Abrir los registros", click: a.abrirRegistros },
+        { label: "Herramientas de desarrollo", accelerator: "CmdOrCtrl+Alt+I", click: a.herramientasDesarrollo },
+      ],
+    },
+  ];
+}
 
 /**
  * ¿Se puede volver a lanzar el worker? La misma regla que `pnpm run dev:up` (scripts/dev-up.ts): hasta

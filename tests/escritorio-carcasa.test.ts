@@ -1,5 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { esDeGeeper, paginaAbriendo, permitirReinicio } from "../escritorio/reglas";
+import type { MenuItemConstructorOptions } from "electron";
+import { esDeGeeper, paginaAbriendo, permitirReinicio, plantillaMenu } from "../escritorio/reglas";
+
+describe("carcasa de escritorio: menú en español (ESC-13)", () => {
+  const nada = () => {};
+  const todos = (items: MenuItemConstructorOptions[]): MenuItemConstructorOptions[] =>
+    items.flatMap((i) => [i, ...(Array.isArray(i.submenu) ? todos(i.submenu) : [])]);
+  for (const esMac of [false, true]) {
+    it(`cada opción lleva su texto en español (${esMac ? "macOS" : "Windows"})`, () => {
+      const items = todos(plantillaMenu(esMac, { abrirProyectos: nada, abrirRegistros: nada, herramientasDesarrollo: nada }));
+      const conTexto = items.filter((i) => i.type !== "separator");
+      expect(conTexto.every((i) => typeof i.label === "string" && i.label.length > 0)).toBe(true);
+      // Los roles que arman un submenú entero salen en inglés: no se usan.
+      expect(items.some((i) => i.role === "editMenu" || i.role === "appMenu" || i.role === "viewMenu")).toBe(false);
+      const textos = conTexto.map((i) => i.label);
+      expect(textos).toEqual(expect.arrayContaining(["Editar", "Deshacer", "Pegar", "Tamaño real", "Acercar", "Alejar", "Ayuda"]));
+      expect(textos.join(" ")).not.toMatch(/\b(Edit|Undo|Zoom|View|Help)\b/);
+    });
+  }
+});
 
 describe("carcasa de escritorio: ventana al instante (ESC-07)", () => {
   it("la página de espera es local, en español y con el fondo de la app", () => {

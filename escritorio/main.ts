@@ -19,7 +19,7 @@ import net from "node:net";
 import path from "node:path";
 import { app, BrowserWindow, dialog, Menu, shell } from "electron";
 import { esVueltaOAuth } from "./oauth";
-import { esDeGeeper, paginaAbriendo, permitirReinicio } from "./reglas";
+import { esDeGeeper, paginaAbriendo, permitirReinicio, plantillaMenu } from "./reglas";
 
 const RAIZ = app.isPackaged ? path.join(process.resourcesPath, "app") : path.join(__dirname, "..", "escritorio-app");
 const hijos: { nombre: string; p: ChildProcess }[] = [];
@@ -78,9 +78,12 @@ function lanzar(nombre: string, script: string, env: NodeJS.ProcessEnv, cwd = RA
         if (i >= 0) hijos[i] = { nombre, p: nuevo };
         else hijos.push({ nombre, p: nuevo });
       }, 3000);
-    } else {
-      dialog.showErrorBox("Geeper se detuvo", `El servidor de Geeper terminó (código ${codigo}). Mira ${path.join(dirLogs(), `${nombre}.log`)}.`);
-      app.quit();
+    } else if (listo) {
+      // El servidor se cerró con la app abierta. Si cae al arrancar, lo atiende el cuadro de arrancar().
+      void preguntarTrasError("Geeper se detuvo", "Geeper dejó de funcionar de repente.", "Volver a abrir").then((que) => {
+        if (que === "reintentar") app.relaunch();
+        app.quit();
+      });
     }
   });
   return p;
@@ -127,7 +130,7 @@ async function esperarServidor(u: string, ms = 60_000): Promise<void> {
   const fin = Date.now() + ms;
   while (Date.now() < fin) {
     const web = hijos.find((h) => h.nombre === "web")?.p;
-    if (web && web.exitCode !== null) throw new Error("El servidor de Geeper se cerró al arrancar.");
+    if (web && web.exitCode !== null) throw new Error("Geeper se cerró mientras arrancaba.");
     try {
       // Con tope: un pedido colgado no debe comerse el minuto de espera.
       const r = await fetch(`${u}/api/media`, { signal: AbortSignal.timeout(2000) });
@@ -137,7 +140,7 @@ async function esperarServidor(u: string, ms = 60_000): Promise<void> {
     }
     await new Promise((r) => setTimeout(r, 300));
   }
-  throw new Error("El servidor de Geeper no respondió en 60 s");
+  throw new Error("Geeper tardó demasiado en arrancar.");
 }
 
 function correrHasta(script: string, env: NodeJS.ProcessEnv): Promise<void> {
@@ -146,7 +149,7 @@ function correrHasta(script: string, env: NodeJS.ProcessEnv): Promise<void> {
     const p = spawn(process.execPath, [script], { cwd: RAIZ, env, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     p.stdout?.pipe(salida);
     p.stderr?.pipe(salida);
-    p.on("exit", (c) => (c === 0 ? ok() : mal(new Error(`No se pudo preparar la base de datos (código ${c}). Mira ${path.join(dirLogs(), "preparar-db.log")}.`))));
+    p.on("exit", (c) => (c === 0 ? ok() : mal(new Error("No se pudo preparar la base de datos de Geeper."))));
   });
 }
 
@@ -252,24 +255,55 @@ function abrirLogin(inicio: string): void {
 }
 
 function menu(): void {
-  const esMac = process.platform === "darwin";
   Menu.setApplicationMenu(
-    Menu.buildFromTemplate([
-      ...(esMac ? [{ role: "appMenu" as const }] : []),
-      { role: "editMenu" },
-      {
-        label: "Ver",
-        submenu: [{ role: "reload", label: "Recargar" }, { role: "togglefullscreen", label: "Pantalla completa" }, { type: "separator" }, { role: "resetZoom" }, { role: "zoomIn" }, { role: "zoomOut" }],
-      },
-      {
-        label: "Ayuda",
-        submenu: [
-          { label: "Abrir la carpeta de proyectos", click: () => void shell.openPath(path.join(app.getPath("documents"), "Geeper")) },
-          { label: "Abrir los registros", click: () => void shell.openPath(dirLogs()) },
-          { label: "Herramientas de desarrollo", accelerator: "CmdOrCtrl+Alt+I", click: () => ventana?.webContents.toggleDevTools() },
-        ],
-      },
-    ]),
+    Menu.buildFromTemplate(
+      plantillaMenu(process.platform === "darwin", {
+        abrirProyectos: () => void shell.openPath(path.join(app.getPath("documents"), "Geeper")),
+        abrirRegistros: () => void shell.openPath(dirLogs()),
+        herramientasDesarrollo: () => ventana?.webContents.toggleDevTools(),
+      }),
+    ),
+  );
+}
+
+/**
+ * Cuadro de error con botones, en vez de una ruta que hay que buscar a mano. «Abrir la carpeta de
+ * registros» no cierra el cuadro: lo vuelve a mostrar para que la persona elija qué hacer después.
+ */
+async function preguntarTrasError(titulo: string, detalle: string, reintentar: string): Promise<"reintentar" | "cerrar"> {
+  for (;;) {
+    const opciones = {
+      type: "error" as const,
+      title: titulo,
+      message: titulo,
+      detail: `${detalle}\n\nSi vuelve a pasar, abre la carpeta de registros y mándasela a quien te ayuda.`,
+      buttons: [reintentar, "Abrir la carpeta de registros", "Cerrar"],
+      defaultId: 0,
+      cancelId: 2,
+      noLink: true,
+    };
+    const { response } = ventana && !ventana.isDestroyed() ? await dialog.showMessageBox(ventana, opciones) : await dialog.showMessageBox(opciones);
+    if (response === 0) return "reintentar";
+    if (response === 2) return "cerrar";
+    await shell.openPath(dirLogs());
+  }
+}
+
+/** Detiene el servidor y el worker sin cerrar la app (para «Volver a intentar»). */
+async function detenerHijos(): Promise<void> {
+  const vivos = hijos.splice(0).filter((h) => h.p.exitCode === null && h.p.signalCode === null);
+  await Promise.all(
+    vivos.map(
+      (h) =>
+        new Promise<void>((ok) => {
+          h.p.once("exit", () => ok());
+          h.p.kill(process.platform === "win32" ? undefined : "SIGINT");
+          setTimeout(() => {
+            if (h.p.exitCode === null && h.p.signalCode === null) h.p.kill("SIGKILL");
+            ok();
+          }, 6000).unref();
+        }),
+    ),
   );
 }
 
@@ -296,13 +330,23 @@ if (!app.requestSingleInstanceLock()) {
     menu();
     // La ventana sale ya, con «Abriendo Geeper…»: el arranque puede tardar varios segundos.
     crearVentana();
-    try {
-      await arrancar();
-      mostrarGeeper();
-    } catch (e) {
-      dialog.showErrorBox("No se pudo abrir Geeper", `${e instanceof Error ? e.message : String(e)}\n\nRegistros: ${dirLogs()}`);
-      apagar();
-      app.quit();
+    for (;;) {
+      try {
+        await arrancar();
+        mostrarGeeper();
+        return;
+      } catch (e) {
+        console.error(e);
+        saliendo = true; // que los procesos que se detienen ahora no avisen ni se relancen
+        await detenerHijos();
+        saliendo = false;
+        reiniciosWorker.length = 0;
+        const que = await preguntarTrasError("Geeper no pudo abrir", e instanceof Error ? e.message : String(e), "Volver a intentar");
+        if (que === "cerrar") {
+          app.quit();
+          return;
+        }
+      }
     }
   });
   app.on("activate", () => {
