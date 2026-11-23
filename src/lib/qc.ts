@@ -374,7 +374,7 @@ export function reglaAmpliacion(lista: Ampliacion[] | undefined): Regla | null {
   if (!lista?.length) return null;
   const malas = lista.filter((x) => x.factor > AMPLIACION_MAX + 1e-3);
   const maxima = Math.max(...lista.map((x) => x.factor));
-  const veces = (k: number) => `${k.toFixed(1).replace(".", ",")}×`;
+  const veces = (k: number) => `${k.toFixed(1)}×`;
   return {
     id: "ampliacion",
     nombre: "Nitidez de imágenes y clips",

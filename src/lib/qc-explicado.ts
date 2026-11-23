@@ -92,7 +92,7 @@ export function explicarRegla(r: { id: string; medido?: unknown; detalle?: strin
 /** «pasa muy rápido (19,2 letras por segundo)» / «es muy larga (3 líneas)». */
 export function porQueFalla(f: FraseQc): string {
   const partes: string[] = [];
-  if (f.rapida) partes.push(`pasa muy rápido (${f.cps.toFixed(1).replace(".", ",")} letras por segundo; lo cómodo es hasta ${LIMITES_SUBTITULOS.maxCps})`);
+  if (f.rapida) partes.push(`pasa muy rápido (${f.cps.toFixed(1)} letras por segundo; lo cómodo es hasta ${LIMITES_SUBTITULOS.maxCps})`);
   if (f.larga) partes.push(f.lineas > LIMITES_SUBTITULOS.maxLineas ? `es muy larga (${f.lineas} líneas)` : "tiene una línea muy larga");
   return partes.join(" y ");
 }
@@ -122,7 +122,7 @@ export interface SubtitulosRapidos {
 }
 
 const enLista = (n: number[]) => (n.length <= 1 ? String(n[0] ?? "") : `${n.slice(0, -1).join(", ")} y ${n[n.length - 1]}`);
-const coma = (x: number) => x.toFixed(1).replace(".", ",");
+const coma = (x: number) => x.toFixed(1);
 
 /**
  * REN-04: el aviso junto a «Crear el video» y la pregunta antes de crearlo si el QC lo va a rechazar.

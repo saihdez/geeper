@@ -61,7 +61,7 @@ export function tamanoMuestra(e: EntradaMuestra): ResultadoMuestra {
   const dias = e.volumenDiario && e.volumenDiario > 0 ? Math.ceil(porVariante / e.volumenDiario) : null;
   const avisos: string[] = [];
   if (p1 < 0.01) avisos.push("Con una tasa base menor a 1 % la aproximación normal se queda corta: toma el número como mínimo.");
-  if (k > 1) avisos.push(`Con ${k} tratamientos se usa α = ${(alfaCorregido * 100).toFixed(2).replace(".", ",")} % por comparación (Bonferroni).`);
+  if (k > 1) avisos.push(`Con ${k} tratamientos se usa α = ${(alfaCorregido * 100).toFixed(2)} % por comparación (Bonferroni).`);
   if (dias != null && dias < 7) avisos.push("Menos de una semana: deja correr al menos 7 días para cubrir el ciclo semanal.");
   if (dias != null && dias > 56) avisos.push("Más de 8 semanas: busca un efecto mayor, más volumen o menos variantes.");
   return { ok: true, porVariante, total, dias, p1, p2, alfaCorregido, avisos };

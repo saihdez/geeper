@@ -254,7 +254,7 @@ async function vozRegenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
   const escena = typeof t.payload.escena === "string" ? t.payload.escena : null;
   const { p } = await versionDeProyecto(t.proyectoId!);
   // Una voz diseñada (VoxCPM2) espera la tarjeta: en la fila «voz» frenaría importar, clips y demos (GPU-06).
-  if (p.voz.motor === "voxcpm" && (t.motor ?? "voz") === "voz") throw new CambiarDeFila("tarjeta", "En cola: espera la tarjeta gráfica (voz diseñada)");
+  if (p.voz.motor === "voxcpm" && (t.motor ?? "voz") === "voz") throw new CambiarDeFila("tarjeta", "En cola: espera la tarjeta de video (voz diseñada)");
   const varias = escenasDelPedido(t.payload);
   if (varias) return vozRegenerarVarias(t, h, varias);
   await h.etapa(escena ? `Voz nueva para ${escena} y subtítulos realineados` : "Voz nueva del guion completo y subtítulos realineados", 0.1);
@@ -299,7 +299,7 @@ async function efectoGenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
     prompt = await describirEnIngles(String(pl.descripcion ?? ""), h);
     h.log(`Descripción para el modelo: ${prompt}`);
   }
-  await h.etapa("Creando el sonido (tarjeta gráfica; la primera carga tarda ~1,5 min)", 0.2);
+  await h.etapa("Creando el sonido (tarjeta de video; la primera carga tarda 1.5 min aprox.)", 0.2);
   const e = await generarEfecto(h, { nombre: String(pl.nombre ?? "Efecto"), prompt, segundos: Number(pl.segundos ?? 3) });
   await h.etapa("Agregándolo al video", 0.95);
   const inicio = Number(pl.inicio ?? 0);
@@ -314,16 +314,16 @@ async function efectoGenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
 async function efectosPreparar(_t: Trabajo, h: Herramientas): Promise<Salida> {
   const faltan = await presetsQueFaltan();
   if (!faltan.length) {
-    h.log("Los sonidos listos ya están todos en la biblioteca: no se usa la tarjeta gráfica.");
+    h.log("Los sonidos listos ya están todos en la biblioteca: no se usa la tarjeta de video.");
     return { resultado: { generados: 0, fallidos: [] } };
   }
-  await h.etapa(`Creando ${faltan.length} sonidos listos (tarjeta gráfica; unos ${Math.ceil(1.5 + faltan.length / 6)} min)`, 0.1);
+  await h.etapa(`Creando ${faltan.length} sonidos listos (tarjeta de video; unos ${Math.ceil(1.5 + faltan.length / 6)} min)`, 0.1);
   const r = await generarEfectos(h, faltan);
   return { resultado: { generados: r.generados, fallidos: r.fallidos, medidas: r.medidas } };
 }
 
 async function vozDisenar(t: Trabajo, h: Herramientas): Promise<Salida> {
-  await h.etapa("Creando 3 voces que cumplan la descripción (VoxCPM2, tarjeta gráfica)", 0.1);
+  await h.etapa("Creando 3 voces que cumplan la descripción (VoxCPM2, tarjeta de video)", 0.1);
   const r = await disenarVoz(h, String(t.payload.propuesta ?? ""), String(t.payload.descripcion ?? ""));
   return { resultado: r };
 }

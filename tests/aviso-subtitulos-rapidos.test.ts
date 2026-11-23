@@ -18,7 +18,7 @@ describe("aviso de subtítulos rápidos antes de renderizar (REN-04)", () => {
   it("si bloquea: dice dónde, cuánto y pide confirmar", () => {
     const a = avisoSubtitulosRapidos({ limite: 17, bloquea: true, escenas: [{ id: "e02", indice: 1, cps: 19.23 }, { id: "e05", indice: 4, cps: 18 }] })!;
     expect(a.texto).toContain("las escenas 2 y 5");
-    expect(a.texto).toContain("19,2 letras por segundo");
+    expect(a.texto).toContain("19.2 letras por segundo");
     expect(a.texto).toContain("no se podrá descargar");
     expect(a.confirmar).toMatch(/¿Crearlo igual\?/);
   });

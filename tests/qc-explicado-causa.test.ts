@@ -49,7 +49,7 @@ describe("QC explicado por su causa (UX-01)", () => {
     }));
     expect(html).toContain('href="#escena-e03"');
     expect(html).toContain("Ir a la escena 3");
-    expect(html).toContain("19,2 letras por segundo");
+    expect(html).toContain("19.2 letras por segundo");
     expect(html).toContain("ya cambió desde que se hizo este video");
   });
 

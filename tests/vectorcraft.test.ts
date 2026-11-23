@@ -101,7 +101,7 @@ describe("vectorizar desde el aviso de nitidez", () => {
     for (const a of Object.values(p.assets)) if (a.tipo === "video") Object.assign(a, { ancho: 270, alto: 480 });
     const m = reglaAmpliacion(ampliaciones(p, 1080, 1920))!.medido as { vectorizables: { asset: string; donde: string }[] };
     // Los clips de video también están borrosos, pero un video no se vectoriza.
-    expect(m.vectorizables).toEqual([{ asset: "logo-png", donde: "Superposición a los 1,0 s" }]);
+    expect(m.vectorizables).toEqual([{ asset: "logo-png", donde: "Superposición a los 1.0 s" }]);
   });
 
   it("cambiarAsset reemplaza la imagen en sus clips y conserva el resto del clip", () => {

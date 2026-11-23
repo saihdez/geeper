@@ -86,7 +86,7 @@ function explicar(a: AjusteV): string {
   const partes: string[] = [];
   if (a.acciones.includes("acortada")) partes.push("la frase traducida era muy larga y se dijo más corta: escúchala para confirmar que dice lo mismo");
   if (a.acciones.includes("repite")) partes.push("aun así la voz dura más que el video de la escena, así que el video vuelve a empezar: cámbialo por otro clip o recorta palabras");
-  else if (a.acciones.includes("lento")) partes.push(`el video va un poco más lento (${String(a.velocidad ?? "").replace(".", ",")}×) para que alcance a cubrir la voz`);
+  else if (a.acciones.includes("lento")) partes.push(`el video va un poco más lento (${String(a.velocidad ?? "")}×) para que alcance a cubrir la voz`);
   const t = partes.join("; ");
   return t.charAt(0).toUpperCase() + t.slice(1) + ".";
 }
