@@ -14,17 +14,16 @@ import { existe, escribirAtomico, sha256Archivo } from "./archivos";
 import { SCHEMA_VERSION, validarProyecto, type Asset, type Escena, type Palabra, type Proyecto } from "./esquema";
 import { licenciaImagenMpt, LICENCIAS } from "./licencias";
 import { probar } from "./media";
-import { paso, type Contexto } from "./pasos";
+import type { Contexto } from "./pasos";
 import type { DatosPlantilla } from "./plantillas";
 import { correr } from "./proceso";
-import { HYPERFRAMES_VERSION, MPT_CONTENEDOR, MPT_TAREAS } from "./rutas";
+import { MPT_CONTENEDOR, MPT_TAREAS } from "./rutas";
 import { segmentar } from "./segmentar";
-import { detectarSilencios, puntuarPalabras, resumirConfianza } from "./confianza";
 import { aplicarEdicion } from "./ediciones";
 import { conFocos, marcarAuto } from "./caras";
 import { proponerMusica } from "./pulsos";
-import { etiquetaPesos, huellaPesos } from "./modelos";
-import { alinear, MODELO_WHISPER, motorTranscripcion, transcribir } from "./voz";
+import { huellaPesos } from "./modelos";
+import { alinearVozNueva, MODELO_WHISPER } from "./voz";
 
 interface ScriptMpt {
   script: string;
@@ -111,29 +110,11 @@ export async function elegirMusica(
 }
 
 /**
- * Tiempos por palabra de un audio de voz, alineados al texto y con su confianza (paso con manifiesto).
- * La huella del paso incluye el sha256 de los pesos de whisper: otro modelo es otra alineación.
+ * Tiempos por palabra de un audio de voz, alineados al texto y con su confianza (REN-05): el mismo
+ * camino que rehacer la voz (primero sin VAD y, si sale mal, con VAD; si sigue mal, falla claro).
  */
 export async function tiemposDeVoz(ctx: Contexto, rutaVoz: string, texto: string, idioma: string): Promise<Palabra[]> {
-  const dur = (await probar(rutaVoz)).duracion;
-  const salida = path.join(ctx.dir, "assets", `palabras-${path.parse(rutaVoz).name}.json`);
-  const pesos = await etiquetaPesos(`whisper-${MODELO_WHISPER}`);
-  await paso(
-    ctx,
-    "voz.alinear",
-    { archivos: [rutaVoz], params: { texto, idioma, modelo: MODELO_WHISPER }, motor: `hyperframes@${HYPERFRAMES_VERSION}+alinear-v2+${await motorTranscripcion()}+${pesos}` },
-    [salida],
-    async ([tmp]) => {
-      const w = await transcribir(rutaVoz, idioma, ctx.log);
-      const alineadas = await alinear(texto, w, dur);
-      const palabras = puntuarPalabras(alineadas, w, await detectarSilencios(rutaVoz));
-      const r = resumirConfianza([{ id: "voz", palabras }]);
-      if (r.dudosas) ctx.log(`Aviso: ${r.dudosas} de ${r.medidas} palabras con tiempos dudosos (${(r.proporcion * 100).toFixed(0)} %)`);
-      await fs.writeFile(tmp!, JSON.stringify(palabras));
-      return { palabras: palabras.length, whisper: w.length, dudosas: r.dudosas };
-    },
-  );
-  return JSON.parse(await fs.readFile(salida, "utf8")) as Palabra[];
+  return alinearVozNueva(ctx, rutaVoz, texto, idioma);
 }
 
 export async function importarMpt(ctx: Contexto, d: DatosImport): Promise<{ version: number; escenas: number }> {
