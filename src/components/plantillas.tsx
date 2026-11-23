@@ -62,11 +62,11 @@ export function Plantillas() {
   return (
     <section className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold">Plantillas de canal</h1>
-        <p className="text-sm text-tenue">El aspecto de tus videos: marca, logo, colores, letra y cierre. Cambiar una plantilla no toca los videos ya hechos; se aplica cuando vuelves a renderizarlos.</p>
+        <h1 className="text-xl font-semibold">Estilos del canal</h1>
+        <p className="text-sm text-tenue">El aspecto de tus videos: marca, logo, colores, letra y cierre. Cambiar un estilo no toca los videos ya hechos; se aplica cuando los vuelves a crear.</p>
       </div>
       {error && <Aviso tipo="error">{error}</Aviso>}
-      {!datos && <Cargando>Cargando tus plantillas…</Cargando>}
+      {!datos && <Cargando>Cargando tus estilos…</Cargando>}
       {datos?.plantillas.length === 0 && <p className="text-sm text-tenue">No hay plantillas todavía.</p>}
       {datos?.plantillas.map((p) => (
         <div key={p.slug} className="tarjeta space-y-4 p-4">

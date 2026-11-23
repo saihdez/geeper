@@ -31,7 +31,7 @@ interface Opcion {
 
 /** Transiciones con sus valores al elegirlas (las de máscara, con las fórmulas de EffectCraft). */
 export const TRANSICIONES: (Opcion & { valor: TransicionV | null })[] = [
-  { clave: "golpe", nombre: "Golpe de zoom", ayuda: "Corte con un pequeño empujón de zoom. Es la de la plantilla: rápida y con energía.", valor: null },
+  { clave: "golpe", nombre: "Golpe de zoom", ayuda: "Corte con un pequeño empujón de zoom. Es la del estilo del canal: rápida y con energía.", valor: null },
   { clave: "corte", nombre: "Corte directo", ayuda: "Cambia de golpe, sin efecto. Para un ritmo rápido o un tono serio.", valor: { tipo: "corte", duracion: 0.4 } },
   { clave: "fundido", nombre: "Fundido", ayuda: "Una escena se disuelve en la otra. Suave, para momentos tranquilos o emotivos.", valor: { tipo: "fundido", duracion: 0.5 } },
   { clave: "deslizar", nombre: "Deslizar", ayuda: "La escena nueva entra desde un lado, como pasar de página. Para listas y pasos.", valor: { tipo: "deslizar", duracion: 0.45 } },

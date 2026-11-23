@@ -20,7 +20,7 @@ export function bytesLegibles(n: number): string {
 export const QUE_ES: Record<QueLiberar, { titulo: string; detalle: (dias: number) => string; uno: string; varios: string }> = {
   renders: {
     titulo: "Videos viejos",
-    detalle: (d) => `Videos que hiciste hace más de ${d} días y que ya cambiaste. Siempre se guardan el último de cada formato, el último que pasó la revisión y los que publicaste.`,
+    detalle: (d) => `Videos que hiciste hace más de ${d} días y que ya cambiaste. Siempre se guardan el último de cada forma (vertical, horizontal o cuadrado), el último que pasó la revisión y los que publicaste.`,
     uno: "video viejo",
     varios: "videos viejos",
   },

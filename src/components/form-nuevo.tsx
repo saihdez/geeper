@@ -4,6 +4,7 @@ import { useState } from "react";
 import { SugerenciasBusqueda, cambiarUltimaLinea, ultimaLinea } from "./sugerencias-busqueda";
 import { Aviso, postJson, useSondeo } from "./comun";
 import { ESTILOS_GENERACION, tiempoEstimado, type EstiloGeneracion } from "@/lib/estilos-generacion";
+import { FORMAS } from "@/lib/glosario";
 
 interface Plantilla {
   slug: string;
@@ -60,26 +61,26 @@ export function FormNuevo() {
   return (
     <form onSubmit={enviar} className="space-y-5">
       <div>
-        <label className="etiqueta" htmlFor="temas">Tema (uno por línea: varias líneas crean un lote)</label>
+        <label className="etiqueta" htmlFor="temas">Tema (uno por línea: cada línea es un video)</label>
         <textarea id="temas" className="campo min-h-36 font-mono" value={temas} onChange={(e) => setTemas(e.target.value)}
           placeholder={"Por qué los faros siguen siendo importantes\nFaros que se convirtieron en hoteles"} required />
-        <p className="mt-1 text-xs text-tenue">{lista.length === 0 ? "Sin temas todavía" : lista.length === 1 ? "1 proyecto" : `Lote de ${lista.length} proyectos (si se corta, se retoma sin repetir los terminados)`}</p>
+        <p className="mt-1 text-xs text-tenue">{lista.length === 0 ? "Sin temas todavía" : lista.length === 1 ? "1 video" : `${lista.length} videos (si se corta, se retoma sin repetir los terminados)`}</p>
         <SugerenciasBusqueda consulta={ultimaLinea(temas)} alElegir={(s) => setTemas(cambiarUltimaLinea(temas, s))} texto="Toca una para usarla como tema." />
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <fieldset>
-          <legend className="etiqueta">Formato</legend>
+          <legend className="etiqueta">Forma del video</legend>
           <div className="flex gap-2">
-            {["9:16", "16:9", "1:1"].map((f) => (
+            {(["9:16", "16:9", "1:1"] as const).map((f) => (
               <label key={f} className="opcion">
                 <input type="radio" name="formato" value={f} checked={formato === f} onChange={() => setFormato(f)} className="sr-only" />
-                {f}
+                {FORMAS[f].nombre} <span className="text-xs text-tenue">{f}</span>
               </label>
             ))}
           </div>
         </fieldset>
         <div>
-          <label className="etiqueta" htmlFor="plantilla">Plantilla de canal</label>
+          <label className="etiqueta" htmlFor="plantilla">Estilo del canal</label>
           <select id="plantilla" className="campo" value={plantilla} onChange={(e) => setPlantilla(e.target.value)}>
             {datos?.plantillas.map((p) => <option key={p.slug} value={p.slug}>{p.nombre}</option>)}
           </select>
@@ -139,7 +140,7 @@ export function FormNuevo() {
       {necesitaGpu && (
         <Aviso tipo="alerta">
           <p className="font-medium">Crear el video usa la tarjeta de video (guion, imágenes y voz; unos 3 min por tema).</p>
-          <p className="mt-1">Windows se ha reiniciado sin aviso durante generaciones: guarda tu trabajo antes. Si se reinicia, el trabajo queda «interrumpido» y lo relanzas tú desde Trabajos; nunca se reintenta solo.</p>
+          <p className="mt-1">Windows se ha reiniciado sin aviso durante generaciones: guarda tu trabajo antes. Si se reinicia, el trabajo queda «interrumpido» y lo vuelves a empezar tú desde Trabajos con «Volver a intentar»; nunca empieza solo otra vez.</p>
           <label className="mt-2 flex items-center gap-2">
             <input type="checkbox" checked={aceptoGpu} onChange={(e) => setAcepto(e.target.checked)} />
             Guardé mi trabajo; puedo generar.
@@ -149,7 +150,7 @@ export function FormNuevo() {
       {error && <Aviso tipo="error">{error}</Aviso>}
       <div className="space-y-1">
         <button className="boton boton-primario" disabled={enviando || faltan.length > 0} aria-describedby={faltan.length ? "nuevo-falta" : undefined}>
-          {enviando ? "Creando…" : importa ? "Importar" : lista.length > 1 ? `Crear lote de ${lista.length}` : "Crear y generar"}
+          {enviando ? "Creando…" : importa ? "Importar" : lista.length > 1 ? `Crear ${lista.length} videos` : "Crear el video"}
         </button>
         {faltan.length > 0 && <p id="nuevo-falta" className="text-xs text-amber-300">Para continuar falta: {faltan.join(" · ")}.</p>}
       </div>

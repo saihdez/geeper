@@ -287,7 +287,7 @@ function VideoDelConcepto({ ctx, c }: { ctx: Ctx; c: ConceptoT }) {
               ) : (
                 <Aviso tipo="alerta">
                   <p className="font-medium">Hacer el video tarda unos 3 minutos y usa la tarjeta de video.</p>
-                  <p className="mt-1">Windows se ha reiniciado sin aviso durante generaciones: guarda tu trabajo antes. Si se corta, el trabajo queda «interrumpido» y lo relanzas desde Trabajos.</p>
+                  <p className="mt-1">Windows se ha reiniciado sin aviso durante generaciones: guarda tu trabajo antes. Si se corta, el trabajo queda «interrumpido» y lo vuelves a empezar desde Trabajos con «Volver a intentar».</p>
                   <label className="mt-2 flex items-center gap-2">
                     <input type="checkbox" checked={acepto} onChange={(e) => setAcepto(e.target.checked)} />
                     Guardé mi trabajo; puedo generar.

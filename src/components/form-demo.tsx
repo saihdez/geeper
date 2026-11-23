@@ -74,7 +74,7 @@ export function FormDemo() {
     <form onSubmit={enviar} className="space-y-6">
       <p className="text-sm text-tenue">
         Geeper abre la página, la recorre sola como si alguien la estuviera mostrando y arma un video con tu voz, subtítulos y
-        control de calidad. No toca tu mouse ni tus cuentas. Tarda unos 3 a 5 minutos.
+        una revisión antes de publicar. No toca tu mouse ni tus cuentas. Tarda unos 3 a 5 minutos.
       </p>
 
       <section>
@@ -86,7 +86,7 @@ export function FormDemo() {
         <label className="mt-2 flex items-start gap-2 text-sm">
           <input type="checkbox" className="mt-1" checked={propio} onChange={(e) => setPropio(e.target.checked)} />
           <span>Es mi sitio (o tengo permiso para mostrarlo).
-            <span className="block text-xs text-tenue">Si no lo marcas, el video queda como «revisar permiso» y el control de calidad lo avisa antes de publicar.</span>
+            <span className="block text-xs text-tenue">Si no lo marcas, el video queda como «revisar permiso» y la revisión lo avisa antes de publicar.</span>
           </span>
         </label>
       </section>
@@ -145,7 +145,7 @@ export function FormDemo() {
         </button>
         {faltan.length > 0 && <p id="demo-falta" className="text-xs text-amber-300">Para continuar falta: {faltan.join(" · ")}.</p>}
       </div>
-      <p className="text-xs text-tenue">Después puedes cambiar el texto, la voz o el formato desde el proyecto, como en cualquier otro video. No usa la tarjeta de video.</p>
+      <p className="text-xs text-tenue">Después puedes cambiar el texto, la voz o la forma del video desde el proyecto, como en cualquier otro video. No usa la tarjeta de video.</p>
     </form>
   );
 }

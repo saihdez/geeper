@@ -123,7 +123,7 @@ describe("el botón apagado dice qué falta (UX-31)", () => {
 
   it("la línea va debajo del botón y el botón la nombra", () => {
     const html = pintar();
-    expect(html).toMatch(/aria-describedby="nuevo-falta"[^>]*>Crear y generar<\/button><p id="nuevo-falta"[^>]*>Para continuar falta: escribir el tema · marcar la casilla de arriba\.<\/p>/);
+    expect(html).toMatch(/aria-describedby="nuevo-falta"[^>]*>Crear el video<\/button><p id="nuevo-falta"[^>]*>Para continuar falta: escribir el tema · marcar la casilla de arriba\.<\/p>/);
     expect(html).toMatch(/aria-describedby="demo-falta"[^>]*>Crear video de la página<\/button><p id="demo-falta"[^>]*>Para continuar falta: el link de la página · lo que dice la voz/);
   });
 

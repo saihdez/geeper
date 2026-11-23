@@ -29,7 +29,7 @@ function InstalarVoces({ alTerminar }: { alTerminar: () => void }) {
     }
   }, [datos?.instalada, alTerminar]);
   if (!datos) return <p className="text-xs text-tenue">Revisando…</p>;
-  if (!datos.disponible) return <p className="text-xs text-tenue">Crear voces nuevas necesita una tarjeta gráfica NVIDIA; en esta computadora todavía no se puede. Las voces de siempre sí funcionan.</p>;
+  if (!datos.disponible) return <p className="text-xs text-tenue">Crear voces nuevas necesita una tarjeta de video NVIDIA; en esta computadora todavía no se puede. Las voces de siempre sí funcionan.</p>;
   return (
     <div className="space-y-2 rounded-lg border border-borde p-3">
       <p className="text-sm">Para crear voces describiéndolas hay que instalar el creador de voces (VoxCPM2) una vez. Baja unos 10 GB y tarda de 15 a 40 minutos según tu internet. Todo queda en esta computadora y es gratis.</p>
@@ -130,7 +130,7 @@ export function DisenarVoz({ instalada, nombreSugerido = "", alGuardar, alCancel
       <p className="text-xs text-tenue">
         Describe cómo suena, no a quién se parece: tono (aguda o grave), timbre (nasal, ronca, suave), ritmo, ánimo y edad. El creador no conoce personajes ni famosos por su nombre, así que los ignora. Sólo voces inventadas: no imites a una persona real.
       </p>
-      <p className="text-xs text-tenue">Se crean 3 opciones distintas para que elijas. Tarda unos 2 minutos y usa la tarjeta gráfica (si está ocupada, espera su turno).</p>
+      <p className="text-xs text-tenue">Se crean 3 opciones distintas para que elijas. Tarda unos 2 minutos y usa la tarjeta de video (si está ocupada, espera su turno).</p>
       {!pedido && (
         <div className="flex gap-2">
           <button type="button" className="boton boton-primario" disabled={descripcion.trim().length < 8} onClick={() => void disenar()}>Crear 3 opciones</button>

@@ -154,18 +154,18 @@ export function MarcaDesdeWeb({ ctx }: { ctx: Ctx }) {
               <span style={{ color: "#fff" }}>Así se ven </span><span style={{ color: eleccion.activa }}>los</span><span style={{ color: "#fff" }}> subtítulos</span>
               <div className="mt-2 flex justify-center gap-2"><span className="h-2 w-16 rounded" style={{ background: eleccion.acento1 }} /><span className="h-2 w-16 rounded" style={{ background: eleccion.acento2 }} /></div>
             </div>
-            <Campo etiqueta="CTA de la tarjeta final"><input className="campo" value={eleccion.cta} maxLength={60} onChange={(e) => setEleccion((x) => ({ ...x, cta: e.target.value }))} placeholder="Deja vacío para usar el de la plantilla base" /></Campo>
+            <Campo etiqueta="CTA de la tarjeta final"><input className="campo" value={eleccion.cta} maxLength={60} onChange={(e) => setEleccion((x) => ({ ...x, cta: e.target.value }))} placeholder="Deja vacío para usar el del estilo base" /></Campo>
             {eleccion.fuente && (
               <label className="flex items-start gap-2 text-sm">
                 <input type="checkbox" className="mt-1" checked={eleccion.usarFuente} onChange={(e) => setEleccion((x) => ({ ...x, usarFuente: e.target.checked }))} />
-                <span>Usar «{eleccion.fuente}» en los títulos. <span className="text-tenue">Sólo si verificaste que está disponible para el render y que su licencia lo permite; si no, el video cae en otra fuente.</span></span>
+                <span>Usar «{eleccion.fuente}» en los títulos. <span className="text-tenue">Sólo si verificaste que está disponible para crear el video y que su licencia lo permite; si no, el video cae en otra fuente.</span></span>
               </label>
             )}
-            <Campo etiqueta="Nombre de la plantilla nueva"><input className="campo" value={eleccion.nombre} maxLength={80} onChange={(e) => setEleccion((x) => ({ ...x, nombre: e.target.value }))} /></Campo>
+            <Campo etiqueta="Nombre del estilo nuevo"><input className="campo" value={eleccion.nombre} maxLength={80} onChange={(e) => setEleccion((x) => ({ ...x, nombre: e.target.value }))} /></Campo>
             <div className="flex flex-wrap gap-2">
               <button className="boton" onClick={usarEnBrief} disabled={!eleccion.marca.trim()}>Usar en el brief</button>
               <button className="boton boton-primario" onClick={() => void crearPlantilla()} disabled={!eleccion.marca.trim() || ![eleccion.acento1, eleccion.acento2, eleccion.activa].every((c) => /^#[0-9a-f]{6}$/i.test(c))}>
-                Crear plantilla y usarla
+                Crear el estilo y usarlo
               </button>
             </div>
             {creada && <Aviso tipo="ok">Plantilla «{creada}» creada y elegida para esta campaña. Puedes ajustarla en Plantillas.</Aviso>}
