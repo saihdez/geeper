@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { AvatarV } from "./avatares";
-import { Aviso, Barra, pedir, postJson, useSondeo } from "./comun";
+import { Aviso, AvisoTarjeta, Barra, LineaFalta, faltanConGuardar, pedir, postJson, useGuardeAntes, useSondeo } from "./comun";
 import { enlaceAvatares } from "@/lib/asistente-avatar";
 
 interface Datos {
@@ -101,7 +101,9 @@ export function PanelAvatarVideo({ proyectoId, ocupado }: { proyectoId: string; 
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+  const guarde = useGuardeAntes();
   if (!datos) return null;
+  const faltaGuardar = faltanConGuardar(guarde);
   const elegido = avatar ?? datos.delVideo?.avatar ?? datos.avatares[0]?.id ?? null;
   const nombre = datos.avatares.find((a) => a.id === elegido)?.nombre ?? "tu avatar";
   const enCurso = datos.trabajos.filter((t) => t.tipo !== "avatar.actuar");
@@ -181,9 +183,12 @@ export function PanelAvatarVideo({ proyectoId, ocupado }: { proyectoId: string; 
           )}
           {error && <Aviso tipo="error">{error}</Aviso>}
           {ok && <Aviso tipo="ok">{ok}</Aviso>}
-          <button type="button" className="boton boton-primario" disabled={enviando || ocupado || !datos.wan2gp.listo || enCurso.length > 0} onClick={() => void enviar()}>
+          <AvisoTarjeta g={guarde} />
+          <button type="button" className="boton boton-primario" disabled={enviando || ocupado || !datos.wan2gp.listo || enCurso.length > 0 || faltaGuardar.length > 0}
+            aria-describedby={faltaGuardar.length ? guarde.idFalta : undefined} onClick={() => void enviar()}>
             {enviando ? "Enviando…" : modo === "escenas" ? `Poner a ${nombre} en esas escenas` : `Poner a ${nombre} como streamer`}
           </button>
+          <LineaFalta id={guarde.idFalta} faltan={faltaGuardar} />
         </>
       )}
     </section>
@@ -213,7 +218,9 @@ function FormAvatarEscena({ proyectoId, escena, numero, ocupado }: { proyectoId:
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [enviado, setEnviado] = useState(false);
+  const guarde = useGuardeAntes();
   if (!datos) return <p className="mt-2 text-xs text-tenue">Cargando…</p>;
+  const faltaGuardar = faltanConGuardar(guarde);
   const elegido = avatar ?? datos.delVideo?.avatar ?? datos.avatares[0]?.id ?? null;
   const trabajo = datos.trabajos.find((t) => t.escena === escena);
   const falta = tipo === "accion" && !que.trim() ? "Escribe qué hace (o toca un ejemplo)." : lugar === "describir" && !donde.trim() ? "Escribe dónde está." : null;
@@ -282,14 +289,18 @@ function FormAvatarEscena({ proyectoId, escena, numero, ocupado }: { proyectoId:
                 {lugar === "describir" && <input className="campo" maxLength={300} value={donde} onChange={(e) => setDonde(e.target.value)} placeholder="Ej.: una ciudad futurista de noche, estilo videojuego" aria-label="Dónde está tu avatar" />}
               </fieldset>
               <SubirProducto proyectoId={proyectoId} producto={producto} cambiar={setProducto} />
-              <p className="text-xs text-tenue">Usa la tarjeta de video: unos {tipo === "habla" ? "8 a 12" : "5 a 10"} minutos (la primera vez, más: baja los modelos).</p>
+              <AvisoTarjeta g={guarde}>Tarda unos {tipo === "habla" ? "8 a 12" : "5 a 10"} minutos (la primera vez, más: baja los modelos).</AvisoTarjeta>
               {(error || falta) && <Aviso tipo={error ? "error" : "info"}>{error ?? falta}</Aviso>}
               {enviado ? (
                 <Aviso tipo="ok">Listo: está en camino. Lo ves avanzar aquí mismo.</Aviso>
               ) : (
-                <button type="button" className="boton boton-primario" disabled={!!falta || enviando || ocupado || !datos.wan2gp.listo} onClick={() => void enviar()}>
-                  {enviando ? "Enviando…" : `5. Poner a tu avatar en la escena ${numero}`}
-                </button>
+                <>
+                  <button type="button" className="boton boton-primario" disabled={!!falta || enviando || ocupado || !datos.wan2gp.listo || faltaGuardar.length > 0}
+                    aria-describedby={faltaGuardar.length ? guarde.idFalta : undefined} onClick={() => void enviar()}>
+                    {enviando ? "Enviando…" : `5. Poner a tu avatar en la escena ${numero}`}
+                  </button>
+                  <LineaFalta id={guarde.idFalta} faltan={faltaGuardar} />
+                </>
               )}
             </>
           )}

@@ -88,6 +88,8 @@ const SITIOS = [
   "src/components/form-nuevo.tsx",
   "src/components/anuncios/conceptos.tsx",
   "src/components/panel-animar.tsx",
+  "src/components/avatares.tsx",
+  "src/components/panel-avatar.tsx",
 ];
 
 describe("cada acción de tarjeta usa el mismo aviso", () => {
