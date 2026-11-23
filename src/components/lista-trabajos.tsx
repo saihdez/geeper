@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { etapaSimple, explicarError, nombreTipo } from "@/lib/textos";
 import { Aviso, Barra, Estado, haceCuanto, MotorApagado, postJson, segundos, useSondeo } from "./comun";
+import { CambiarLink, ofreceCambiarLink } from "./cambiar-link";
 
 interface Trabajo {
   id: string;
@@ -126,6 +127,8 @@ export function ListaTrabajos({ proyectoId }: { proyectoId?: string }) {
             {["fallido", "interrumpido", "cancelado"].includes(t.estado) && (
               <button type="button" className="boton" onClick={() => void accion(t.id, "relanzar")}>Volver a intentar</button>
             )}
+            {/* UX-17: si el link de la página web no abría, se corrige sin escribir todo otra vez. */}
+            {ofreceCambiarLink(t) && <CambiarLink trabajoId={t.id} />}
             {vivo && <button type="button" className="boton boton-peligro" onClick={() => void accion(t.id, "cancelar")}>Cancelar</button>}
             <button type="button" className="boton" aria-expanded={abierto === t.id} onClick={() => setAbierto(abierto === t.id ? null : t.id)}>
               {abierto === t.id ? "Ocultar el registro" : "Ver el registro"}
