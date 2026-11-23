@@ -41,3 +41,77 @@ export function trabajoPorCorrida(trabajos: { id: string; payload: unknown }[]):
   }
   return out;
 }
+
+/** Qué es una miniatura por su extensión: se muestra como imagen, video o reproductor de audio (UX-25). */
+export function tipoMiniatura(nombre: string): "imagen" | "video" | "audio" | null {
+  if (/\.(webp|png|jpe?g|gif)$/i.test(nombre)) return "imagen";
+  if (/\.(mp4|webm)$/i.test(nombre)) return "video";
+  if (/\.(mp3|wav|flac|ogg)$/i.test(nombre)) return "audio";
+  return null;
+}
+
+/** El dibujo de una receta sin miniatura, por su tipo (UX-25). */
+export function iconoDeTipo(tipo: string): string {
+  return ({ image: "🖼️", video: "🎬", audio: "🎵", "3d": "🧊" } as Record<string, string>)[tipo.toLowerCase()] ?? "✨";
+}
+
+const sinTildes = (s: string) => s.toLowerCase().normalize("NFKD").replace(/\p{M}/gu, "");
+
+/**
+ * Palabras en español → cómo las dicen las recetas, que vienen en inglés (UX-25). Sin tildes y en
+ * minúsculas; las frases van antes que sus palabras sueltas.
+ */
+const EQUIVALENCIAS: [string, string[]][] = [
+  ["quitar fondo", ["remove background", "background removal", "rmbg", "matting", "background"]],
+  ["sin fondo", ["remove background", "background removal", "rmbg", "matting", "background"]],
+  ["texto a imagen", ["text to image", "t2i"]],
+  ["texto a video", ["text to video", "t2v"]],
+  ["imagen a video", ["image to video", "i2v"]],
+  ["foto a video", ["image to video", "i2v"]],
+  ["texto a voz", ["text to speech", "tts"]],
+  ["retrato", ["portrait", "headshot", "face"]],
+  ["cara", ["face", "portrait"]],
+  ["musica", ["music", "song", "audio"]],
+  ["cancion", ["song", "music"]],
+  ["letra", ["lyrics"]],
+  ["voz", ["voice", "speech", "tts"]],
+  ["voces", ["voice", "speech", "tts"]],
+  ["sonido", ["sound", "audio"]],
+  ["foto", ["image", "photo"]],
+  ["fotos", ["image", "photo"]],
+  ["imagen", ["image"]],
+  ["imagenes", ["image"]],
+  ["animar", ["animate", "animation"]],
+  ["animacion", ["animate", "animation"]],
+  ["mejorar", ["upscale", "enhance", "restore"]],
+  ["ampliar", ["upscale"]],
+  ["editar", ["edit"]],
+  ["personaje", ["character"]],
+  ["producto", ["product"]],
+  ["ropa", ["fashion", "clothing", "outfit", "try-on"]],
+  ["paisaje", ["landscape"]],
+  ["dibujo", ["drawing", "sketch", "illustration"]],
+  ["boceto", ["sketch"]],
+  ["logotipo", ["logo"]],
+  ["estilo", ["style"]],
+  ["color", ["color", "colorize"]],
+  ["colorear", ["colorize"]],
+];
+
+/**
+ * Si una receta coincide con lo que se busca (función pura): cada palabra (o frase de la tabla) tiene que
+ * estar en el título, la descripción, las etiquetas, los modelos o la categoría, en español o en inglés.
+ */
+export function coincideBusqueda(w: { titulo: string; descripcion: string; etiquetas: string[]; modelos: string[]; categoria: string; tipo: string }, busqueda: string): boolean {
+  let q = ` ${sinTildes(busqueda).replace(/\s+/g, " ").trim()} `;
+  if (!q.trim()) return true;
+  const grupos: string[][] = [];
+  for (const [frase, otras] of EQUIVALENCIAS) {
+    if (!q.includes(` ${frase} `)) continue;
+    grupos.push([frase, ...otras]);
+    q = q.replace(` ${frase} `, " ");
+  }
+  for (const p of q.trim().split(" ")) if (p) grupos.push([p]);
+  const texto = sinTildes(`${w.titulo} ${w.descripcion} ${w.etiquetas.join(" ")} ${w.modelos.join(" ")} ${w.categoria} ${w.tipo}`).replace(/[-_]/g, " ");
+  return grupos.every((g) => g.some((x) => texto.includes(x.replace(/-/g, " "))));
+}

@@ -127,10 +127,14 @@ export function normalizarCatalogo(indice: CategoriaIndice[], archivos: Record<s
     const categoria = CATEGORIAS[c.title ?? ""] ?? c.title ?? c.category ?? "Otros";
     for (const t of c.templates ?? []) {
       if (!t.name || vistos.has(t.name)) continue;
-      // Primero las imágenes (algunas miniaturas del hub son .mp4), después la estándar `<nombre>-1.webp`.
-      const candidatas = [...new Set([...(t.thumbnail ?? []).map((x) => path.basename(x)), `${t.name}-1.webp`])];
-      const imagen = (x: string) => /\.(webp|png|jpe?g|gif)$/i.test(x);
-      const miniaturas = candidatas.filter((x) => !Object.keys(archivos).length || x in archivos).sort((a, b) => Number(imagen(b)) - Number(imagen(a)));
+      // Primero las imágenes (algunas miniaturas del hub son .mp4), después los videos y al final el audio.
+      // Además de las del índice, la estándar `<nombre>-1.webp`; si el catálogo sabe qué archivos hay,
+      // también `<nombre>-2.webp` y, en las de audio, `<nombre>-1.mp3` (UX-25).
+      const conocidos = Object.keys(archivos).length > 0;
+      const extra = conocidos ? [`${t.name}-2.webp`, `${t.name}-1.png`, ...(t.mediaType === "audio" ? [`${t.name}-1.mp3`] : [])] : [];
+      const candidatas = [...new Set([...(t.thumbnail ?? []).map((x) => path.basename(x)), `${t.name}-1.webp`, ...extra])];
+      const orden = (x: string) => (/\.(webp|png|jpe?g|gif)$/i.test(x) ? 0 : /\.(mp4|webm)$/i.test(x) ? 1 : 2);
+      const miniaturas = candidatas.filter((x) => !conocidos || Object.hasOwn(archivos, x)).sort((a, b) => orden(a) - orden(b));
       vistos.set(t.name, {
         id: t.name,
         titulo: t.title ?? t.name,

@@ -2,9 +2,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Aviso, Barra, archivo, pedir, postJson, useSondeo } from "./comun";
 import { textoEspera, useMotorVivo } from "./motor";
-import { entradasSinArchivo, textoFaltaArchivo, tuArchivo } from "@/lib/workflows-texto";
+import { coincideBusqueda, entradasSinArchivo, iconoDeTipo, textoFaltaArchivo, tipoMiniatura, tuArchivo } from "@/lib/workflows-texto";
 
-interface WfV { id: string; titulo: string; descripcion: string; categoria: string; tipo: string; etiquetas: string[]; modelos: string[]; tamano: number; local: boolean; bloqueo: string | null; aviso: string | null; comunidad: boolean; entradas: number; uso: number; fecha: string | null; miniatura: string | null }
+interface WfV { id: string; titulo: string; descripcion: string; categoria: string; tipo: string; etiquetas: string[]; modelos: string[]; tamano: number; local: boolean; bloqueo: string | null; aviso: string | null; comunidad: boolean; entradas: number; uso: number; fecha: string | null; miniaturas: string[] }
 interface CorridaV { id: string; workflow: string; titulo: string; creada: string; estado: "preparada" | "hecha" | "fallida"; salidas: { archivo: string; tipo: string }[]; segundos?: number; error?: string; trabajo: string | null; cancelada?: boolean }
 interface TrabajoV { id: string; estado: string; etapa: string; progreso: number; corrida: string | null; workflow: string | null }
 interface Datos { comfy: { listo: boolean; falta: string | null; instalando: boolean; disponible: boolean; aMedias?: boolean; detalle?: string }; workflows: WfV[]; corridas: CorridaV[]; trabajos: TrabajoV[] }
@@ -34,11 +34,10 @@ export function PaginaWorkflows() {
   const detalleRef = useRef<HTMLDivElement>(null);
 
   const lista = useMemo(() => {
-    const q = buscar.trim().toLowerCase().normalize("NFKD").replace(/\p{M}/gu, "");
     return (datos?.workflows ?? [])
       .filter((w) => (filtro === "local" ? w.local : filtro === "pago" ? !w.local : true))
       .filter((w) => categoria === "Todas" || w.categoria === categoria)
-      .filter((w) => !q || `${w.titulo} ${w.descripcion} ${w.etiquetas.join(" ")} ${w.modelos.join(" ")}`.toLowerCase().normalize("NFKD").replace(/\p{M}/gu, "").includes(q))
+      .filter((w) => coincideBusqueda(w, buscar))
       .sort((a, b) => Number(!!a.bloqueo) - Number(!!b.bloqueo) || Number(!!a.aviso) - Number(!!b.aviso) || b.uso - a.uso);
   }, [datos, buscar, categoria, filtro]);
   const categorias = useMemo(() => {
@@ -89,16 +88,13 @@ export function PaginaWorkflows() {
               ))}
             </div>
             {lista.length === 0 ? (
-              <p className="text-sm text-tenue">No hay recetas con esa búsqueda. Prueba otras palabras (en inglés también funciona: «portrait», «music»).</p>
+              <p className="text-sm text-tenue">No hay recetas con esa búsqueda. Prueba con menos palabras o con otras (por ejemplo «retrato», «música», «voz» o «quitar fondo»).</p>
             ) : (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                 {lista.slice(0, cuantos).map((w) => (
                   <button key={w.id} type="button" onClick={() => setAbierto(w.id)} className={`tarjeta overflow-hidden text-left hover:bg-white/5 ${abierto === w.id ? "ring-2 ring-cyan-500" : ""}`}>
                     <div className="relative aspect-video bg-slate-800">
-                      {w.miniatura && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={w.miniatura} alt="" loading="lazy" className={`h-full w-full object-cover ${w.bloqueo ? "opacity-50" : ""}`} />
-                      )}
+                      <Miniatura key={w.id} urls={w.miniaturas} tipo={w.tipo} apagada={!!w.bloqueo} />
                       {!w.local && <span className="absolute right-1 top-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px]">🔒 De pago</span>}
                     </div>
                     <div className="space-y-1 p-2">
@@ -115,6 +111,45 @@ export function PaginaWorkflows() {
           </section>
           <Editor />
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * La miniatura de una tarjeta: prueba cada archivo en orden y, si ninguno carga, muestra un dibujo por el
+ * tipo de receta en vez de un cuadro vacío (UX-25).
+ */
+function Miniatura({ urls, tipo, apagada }: { urls: string[]; tipo: string; apagada: boolean }) {
+  const [i, setI] = useState(0);
+  const url = urls[i];
+  const clase = `h-full w-full object-cover ${apagada ? "opacity-50" : ""}`;
+  if (!url) return <span aria-hidden className="flex h-full w-full items-center justify-center text-4xl opacity-60">{iconoDeTipo(tipo)}</span>;
+  if (tipoMiniatura(decodeURIComponent(url)) === "video") return <video src={url} muted loop playsInline preload="metadata" className={clase} onError={() => setI((n) => n + 1)} onMouseEnter={(e) => void e.currentTarget.play().catch(() => {})} onMouseLeave={(e) => e.currentTarget.pause()} />;
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={url} alt="" loading="lazy" className={clase} onError={() => setI((n) => n + 1)} />;
+}
+
+/** El ejemplo de resultado en el detalle: la primera imagen o video que cargue y, si la receta trae, su audio (UX-25). */
+function Ejemplo({ urls }: { urls: string[] }) {
+  const [malas, setMalas] = useState<string[]>([]);
+  const vista = urls.find((u) => !malas.includes(u) && tipoMiniatura(decodeURIComponent(u)) !== "audio");
+  const audio = urls.find((u) => !malas.includes(u) && tipoMiniatura(decodeURIComponent(u)) === "audio");
+  const fallo = (u: string) => () => setMalas((m) => [...m, u]);
+  if (!vista && !audio) return null;
+  return (
+    <div className="w-full max-w-sm space-y-2 sm:w-auto">
+      {vista && (tipoMiniatura(decodeURIComponent(vista)) === "video" ? (
+        <video key={vista} src={vista} controls muted playsInline preload="metadata" className="max-h-56 w-full rounded object-contain" onError={fallo(vista)} />
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img key={vista} src={vista} alt="Ejemplo de resultado" className="max-h-56 w-full rounded object-contain sm:w-auto" onError={fallo(vista)} />
+      ))}
+      {audio && (
+        <label className="block space-y-1 text-xs text-tenue">
+          <span>Escucha un ejemplo</span>
+          <audio key={audio} src={audio} controls preload="none" className="w-full" onError={fallo(audio)} />
+        </label>
       )}
     </div>
   );
@@ -241,10 +276,7 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
         <button className="boton" onClick={cerrar}>Cerrar</button>
       </div>
       <div className="flex flex-wrap gap-4">
-        {w.miniaturas[0] && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={w.miniaturas[0]} alt="Ejemplo de resultado" className="max-h-56 w-full max-w-sm rounded object-contain sm:w-auto" />
-        )}
+        <Ejemplo urls={w.miniaturas} />
         <p className="min-w-0 flex-1 text-sm">{w.descripcion}</p>
       </div>
 

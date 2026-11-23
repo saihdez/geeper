@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { json, manejar } from "@/lib/http";
 import { revisarComfyui } from "@/lib/instalar-comfyui";
 import { aviso, bloqueo, listarCorridas, REINTENTABLES, trabajoPorCorrida } from "@/lib/workflows";
+import { tipoMiniatura } from "@/lib/workflows-texto";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,8 @@ export async function GET() {
       workflows: workflows.map((w) => ({
         id: w.id, titulo: w.titulo, descripcion: w.descripcion, categoria: w.categoria, tipo: w.tipo, etiquetas: w.etiquetas, modelos: w.modelos,
         tamano: w.tamano, local: w.local, bloqueo: bloqueo(w), aviso: aviso(w), comunidad: w.complementos.length > 0, entradas: w.entradas.length, uso: w.uso, fecha: w.fecha,
-        miniatura: w.miniaturas[0] ? `/api/workflows/archivo/${encodeURIComponent(w.miniaturas[0])}` : null,
+        // Las que se pueden ver en la tarjeta, en orden: si una no carga, la página prueba la siguiente (UX-25).
+        miniaturas: w.miniaturas.filter((m) => tipoMiniatura(m) !== "audio").slice(0, 3).map((m) => `/api/workflows/archivo/${encodeURIComponent(m)}`),
       })),
       corridas: (await listarCorridas()).slice(0, 30).map((c) => ({ ...c, trabajo: terminados[c.id] ?? null, cancelada: c.estado !== "hecha" && estadoDe.get(terminados[c.id] ?? "") === "cancelado" })),
       trabajos: trabajos.map((t) => ({ id: t.id, estado: t.estado, etapa: t.etapa, progreso: t.progreso, corrida: (t.payload as { corrida?: string }).corrida ?? null, workflow: (t.payload as { pedido?: { workflow?: string } }).pedido?.workflow ?? null })),
