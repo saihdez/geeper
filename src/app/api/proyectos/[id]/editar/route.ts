@@ -46,7 +46,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       if (slug.tipo === "cambiarPlantilla" && !(await db.plantilla.findUnique({ where: { slug: slug.plantilla } }))) throw new Error("No existe esa plantilla");
     }
     let { p } = await versionDeProyecto(id);
+    const antes = JSON.stringify(p);
     for (const e of lista) p = aplicarEdicion(p, e);
+    // UX-18: si nada cambió (no había muletillas ni pausas largas), no se crea una versión igual.
+    if (JSON.stringify(p) === antes) return json({ sinCambios: true });
     const nota = [...new Set(lista.map((e) => NOTAS[e.tipo]))].join(", ");
     const numero = await guardarProyecto(id, p, nota);
     return json({ version: numero });
