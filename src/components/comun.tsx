@@ -233,6 +233,34 @@ export function AvisoTarjeta({ g, children }: { g: GuardeAntes; children?: React
   );
 }
 
+/**
+ * «Volver a intentar» de un trabajo. Si usa la tarjeta y todavía no se marcó «Ya guardé…» en esta
+ * pestaña, el primer clic muestra el aviso con la casilla; el reintento queda apagado hasta marcarla.
+ */
+export function BotonReintentar({ usaGpu, onClick, disabled, className = "boton" }: { usaGpu?: boolean; onClick: () => void; disabled?: boolean; className?: string }) {
+  const g = useGuardeAntes();
+  const [pidiendo, setPidiendo] = useState(false);
+  if (!usaGpu || (g.guardado && !pidiendo)) {
+    return <button type="button" className={className} disabled={disabled} onClick={onClick}>Volver a intentar</button>;
+  }
+  if (!pidiendo) {
+    return <button type="button" className={className} disabled={disabled} aria-expanded={false} onClick={() => setPidiendo(true)}>Volver a intentar</button>;
+  }
+  const faltan = faltanConGuardar(g);
+  return (
+    <div className="w-full basis-full space-y-2">
+      <AvisoTarjeta g={g} />
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" className={className} disabled={disabled || !g.guardado}
+          aria-describedby={faltan.length ? g.idFalta : undefined}
+          onClick={() => { setPidiendo(false); onClick(); }}>Volver a intentar</button>
+        <button type="button" className="boton" onClick={() => setPidiendo(false)}>Ahora no</button>
+      </div>
+      <LineaFalta id={g.idFalta} faltan={faltan} />
+    </div>
+  );
+}
+
 /** «Para continuar falta: …» debajo del botón apagado (UX-31). No pinta nada si no falta nada. */
 export function LineaFalta({ id, faltan }: { id: string; faltan: readonly string[] }) {
   if (!faltan.length) return null;

@@ -37,6 +37,8 @@ export interface TrabajoV {
   etapa?: string | null;
   progreso?: number | null;
   error?: string | null;
+  /** Usa la tarjeta de video: «Volver a intentar» pide antes «Ya guardé». */
+  usaGpu?: boolean;
   creado?: string;
   iniciado?: string | null;
   terminado?: string | null;

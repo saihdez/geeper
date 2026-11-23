@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Aviso, Barra, Estado, archivo, fecha, haceCuanto, numero, pedir, postJson, segundos, useSondeo } from "./comun";
+import { Aviso, Barra, BotonReintentar, Estado, archivo, fecha, haceCuanto, numero, pedir, postJson, segundos, useSondeo } from "./comun";
 import { ACCEPT_IMAGEN, esVector } from "@/lib/formatos-vector";
 import { explicarError } from "@/lib/textos";
 import { avisoSubtitulosRapidos, explicarRegla, LIMITES_SUBTITULOS, porQueFalla, resumirQc, type FraseQc, type SubtitulosRapidos } from "@/lib/qc-explicado";
@@ -587,8 +587,8 @@ export function EditorProyecto({ id }: { id: string }) {
       ) : fallo ? (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-red-900 bg-red-950/30 px-3 py-2 text-sm" role="alert">
           <p className="min-w-0 flex-1">No se pudo crear el video. {explicarError(fallo.error).simple}</p>
-          <button type="button" className="boton py-1" disabled={ocupado}
-            onClick={() => void hacer(() => postJson(`/api/trabajos/${fallo.id}`, { accion: "relanzar" }), "Listo: lo estamos intentando otra vez.")}>Volver a intentar</button>
+          <BotonReintentar className="boton py-1" disabled={ocupado} usaGpu={fallo.usaGpu}
+            onClick={() => void hacer(() => postJson(`/api/trabajos/${fallo.id}`, { accion: "relanzar" }), "Listo: lo estamos intentando otra vez.")} />
         </div>
       ) : render && renderAlDia && qc ? (
         <div className={`flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm ${qc.estado === "falta" ? "border-red-900 bg-red-950/30" : "border-emerald-800 bg-emerald-950/40"}`}>
@@ -639,7 +639,7 @@ export function EditorProyecto({ id }: { id: string }) {
           <Aviso tipo={c.trabajo?.estado === "cancelado" ? "info" : "error"}>
             <p>{textoFalloCreacion(c.trabajo)}</p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <button type="button" className="boton py-1" disabled={ocupado} onClick={() => void hacer(() => postJson(`/api/trabajos/${c.trabajo!.id}`, { accion: "relanzar" }), "Listo: lo estamos intentando otra vez.")}>Volver a intentar</button>
+              <BotonReintentar className="boton py-1" disabled={ocupado} usaGpu={c.trabajo?.usaGpu} onClick={() => void hacer(() => postJson(`/api/trabajos/${c.trabajo!.id}`, { accion: "relanzar" }), "Listo: lo estamos intentando otra vez.")} />
               {c.trabajo?.error && <details className="text-xs"><summary className="cursor-pointer text-tenue">Ver el error</summary><p className="mt-1 whitespace-pre-wrap break-words">{c.trabajo.error}</p></details>}
             </div>
           </Aviso>

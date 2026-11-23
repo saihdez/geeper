@@ -878,6 +878,9 @@ Medido igual que 7.2–7.5: instancia aislada en `127.0.0.1:3311`, copia de los 
 
 #### Lo que decides tú
 
-- **DSC-03:** dos discos de la recuperación del 6-nov ocupan 190,8 GiB de C:. Moverlos a D: no pierde nada (comandos en la fila de DSC-03).
-- **DSC-09:** `swapFile=D:\\wsl\\swap.vhdx` y `maxCrashDumpCount=1` bajo `[wsl2]` en `.wslconfig`, y `wsl --shutdown`.
+Decidido el 2026-11-23 (lo haces tú desde Windows, con WSL apagado):
+
+- **DSC-03, moverlos a D::** en PowerShell, `wsl --shutdown`, luego `wsl --manage Ubuntu-Recuperado --move D:\wsl\Ubuntu-Recuperado`. Para la copia forense: `Get-FileHash C:\Recuperacion-Farol\ubuntu-forense.vhdx` y `Get-FileHash D:\wsl\Ubuntu\ext4.vhdx`. Si son iguales, borra la de C: con `Remove-Item`; si no, `Move-Item` a `D:\wsl\`. Libera hasta 190,8 GiB de C:.
+- **DSC-09, intercambio en D::** en `%USERPROFILE%\.wslconfig`, bajo `[wsl2]`, agrega `swapFile=D:\\wsl\\swap.vhdx` y `maxCrashDumpCount=1`, y corre `wsl --shutdown`. Hazlo en el mismo apagado que DSC-03.
+- **«Volver a intentar» con la tarjeta:** ahora pide «Ya guardé lo que tenía abierto» en Trabajos y en el editor, igual que las demás acciones (`BotonReintentar` en `comun.tsx`). Probar: un trabajo fallido que use la tarjeta → «Volver a intentar» → aparece el aviso y el botón queda apagado hasta marcar la casilla.
 - **GPU-12:** quedó fuera; conviene retomarlo cuando la PC deje de reiniciarse con carga en la tarjeta.

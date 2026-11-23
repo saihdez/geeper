@@ -38,7 +38,7 @@ describe("«Cambiar el link» en Trabajos (UX-17)", () => {
   it("va junto a «Volver a intentar» sólo cuando lo ofrece ofreceCambiarLink", () => {
     const s = fs.readFileSync(path.join(process.cwd(), "src/components/lista-trabajos.tsx"), "utf8");
     expect(s).toContain('import { CambiarLink, ofreceCambiarLink } from "./cambiar-link";');
-    const i = s.indexOf(">Volver a intentar</button>");
+    const i = s.indexOf("<BotonReintentar usaGpu={t.usaGpu}");
     expect(i).toBeGreaterThan(0);
     expect(s.slice(i, i + 400)).toContain("{ofreceCambiarLink(t) && <CambiarLink trabajoId={t.id} />}");
   });

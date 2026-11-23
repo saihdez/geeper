@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { textoIntentos, type IntentoPrevio } from "@/lib/intentos";
 import { etapaSimple, explicarError, nombreTipo } from "@/lib/textos";
-import { Aviso, Barra, Estado, haceCuanto, MotorApagado, postJson, segundos, useSondeo } from "./comun";
+import { Aviso, Barra, BotonReintentar, Estado, haceCuanto, MotorApagado, postJson, segundos, useSondeo } from "./comun";
 import { CambiarLink, ofreceCambiarLink } from "./cambiar-link";
 
 interface Trabajo {
@@ -129,7 +129,7 @@ export function ListaTrabajos({ proyectoId }: { proyectoId?: string }) {
           <span className="text-xs text-tenue">{cuando(t, ahoraCliente)}{t.iniciado ? ` · ${duracion(t, datos?.ahora || ahoraCliente)}` : ""}</span>
           <span className="ml-auto flex gap-2">
             {["fallido", "interrumpido", "cancelado"].includes(t.estado) && (
-              <button type="button" className="boton" onClick={() => void accion(t.id, "relanzar")}>Volver a intentar</button>
+              <BotonReintentar usaGpu={t.usaGpu} onClick={() => void accion(t.id, "relanzar")} />
             )}
             {/* UX-17: si el link de la página web no abría, se corrige sin escribir todo otra vez. */}
             {ofreceCambiarLink(t) && <CambiarLink trabajoId={t.id} />}

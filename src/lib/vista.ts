@@ -41,7 +41,7 @@ export async function vistaProyecto(id: string) {
       versiones: { orderBy: { numero: "desc" }, take: TOPES_VISTA.versiones, select: { numero: true, nota: true, creado: true, hash: true } },
       renders: { orderBy: { creado: "desc" }, take: TOPES_VISTA.renders },
       // Sin payload (la sesión de subida de una publicación no debe salir), resultado ni log.
-      trabajos: { orderBy: { creado: "desc" }, take: 30, select: { id: true, tipo: true, estado: true, etapa: true, progreso: true, error: true, creado: true, iniciado: true, terminado: true } },
+      trabajos: { orderBy: { creado: "desc" }, take: 30, select: { id: true, tipo: true, estado: true, etapa: true, progreso: true, error: true, usaGpu: true, creado: true, iniciado: true, terminado: true } },
       lote: { select: { id: true, nombre: true } },
       publicaciones: {
         orderBy: { creado: "desc" },
