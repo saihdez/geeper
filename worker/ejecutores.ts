@@ -106,7 +106,7 @@ async function mptGenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
     if (!taskId) {
       const guion = typeof t.payload.guion === "string" ? t.payload.guion : undefined;
       const cuerpo = cuerpoVideo(proyecto.tema, Formato.parse(proyecto.formato), plantilla.datos.mpt, guion);
-      taskId = await crearVideo(cuerpo);
+      taskId = await crearVideo(cuerpo, h.log);
       // Se guarda ANTES de esperar: si el worker muere, al relanzar se retoma esta misma tarea.
       await guardarPayload(t.id, { ...t.payload, mptTaskId: taskId });
       h.log(`MPT aceptó la tarea ${taskId}: ${JSON.stringify(cuerpo)}`);
