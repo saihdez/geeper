@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Aviso, archivo, pedir, postJson, useSondeo } from "./comun";
+import { Aviso, AvisoTarjeta, LineaFalta, archivo, faltanConGuardar, pedir, postJson, useGuardeAntes, useSondeo } from "./comun";
 
 interface Diseno { estado: string; etapa: string; error: string | null; tomas: string[] }
 interface Instalacion { disponible: boolean; instalada: boolean; corriendo: boolean; error: string | null; pasos: { id: string; nombre: string; estado: string }[] }
@@ -71,6 +71,8 @@ export function DisenarVoz({ instalada, nombreSugerido = "", alGuardar, alCancel
   const [elegida, setElegida] = useState(1);
   const [nombre, setNombre] = useState(nombreSugerido);
   const [error, setError] = useState<string | null>(null);
+  const guarde = useGuardeAntes();
+  const faltan = faltanConGuardar(guarde, descripcion.trim().length < 8 ? ["describir la voz (al menos unas palabras)"] : []);
 
   // Mientras se diseña, se consulta el avance cada 3 s.
   useEffect(() => {
@@ -130,12 +132,16 @@ export function DisenarVoz({ instalada, nombreSugerido = "", alGuardar, alCancel
       <p className="text-xs text-tenue">
         Describe cómo suena, no a quién se parece: tono (aguda o grave), timbre (nasal, ronca, suave), ritmo, ánimo y edad. El creador no conoce personajes ni famosos por su nombre, así que los ignora. Sólo voces inventadas: no imites a una persona real.
       </p>
-      <p className="text-xs text-tenue">Se crean 3 opciones distintas para que elijas. Tarda unos 2 minutos y usa la tarjeta de video (si está ocupada, espera su turno).</p>
       {!pedido && (
-        <div className="flex gap-2">
-          <button type="button" className="boton boton-primario" disabled={descripcion.trim().length < 8} onClick={() => void disenar()}>Crear 3 opciones</button>
-          <button type="button" className="boton" onClick={alCancelar}>Cancelar</button>
-        </div>
+        <>
+          <AvisoTarjeta g={guarde}>Se crean 3 opciones distintas para que elijas. Tarda unos 2 minutos (si la tarjeta está ocupada, espera su turno).</AvisoTarjeta>
+          <div className="flex gap-2">
+            <button type="button" className="boton boton-primario" disabled={faltan.length > 0} aria-describedby={faltan.length ? guarde.idFalta : undefined}
+              onClick={() => void disenar()}>Crear 3 opciones</button>
+            <button type="button" className="boton" onClick={alCancelar}>Cancelar</button>
+          </div>
+          <LineaFalta id={guarde.idFalta} faltan={faltan} />
+        </>
       )}
       {pedido && diseno && (diseno.estado === "pendiente" || diseno.estado === "corriendo") && (
         <p className="text-sm" role="status">{diseno.estado === "pendiente" ? "En la fila, esperando su turno…" : diseno.etapa || "Creando las voces…"}</p>

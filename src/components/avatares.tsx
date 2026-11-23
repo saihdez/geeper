@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { cancelarAlSalir, escribirEstadoAsistente, leerEstadoAsistente, pedidoAvatar, puedeCrearAvatar, volverSeguro, type EstadoAsistente, type TextosAvatar } from "@/lib/asistente-avatar";
-import { Aviso, Barra, CIRCULO_PASO, CLASE_PASO, pedir, postJson, useSondeo } from "./comun";
+import { Aviso, AvisoTarjeta, Barra, CIRCULO_PASO, CLASE_PASO, LineaFalta, faltanConGuardar, pedir, postJson, useGuardeAntes, useSondeo } from "./comun";
 import { ElegirVozAvatar, type VozElegida } from "./elegir-voz-avatar";
 
 export interface AvatarV {
@@ -159,6 +159,8 @@ function Crear({ datos, inicial, cerrar, alGuardar }: { datos: Datos; inicial: E
   const [voz, setVoz] = useState<VozElegida | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const guarde = useGuardeAntes();
+  const faltaGuardar = faltanConGuardar(guarde);
 
   useEffect(() => {
     if (!pedido) return;
@@ -343,14 +345,15 @@ function Crear({ datos, inicial, cerrar, alGuardar }: { datos: Datos; inicial: E
             </div>
           </details>
 
+          <AvisoTarjeta g={guarde}>
+            Mientras tanto se pausa la generación de videos. Tarda unos 2 minutos; la primera vez, unos 6, porque baja el modelo (unos 11 GB).
+          </AvisoTarjeta>
           <div className="space-y-1">
-            <button className="boton boton-primario" disabled={!puede || enviando} onClick={() => void empezar()}>
+            <button className="boton boton-primario" disabled={!puede || enviando || faltaGuardar.length > 0} aria-describedby={faltaGuardar.length ? guarde.idFalta : undefined}
+              onClick={() => void empezar()}>
               {enviando ? "Enviando…" : conFoto ? "Crear 2 versiones" : "Crear 4 opciones"}
             </button>
-            <p className="text-xs text-tenue">
-              Usa la tarjeta de video: mientras tanto se pausa la generación de videos. Tarda unos 2 minutos; la primera vez, unos 6, porque
-              baja el modelo (unos 11 GB).
-            </p>
+            <LineaFalta id={guarde.idFalta} faltan={faltaGuardar} />
           </div>
         </div>
       )}
@@ -378,11 +381,15 @@ function Crear({ datos, inicial, cerrar, alGuardar }: { datos: Datos; inicial: E
               </div>
             </>
           )}
+          {avance && !enCurso(avance.estado) && <AvisoTarjeta g={guarde} />}
           <div className="flex flex-wrap gap-2">
             <button className="boton" onClick={() => setPaso(1)}>← Cambiar la descripción</button>
-            <button className="boton" disabled={!avance || enCurso(avance.estado)} onClick={() => void otras()}>{avance?.conFoto ? "Hacer otras 2" : "Hacer otras 4"}</button>
+            <button className="boton" disabled={!avance || enCurso(avance.estado) || faltaGuardar.length > 0}
+              aria-describedby={avance && !enCurso(avance.estado) && faltaGuardar.length ? guarde.idFalta : undefined}
+              onClick={() => void otras()}>{avance?.conFoto ? "Hacer otras 2" : "Hacer otras 4"}</button>
             <button className="boton boton-primario" disabled={!elegida} onClick={() => setPaso(3)}>Usar éste →</button>
           </div>
+          {avance && !enCurso(avance.estado) && <LineaFalta id={guarde.idFalta} faltan={faltaGuardar} />}
         </div>
       )}
 
@@ -414,6 +421,8 @@ function Tarjeta({ avatar: a, listo, trabajo, cambio }: { avatar: AvatarV; listo
   const [instruccion, setInstruccion] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  const guarde = useGuardeAntes();
+  const faltaGuardar = faltanConGuardar(guarde);
 
   async function hacer(fn: () => Promise<unknown>) {
     setError(null);
@@ -475,10 +484,13 @@ function Tarjeta({ avatar: a, listo, trabajo, cambio }: { avatar: AvatarV; listo
             <div className="flex flex-wrap gap-1">
               {RETOQUES.map((x) => <button key={x} type="button" className="boton text-xs" onClick={() => setInstruccion(x)}>{x}</button>)}
             </div>
+            <AvisoTarjeta g={guarde} />
             <div className="flex gap-2">
-              <button className="boton boton-primario" disabled={ocupado || instruccion.trim().length < 3} onClick={() => void hacer(async () => { await postJson(`/api/avatares/${a.id}`, { instruccion }); setRetocar(false); setInstruccion(""); })}>Retocar</button>
+              <button className="boton boton-primario" disabled={ocupado || instruccion.trim().length < 3 || faltaGuardar.length > 0} aria-describedby={faltaGuardar.length ? guarde.idFalta : undefined}
+                onClick={() => void hacer(async () => { await postJson(`/api/avatares/${a.id}`, { instruccion }); setRetocar(false); setInstruccion(""); })}>Retocar</button>
               <button className="boton" onClick={() => setRetocar(false)}>Cerrar</button>
             </div>
+            <LineaFalta id={guarde.idFalta} faltan={faltaGuardar} />
           </div>
         ) : (
           <div className="flex flex-wrap gap-2">

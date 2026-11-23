@@ -2,7 +2,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { SugerenciasBusqueda, cambiarUltimaLinea, ultimaLinea } from "./sugerencias-busqueda";
-import { Aviso, postJson, useSondeo } from "./comun";
+import { Aviso, AvisoTarjeta, FALTA_GUARDAR, LineaFalta, postJson, useGuardeAntes, useSondeo } from "./comun";
 import { ESTILOS_GENERACION, tiempoEstimado, type EstiloGeneracion } from "@/lib/estilos-generacion";
 import { FORMAS } from "@/lib/glosario";
 
@@ -19,7 +19,7 @@ export const CODIGO_MPT = /^[0-9a-f-]{36}$/;
 export function faltaNuevo(o: { temas: number; necesitaGpu: boolean; aceptoGpu: boolean }): string[] {
   const falta: string[] = [];
   if (o.temas === 0) falta.push("escribir el tema");
-  if (o.necesitaGpu && !o.aceptoGpu) falta.push("marcar la casilla de arriba");
+  if (o.necesitaGpu && !o.aceptoGpu) falta.push(FALTA_GUARDAR);
   return falta;
 }
 
@@ -31,7 +31,7 @@ export function FormNuevo() {
   const [plantilla, setPlantilla] = useState("gta-vi-shorts");
   const [mptTaskId, setMpt] = useState("");
   const [rehacerVoz, setRehacerVoz] = useState(true);
-  const [aceptoGpu, setAcepto] = useState(false);
+  const guarde = useGuardeAntes();
   // Tu avatar en el video (protagonista.ts): protagoniza cada escena, dentro de su fondo, y es la única persona.
   const { datos: lib } = useSondeo<{ avatares: { id: string; nombre: string; retrato: string }[] }>("/api/avatares", 60_000);
   const [avatar, setAvatar] = useState<string | null>(null);
@@ -44,7 +44,7 @@ export function FormNuevo() {
   const importa = mptTaskId.trim().length > 0;
   const codigoMal = importa && !CODIGO_MPT.test(mptTaskId.trim());
   const necesitaGpu = !importa;
-  const faltan = [...faltaNuevo({ temas: lista.length, necesitaGpu, aceptoGpu }), ...(codigoMal ? ["un código de video completo"] : [])];
+  const faltan = [...faltaNuevo({ temas: lista.length, necesitaGpu, aceptoGpu: guarde.guardado }), ...(codigoMal ? ["un código de video completo"] : [])];
 
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
@@ -149,21 +149,16 @@ export function FormNuevo() {
         </label>
       </details>
       {necesitaGpu && (
-        <Aviso tipo="alerta">
-          <p className="font-medium">Crear el video usa la tarjeta de video (guion, imágenes y voz; unos 3 min por tema).</p>
-          <p className="mt-1">Windows se ha reiniciado sin aviso durante generaciones: guarda tu trabajo antes. Si se reinicia, el trabajo queda «interrumpido» y lo vuelves a empezar tú desde Trabajos con «Volver a intentar»; nunca empieza solo otra vez.</p>
-          <label className="mt-2 flex items-center gap-2">
-            <input type="checkbox" checked={aceptoGpu} onChange={(e) => setAcepto(e.target.checked)} />
-            Guardé mi trabajo; puedo generar.
-          </label>
-        </Aviso>
+        <AvisoTarjeta g={guarde}>
+          Crear el video tarda unos 3 min por tema. Si se corta, queda «interrumpido» y lo vuelves a empezar tú desde Trabajos con «Volver a intentar»; nunca empieza solo otra vez.
+        </AvisoTarjeta>
       )}
       {error && <Aviso tipo="error">{error}</Aviso>}
       <div className="space-y-1">
-        <button className="boton boton-primario" disabled={enviando || faltan.length > 0} aria-describedby={faltan.length ? "nuevo-falta" : undefined}>
+        <button className="boton boton-primario" disabled={enviando || faltan.length > 0} aria-describedby={faltan.length ? guarde.idFalta : undefined}>
           {enviando ? "Creando…" : importa ? "Importar" : lista.length > 1 ? `Crear ${lista.length} videos` : "Crear el video"}
         </button>
-        {faltan.length > 0 && <p id="nuevo-falta" className="text-xs text-amber-300">Para continuar falta: {faltan.join(" · ")}.</p>}
+        <LineaFalta id={guarde.idFalta} faltan={faltan} />
       </div>
     </form>
   );

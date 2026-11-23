@@ -1,7 +1,7 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Aviso, postJson } from "./comun";
+import { Aviso, AvisoTarjeta, LineaFalta, faltanConGuardar, postJson, useGuardeAntes } from "./comun";
 
 const IDIOMAS = [
   { id: "es", nombre: "Español", ejemplo: "Los faros todavía guían a los barcos…" },
@@ -22,6 +22,8 @@ export function PanelTraducir({ proyectoId, idiomaActual, ocupado }: { proyectoI
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const elegido = IDIOMAS.find((x) => x.id === idioma)!;
+  const guarde = useGuardeAntes();
+  const faltaGuardar = faltanConGuardar(guarde);
 
   async function crear() {
     setEnviando(true);
@@ -58,14 +60,18 @@ export function PanelTraducir({ proyectoId, idiomaActual, ocupado }: { proyectoI
           ))}
         </div>
       </fieldset>
-      <p className="text-xs text-tenue">
-        Tarda unos minutos y no tienes que hacer nada mientras tanto. La traducción la hace la IA de esta computadora:
-        si la tarjeta de video está ocupada con otro video, espera su turno. La voz tendrá el mismo tipo (mujer u hombre) que la original.
-      </p>
+      <AvisoTarjeta g={guarde}>
+        No tienes que hacer nada mientras tanto. La traducción la hace la IA de esta computadora: si la tarjeta de video está
+        ocupada con otro video, espera su turno. La voz tendrá el mismo tipo (mujer u hombre) que la original.
+      </AvisoTarjeta>
       {error && <Aviso tipo="error">{error}</Aviso>}
-      <button type="button" className="boton boton-primario" disabled={ocupado || enviando} onClick={() => void crear()}>
-        {enviando ? "Creando la versión…" : `Crear versión en ${elegido.nombre.split(" ")[0]!.toLowerCase()}`}
-      </button>
+      <div className="space-y-1">
+        <button type="button" className="boton boton-primario" disabled={ocupado || enviando || faltaGuardar.length > 0}
+          aria-describedby={faltaGuardar.length ? guarde.idFalta : undefined} onClick={() => void crear()}>
+          {enviando ? "Creando la versión…" : `Crear versión en ${elegido.nombre.split(" ")[0]!.toLowerCase()}`}
+        </button>
+        <LineaFalta id={guarde.idFalta} faltan={faltaGuardar} />
+      </div>
     </section>
   );
 }
