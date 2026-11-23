@@ -101,7 +101,7 @@ export async function proponerTitulos(
     return titulos.length ? { titulos, fuente: "ia" } : respaldo("La IA respondió algo que no se pudo usar.");
   } catch (e) {
     if (e instanceof ErrorLlm) {
-      if (e.causa === "gpu-ocupada") return respaldo("La tarjeta gráfica está ocupada con otro trabajo (un video o un render). Prueba de nuevo en unos minutos.");
+      if (e.causa === "gpu-ocupada") return respaldo("La tarjeta de video está ocupada con otro trabajo (un video o un render). Prueba de nuevo en unos minutos.");
       if (e.causa === "mpt-apagado") return respaldo("La IA local (MoneyPrinterTurbo) no está encendida.");
       if (e.causa === "modelo-falta") return respaldo(`Falta el modelo ${MODELO_TITULOS} en la IA local.`);
       if (e.causa === "docker-apagado") return respaldo("La IA local está apagada: abre Docker Desktop y vuelve a intentar.");

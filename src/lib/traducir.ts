@@ -181,7 +181,7 @@ export interface InformeTraduccion {
  */
 export async function preguntarLlm(prompt: string, etapa: string, ctx: Contexto & { signal?: AbortSignal }, op: { modelo?: string; ejecutar?: OpcionesLlm["ejecutar"]; candado?: OpcionesLlm["candado"]; encender?: OpcionesLlm["encender"] } = {}): Promise<string> {
   const modelo = op.modelo ?? MODELO_TRADUCIR;
-  ctx.log(`${etapa}: esperando la tarjeta gráfica (${modelo})…`);
+  ctx.log(`${etapa}: esperando la tarjeta de video (${modelo})…`);
   try {
     const r = await pedirJson(modelo, prompt, z.unknown(), {
       tarea: `traducir ${path.basename(ctx.dir)}`,
@@ -267,7 +267,7 @@ export async function traducirProyecto(
   // Sin botón propio, el de la tarjeta final sale de la plantilla (en español): se traduce y queda propio.
   const ctaTexto = original.cta ?? (await obtenerPlantilla(filaOrigen.plantilla).catch(() => null))?.datos.cta;
   if (ctaTexto) textos.push({ id: "cta", texto: ctaTexto });
-  await etapa(`Traduciendo al ${enMinuscula(IDIOMAS[idioma].nombre)} con Gemma (tarjeta gráfica)`, 0.15);
+  await etapa(`Traduciendo al ${enMinuscula(IDIOMAS[idioma].nombre)} con Gemma (tarjeta de video)`, 0.15);
   const t = leerTraduccion(
     await preguntarLlm(promptTraduccion({ idioma, de: original.voz.idioma, tema: original.tema, escenas, textos }), "Traducción", ctx),
     escenas.map((e) => e.id),

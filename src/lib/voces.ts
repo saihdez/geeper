@@ -6,7 +6,7 @@
  * cambia de una corrida a otra, la clonación no (medido: misma voz, similitud 9/10).
  *
  * Sólo voces diseñadas: no se clona la voz de una persona real (eso pide su consentimiento escrito).
- * VoxCPM2 usa ~6 GB de la tarjeta gráfica: toma el gpu-lock y espera su turno.
+ * VoxCPM2 usa ~6 GB de la tarjeta de video: toma el gpu-lock y espera su turno.
  */
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -33,7 +33,7 @@ export const TOMAS = 3;
 export const TEXTO_MUESTRA =
   "Hola, ésta es mi voz. Así sonaría la narración de tus videos: clara, cercana y con buen ritmo. Puedo contar una historia, explicar un dato curioso o presentar un producto.";
 
-/** Voces fijas de Kokoro por idioma del proyecto (CPU, sin tarjeta gráfica); la letra inicial es el idioma. */
+/** Voces fijas de Kokoro por idioma del proyecto (CPU, sin tarjeta de video); la letra inicial es el idioma. */
 export const KOKORO: Record<string, { voz: string; nombre: string; detalle: string }[]> = {
   es: [
     { voz: "ef_dora", nombre: "Dora", detalle: "Mujer · la de siempre" },
@@ -141,11 +141,11 @@ export async function muestraKokoro(voz: string): Promise<string> {
 /** Devuelve el stdout de VoxCPM2 (una línea JSON por archivo escrito). */
 async function correrVoxcpm(pedido: Record<string, unknown>, ctx: Pick<Contexto, "log"> & { signal?: AbortSignal }, que: string, probando = false): Promise<string> {
   if (!(probando ? existsSync(PYTHON_VOXCPM) : vozInstalada())) throw new Error("Las voces diseñadas no están instaladas en esta computadora (falta VoxCPM2).");
-  ctx.log(`${que}: esperando la tarjeta gráfica…`);
+  ctx.log(`${que}: esperando la tarjeta de video…`);
   const candado = await tomarGpu(`voz ${que}`, {
     esperar: true,
     signal: ctx.signal,
-    alEsperar: () => ctx.log("La tarjeta gráfica está ocupada con otro video; la voz espera su turno y sigue sola."),
+    alEsperar: () => ctx.log("La tarjeta de video está ocupada con otro video; la voz espera su turno y sigue sola."),
   });
   try {
     ctx.log(`${que}: cargando VoxCPM2 (la primera vez tarda 1–2 min)…`);
@@ -164,7 +164,7 @@ async function correrVoxcpm(pedido: Record<string, unknown>, ctx: Pick<Contexto,
     for (const l of r.stdout.split("\n")) if (l.startsWith("{")) ctx.log(l);
     if (r.codigo !== 0) {
       const err = r.stderr.toLowerCase();
-      if (err.includes("out of memory")) throw new Error("La tarjeta gráfica se quedó sin memoria: cierra otros programas que la usen y vuelve a intentar.");
+      if (err.includes("out of memory")) throw new Error("La tarjeta de video se quedó sin memoria: cierra otros programas que la usen y vuelve a intentar.");
       throw new Error(`VoxCPM2 falló: ${r.stderr.trim().split("\n").slice(-3).join(" ").slice(0, 400)}`);
     }
     return r.stdout;

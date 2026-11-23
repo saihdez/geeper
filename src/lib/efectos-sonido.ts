@@ -185,7 +185,7 @@ export async function generarEfectos(
     const id = idEfecto(o.prompt, segundos);
     const ya = biblioteca.find((e) => e.id === id);
     if (ya) {
-      ctx.log(`Ese sonido ya estaba en la biblioteca (${ya.nombre}): no se usa la tarjeta gráfica.`);
+      ctx.log(`Ese sonido ya estaba en la biblioteca (${ya.nombre}): no se usa la tarjeta de video.`);
       efectos.push(ya);
     } else if (!pendientes.some((p) => p.id === id)) pendientes.push({ ...o, segundos, id, tmp: `${rutaEfecto(id)}.tmp.wav` });
   }
@@ -216,7 +216,7 @@ export async function generarEfectos(
   }
   if (!generados) {
     ctx.log(`Detalle del error: ${r.stderr.trim().split("\n").slice(-6).join(" | ").slice(0, 1200)}`);
-    if (r.stderr.toLowerCase().includes("out of memory")) throw new Error("La tarjeta gráfica se quedó sin memoria: cierra juegos o programas que la usen y vuelve a intentar.");
+    if (r.stderr.toLowerCase().includes("out of memory")) throw new Error("La tarjeta de video se quedó sin memoria: cierra juegos o programas que la usen y vuelve a intentar.");
     throw new Error(`No se pudo crear el sonido: ${r.stderr.trim().split("\n").slice(-3).join(" ").slice(0, 400)}`);
   }
   if (fallidos.length) ctx.log(`No salieron: ${fallidos.join(", ")} (los demás quedaron en la biblioteca).`);

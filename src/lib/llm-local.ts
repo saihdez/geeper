@@ -163,7 +163,7 @@ function sinCercas(t: string): string {
 /** Pide JSON al modelo local y lo valida con `esquema`. */
 export async function pedirJson<T>(modelo: string, prompt: string, esquema: z.ZodType<T>, op: OpcionesLlm): Promise<RespuestaLlm<T>> {
   const tomar = op.candado ?? ((t: string, esperar: boolean, alEsperar?: (quien: string) => void) => tomarGpu(t, { esperar, signal: op.signal, alEsperar }));
-  const candado = await tomar(op.tarea, op.esperarGpu ?? false, (quien) => op.avisar?.(`La tarjeta gráfica está ocupada (${quien.slice(0, 80)}); la IA espera su turno y sigue sola.`));
+  const candado = await tomar(op.tarea, op.esperarGpu ?? false, (quien) => op.avisar?.(`La tarjeta de video está ocupada (${quien.slice(0, 80)}); la IA espera su turno y sigue sola.`));
   if (!candado) throw new ErrorLlm("gpu-ocupada");
   const timeoutMs = op.timeoutMs ?? TOPE_LLM_MS;
   const inicio = Date.now();
