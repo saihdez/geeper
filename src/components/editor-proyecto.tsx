@@ -779,7 +779,7 @@ export function EditorProyecto({ id }: { id: string }) {
                 editar={editar} editarVarias={editarVarias} ocupado={ocupado} />
               <PanelEfectosSonido proyectoId={id} escenas={escenas.map((e) => ({ numero: e.indice + 1, inicio: e.inicio }))} total={v.total} ocupado={ocupado} alCambiar={() => void recargar()} />
               <Plegable titulo="Más opciones" detalle="Para qué redes es, silencios y muletillas, música, textos en pantalla y superposiciones.">
-                <PanelAvanzado extras={v.extras} formato={p.formato} total={v.total} editar={editar} alinearMusica={alinearMusica} subirLibre={subirLibre} ocupado={ocupado} slug={fila.slug} />
+                <PanelAvanzado extras={v.extras} formato={p.formato} total={v.total} escenas={escenas.map((e) => ({ numero: e.indice + 1, inicio: e.inicio, duracion: e.duracion }))} editar={editar} alinearMusica={alinearMusica} subirLibre={subirLibre} ocupado={ocupado} slug={fila.slug} />
               </Plegable>
             </>
           )}

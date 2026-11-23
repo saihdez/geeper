@@ -80,3 +80,12 @@ describe("Textos en pantalla por escena (UX-35)", () => {
     expect(html.split("Textos en pantalla")[1]!.split("Superposiciones")[0]).not.toContain("Desde (s)");
   });
 });
+
+describe("el editor le pasa las escenas al panel de textos (UX-35)", () => {
+  it("PanelAvanzado recibe número, inicio y duración de cada escena", async () => {
+    const fs = await import("node:fs");
+    const src = fs.readFileSync("src/components/editor-proyecto.tsx", "utf8");
+    const panel = src.slice(src.indexOf("<PanelAvanzado "), src.indexOf("/>", src.indexOf("<PanelAvanzado ")));
+    expect(panel).toContain("escenas={escenas.map((e) => ({ numero: e.indice + 1, inicio: e.inicio, duracion: e.duracion }))}");
+  });
+});
