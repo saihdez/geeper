@@ -19,6 +19,7 @@ import { SelectorEncuadre, type EncuadreV } from "./selector-encuadre";
 import { PanelOtroEditor } from "./panel-otro-editor";
 import { useAccionesProyecto } from "./acciones-proyecto";
 import { FranjaAviso, type MensajeEditor } from "./franja-aviso";
+import { AvisoRevisionVieja, gruposRepartidos, NOTA_SUBTITULO_REPARTIDO } from "./aviso-revision-vieja";
 import { avisoGuardado, escenaDeEdicion, falloReciente, textoFalloCreacion, renderFallido, avisoRitmo, correccionesVacias, enLista, mensajeSinCambios, opcionesRitmo, versionParaDeshacer, errorSubtitulo, escenasConOtraVoz, estaActivo, estadoCreacion, mismoContenido, pasoRender, preguntaVozEscena, renderEnCurso, verTrabajos, TEXTO_RITMO_GUARDADO, type TrabajoV, type VocesV } from "./editor-estado";
 import { Plegable } from "./plegable";
 import { EdicionPorTexto, EfectosEscena, PanelAvanzado, PanelEstilo, type EfectosV, type EstiloV, type ExtrasV, type PalabraV } from "./edicion-avanzada";
@@ -210,7 +211,7 @@ export function InformeQc({ r, slug, vectorizar, escenas = [] }: { r: Render; sl
   );
 }
 
-export function EditorGrupo({ g, onGuardar, onQuitar, corregido }: { g: Grupo; corregido: boolean; onGuardar: (texto: string) => Promise<boolean>; onQuitar: () => Promise<void> }) {
+export function EditorGrupo({ g, onGuardar, onQuitar, corregido, repartido = false }: { g: Grupo; corregido: boolean; /** UX-16: el texto corregido quedó en dos subtítulos. */ repartido?: boolean; onGuardar: (texto: string) => Promise<boolean>; onQuitar: () => Promise<void> }) {
   // UX-02: lo escrito es un borrador sobre lo guardado; al guardar bien (o con Esc) el campo vuelve a
   // mostrar lo que quedó en la fila, así «Guardar» no queda pegado.
   const [borrador, setBorrador] = useState<string | null>(null);
@@ -248,6 +249,7 @@ export function EditorGrupo({ g, onGuardar, onQuitar, corregido }: { g: Grupo; c
       {!cambiado && g.cps > LIMITES_SUBTITULOS.maxCps && (
         <span className="w-full pl-[4.5rem] text-xs text-amber-200">Pasa muy rápido ({g.cps.toFixed(1).replace(".", ",")} letras por segundo): acórtalo un poco para que dé tiempo a leerlo.</span>
       )}
+      {repartido && !cambiado && <span className="w-full pl-[4.5rem] text-xs text-tenue">{NOTA_SUBTITULO_REPARTIDO}</span>}
       {g.oido !== g.mostradoPropio && <span className="w-full pl-[4.5rem] text-xs text-tenue">Se oye: «{g.oido}»</span>}
     </li>
   );
@@ -268,6 +270,7 @@ function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, 
   animar: (escena: string, opciones: OpcionesAnimar) => Promise<void>;
 }) {
   const [preguntando, setPreguntando] = useState(false);
+  const repartidos = gruposRepartidos(e.grupos, e.correcciones);
   return (
     <li id={`escena-${e.id}`} className="tarjeta flex scroll-mt-4 flex-col gap-3 p-3 md:flex-row">
       <div className="shrink-0">
@@ -284,8 +287,8 @@ function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, 
         <EdicionPorTexto escena={e.id} audio={archivo(`${slug}/${e.voz.ruta}`)} palabras={e.detalle} duracion={e.duracion} duracionOriginal={e.duracionOriginal} editar={editar} ocupado={ocupado}
           vozReal={vozReal} correcciones={e.correcciones} />
         <ul className="space-y-1.5">
-          {e.grupos.map((g) => (
-            <EditorGrupo key={`${g.desde}-${g.hasta}-${g.mostradoPropio}`} g={g}
+          {e.grupos.map((g, i) => (
+            <EditorGrupo key={`${g.desde}-${g.hasta}-${g.mostradoPropio}`} g={g} repartido={repartidos.has(i)}
               corregido={e.correcciones.some((c) => c.desde >= g.desde && c.hasta <= g.hasta)}
               onGuardar={(texto) => editarOk({ tipo: "corregirSubtitulo", escena: e.id, desde: g.desde, hasta: g.hasta, texto })}
               onQuitar={async () => { for (const c of e.correcciones.filter((c) => c.desde >= g.desde && c.hasta <= g.hasta)) await editar({ tipo: "quitarCorreccion", escena: e.id, desde: c.desde }); }} />
@@ -741,6 +744,9 @@ export function EditorProyecto({ id }: { id: string }) {
       {render?.informeQc && (
         <section id="listo" className="tarjeta scroll-mt-4 p-4">
           <h2 className="mb-3 font-medium">¿Está listo para publicar?</h2>
+          {/* UX-16: si cambió algo después de este video, la revisión es de antes (al día por contenido, UX-21). */}
+          <AvisoRevisionVieja versionRevisada={render.versionNumero} versionActual={renderAlDia ? render.versionNumero : fila.versionActual}
+            ocupado={ocupado || !!enCurso} alCrear={() => void renderizar()} />
           <InformeQc r={render} slug={fila.slug} escenas={escenas} vectorizar={{ hacer: vectorizarImagen, sigue: (a) => !!v && (v.escenas.some((e) => e.visual.asset === a) || !!v.extras?.libres.some((pi) => pi.clips.some((c) => c.asset === a))), ocupado }} />
         </section>
       )}
