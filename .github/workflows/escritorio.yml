@@ -49,7 +49,22 @@ jobs:
       # Las de la carcasa y del empaquetado (escritorio/, scripts/escritorio/), también en los dos sistemas.
       - run: pnpm exec vitest run tests/escritorio-carcasa.test.ts tests/escritorio-armado.test.ts tests/escritorio-vigia.test.ts tests/escritorio-probar-app.test.ts tests/ci-escritorio.test.ts
       - run: pnpm escritorio:empaquetar
-      - uses: actions/upload-artifact@v4
+      # Ramas de integración: el instalador de Windows va a la release fija «integracion» (se reemplaza en
+      # cada build). Las releases no cuentan en el espacio de artefactos (500 MB en la cuenta gratis, se
+      # llenaba con dos instaladores). Así lo baja la instalación de la PC del dueño.
+      - if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: integracion
+          name: Integración (último build)
+          prerelease: true
+          make_latest: false
+          body: "Commit ${{ github.sha }} de ${{ github.ref_name }}. Se reemplaza en cada build."
+          files: |
+            dist-escritorio/*.exe
+            dist-escritorio/latest*.yml
+      - if: "!(github.event_name == 'push' && startsWith(github.ref, 'refs/heads/'))"
+        uses: actions/upload-artifact@v4
         with:
           name: geeper-${{ matrix.os }}
           path: |
