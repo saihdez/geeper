@@ -15,9 +15,10 @@ async function listar(req: Request) {
     where: proyectoId ? { proyectoId } : {},
     orderBy: { creado: "desc" },
     take: 200,
-    // Lo que pinta lista-trabajos: sin payload (la sesión de subida no sale), resultado ni log.
+    // Lo que pinta lista-trabajos: sin payload (la sesión de subida no sale), resultado ni log. `anteriores`:
+    // los intentos que terminaron mal antes de «Volver a intentar» (UX-41).
     select: {
-      id: true, tipo: true, motor: true, estado: true, etapa: true, progreso: true, error: true, intentos: true, usaGpu: true,
+      id: true, tipo: true, motor: true, estado: true, etapa: true, progreso: true, error: true, intentos: true, usaGpu: true, anteriores: true,
       creado: true, iniciado: true, terminado: true, proyectoId: true,
       proyecto: { select: { nombre: true, slug: true } },
     },

@@ -1,4 +1,5 @@
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
 import { PrismaClient } from "@/generated/prisma/client";
@@ -24,9 +25,48 @@ class AdaptadorGeeper extends PrismaBetterSqlite3 {
   }
 }
 
+/**
+ * Columnas agregadas a tablas que ya existían. La app de escritorio crea las tablas con IF NOT EXISTS y
+ * `prisma db push` hay que correrlo a mano: sin esto, una base vieja no tendría la columna y cada consulta
+ * a esa tabla fallaría. Sólo se agregan columnas opcionales (sin NOT NULL), que SQLite suma al instante.
+ */
+export const COLUMNAS_NUEVAS: readonly { tabla: string; columna: string; tipo: string }[] = [
+  // UX-41: el intento anterior al «Volver a intentar».
+  { tabla: "Trabajo", columna: "anteriores", tipo: "JSONB" },
+];
+
+/** Agrega a una base existente las columnas de COLUMNAS_NUEVAS que le falten. Devuelve las que agregó. */
+export function completarColumnas(ruta: string): string[] {
+  if (!fs.existsSync(ruta)) return [];
+  const agregadas: string[] = [];
+  const base = new Database(ruta, { timeout: 10_000 });
+  try {
+    for (const c of COLUMNAS_NUEVAS) {
+      const cols = base.prepare(`PRAGMA table_info("${c.tabla}")`).all() as { name: string }[];
+      // Sin la tabla, la crea entera quien arma la base (db push o esquema.sql), ya con la columna.
+      if (!cols.length || cols.some((x) => x.name === c.columna)) continue;
+      try {
+        base.exec(`ALTER TABLE "${c.tabla}" ADD COLUMN "${c.columna}" ${c.tipo}`);
+        agregadas.push(`${c.tabla}.${c.columna}`);
+      } catch (e) {
+        // Otro proceso (la web o el worker) la agregó al mismo tiempo.
+        if (!/duplicate column/i.test(String(e))) throw e;
+      }
+    }
+  } finally {
+    base.close();
+  }
+  return agregadas;
+}
+
 function crear(): PrismaClient {
   const ruta = rutaBaseDatos();
   fs.mkdirSync(path.dirname(ruta), { recursive: true });
+  try {
+    completarColumnas(ruta);
+  } catch (e) {
+    console.error(`No pude completar las columnas de la base: ${(e as Error).message}`);
+  }
   const adapter = new AdaptadorGeeper({ url: `file:${ruta}`, timeout: 10_000 });
   return new PrismaClient({ adapter });
 }

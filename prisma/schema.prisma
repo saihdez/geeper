@@ -111,6 +111,8 @@ model Trabajo {
   /// Ruta del log del trabajo (relativa a ~/geeper-data)
   log         String?
   error       String?
+  /// UX-41: los intentos anteriores al «Volver a intentar» (estado, error, etapa, log y fechas), del más viejo al más nuevo.
+  anteriores  Json?
   prioridad   Int       @default(0)
   creado      DateTime  @default(now())
   iniciado    DateTime?
