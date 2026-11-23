@@ -1,4 +1,5 @@
 "use client";
+import { cssFuentesPantalla } from "@/lib/fuentes-css";
 import { useEffect, useMemo, useState } from "react";
 import { aHex, ajustarHasta, aTexto, contrastePeor, leerColor, legibilidad, opacidadHasta, textoSobre, type Roles } from "@/lib/colores-marca";
 import { esVector } from "@/lib/formatos-vector";
@@ -38,11 +39,21 @@ function useFuentes(familias: string[]) {
     if (!clave) return;
     const id = `fuentes-${clave}`;
     if (document.getElementById(id)) return;
-    const link = document.createElement("link");
-    link.id = id;
-    link.rel = "stylesheet";
-    link.href = `https://fonts.googleapis.com/css2?${clave.split("|").map((f) => `family=${encodeURIComponent(f).replace(/%20/g, "+")}:wght@400;600;700;800;900`).join("&")}&display=swap`;
-    document.head.appendChild(link);
+    // Las que trae Geeper salen de /fuentes (sin internet); sólo las demás se piden a Google (REN-10).
+    const { css, deGoogle } = cssFuentesPantalla(clave.split("|"));
+    if (css) {
+      const estilo = document.createElement("style");
+      estilo.id = id;
+      estilo.textContent = css;
+      document.head.appendChild(estilo);
+    }
+    if (deGoogle.length) {
+      const link = document.createElement("link");
+      link.id = css ? `${id}-google` : id;
+      link.rel = "stylesheet";
+      link.href = `https://fonts.googleapis.com/css2?${deGoogle.map((f) => `family=${encodeURIComponent(f).replace(/%20/g, "+")}:wght@400;600;700;800;900`).join("&")}&display=swap`;
+      document.head.appendChild(link);
+    }
   }, [clave]);
 }
 

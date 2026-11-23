@@ -28,7 +28,10 @@ const FUENTES: Record<string, { carpeta: string; caras: Cara[] }> = manifiesto;
 /** Dónde quedan dentro del proyecto Hyperframes (relativa al index.html). */
 export const FUENTES_EN_PROYECTO = "assets/fuentes";
 
-export const dirFuentes = (raiz = RAIZ_REPO) => path.join(raiz, "public", "fuentes");
+/** En desarrollo, public/fuentes; en la app de escritorio el empaquetado deja public dentro de standalone. */
+export const dirFuentes = (raiz = RAIZ_REPO) =>
+  [path.join(raiz, "public", "fuentes"), path.join(raiz, "standalone", "public", "fuentes")].find((d) => existsSync(path.join(d, "fuentes.json"))) ??
+  path.join(raiz, "public", "fuentes");
 
 /** Las familias que trae Geeper, con el nombre tal como lo escribe Google Fonts. */
 export const FAMILIAS_LOCALES = Object.keys(FUENTES);
