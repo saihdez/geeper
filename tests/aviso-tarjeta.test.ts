@@ -94,7 +94,41 @@ const SITIOS = [
   "src/components/panel-rehacer.tsx",
   "src/components/panel-efectos-sonido.tsx",
   "src/components/workflows.tsx",
+  "src/components/panel-traducir.tsx",
+  "src/components/disenar-voz.tsx",
 ];
+
+/**
+ * Cada trabajo de la fila «mpt» o «tarjeta» (cola.ts) y la pantalla cuyo botón lo encola. Si aparece un
+ * tipo nuevo, esta prueba falla hasta que su botón pida guardar antes.
+ */
+const QUIEN_LO_LANZA: Record<string, string[]> = {
+  "mpt.generar": ["src/components/form-nuevo.tsx", "src/components/anuncios/conceptos.tsx"],
+  "escenas.animar": ["src/components/form-nuevo.tsx"],
+  "avatar.escenas": ["src/components/form-nuevo.tsx", "src/components/panel-avatar.tsx"],
+  "plano.generar": ["src/components/panel-animar.tsx"],
+  "avatar.proponer": ["src/components/avatares.tsx"],
+  "avatar.retocar": ["src/components/avatares.tsx"],
+  "avatar.actuar": ["src/components/panel-avatar.tsx"],
+  "avatar.streamer": ["src/components/panel-avatar.tsx"],
+  "presentador.generar": ["src/components/panel-presentador.tsx"],
+  "escena.rehacer": ["src/components/panel-rehacer.tsx"],
+  "efecto.generar": ["src/components/panel-efectos-sonido.tsx"],
+  "workflow.correr": ["src/components/workflows.tsx"],
+  "proyecto.traducir": ["src/components/panel-traducir.tsx"],
+  "voz.disenar": ["src/components/disenar-voz.tsx"],
+  // Sólo desde la terminal (worker/preparar-efectos.ts): no hay botón en la app.
+  "efectos.preparar": [],
+};
+
+describe("todos los trabajos de toda la tarjeta tienen su aviso", () => {
+  it("cada tipo de la fila «mpt» o «tarjeta» está en la tabla, y su pantalla en SITIOS", async () => {
+    const { TIPOS } = await import("@/lib/cola");
+    const deTarjeta = Object.entries(TIPOS).filter(([, t]) => t.motor === "mpt" || t.motor === "tarjeta").map(([k]) => k).sort();
+    expect(deTarjeta).toEqual(Object.keys(QUIEN_LO_LANZA).sort());
+    for (const sitios of Object.values(QUIEN_LO_LANZA)) for (const f of sitios) expect(SITIOS).toContain(f);
+  });
+});
 
 describe("cada acción de tarjeta usa el mismo aviso", () => {
   it.each(SITIOS)("%s", (f) => {
