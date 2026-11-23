@@ -30,10 +30,28 @@ export const COMFYUI_PYTHON = process.env.GEEPER_COMFYUI_PYTHON ?? pythonDeVenv(
 export const PUERTO_TRABAJOS = 8189;
 export const PUERTO_EDITOR = 8190;
 
-export function faltaComfyui(dir = COMFYUI_DIR, python = COMFYUI_PYTHON): string | null {
+/**
+ * El catálogo ya leído (caché). Lo escribe la última prueba de la instalación y se borra al bajar otra
+ * versión del código: también es la marca de «la instalación terminó» (UX-06).
+ */
+export const CACHE_CATALOGO = ".geeper-catalogo.json";
+/** Lo que dice `falta` cuando hay código y Python pero la instalación no llegó al final (UX-06). */
+export const A_MEDIAS = "La instalación de ComfyUI quedó a medias";
+
+/** Lo mínimo para arrancar `main.py` o leer el catálogo: el código y su Python. */
+function faltaBase(dir: string, python: string): string | null {
   if (!existsSync(path.join(dir, "main.py"))) return "ComfyUI no está instalado";
   if (!existsSync(python)) return "Falta el Python de ComfyUI";
   return null;
+}
+
+/**
+ * Qué falta para usar los workflows (null si nada). Una instalación cortada en los pasos largos (PyTorch,
+ * dependencias) deja `main.py` y el Python, pero no la marca del final: entonces está «a medias» y la
+ * página vuelve a ofrecer el instalador, que salta lo ya hecho (UX-06).
+ */
+export function faltaComfyui(dir = COMFYUI_DIR, python = COMFYUI_PYTHON): string | null {
+  return faltaBase(dir, python) ?? (existsSync(path.join(dir, CACHE_CATALOGO)) ? null : A_MEDIAS);
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -109,10 +127,14 @@ export function normalizarCatalogo(indice: CategoriaIndice[], archivos: Record<s
     const categoria = CATEGORIAS[c.title ?? ""] ?? c.title ?? c.category ?? "Otros";
     for (const t of c.templates ?? []) {
       if (!t.name || vistos.has(t.name)) continue;
-      // Primero las imágenes (algunas miniaturas del hub son .mp4), después la estándar `<nombre>-1.webp`.
-      const candidatas = [...new Set([...(t.thumbnail ?? []).map((x) => path.basename(x)), `${t.name}-1.webp`])];
-      const imagen = (x: string) => /\.(webp|png|jpe?g|gif)$/i.test(x);
-      const miniaturas = candidatas.filter((x) => !Object.keys(archivos).length || x in archivos).sort((a, b) => Number(imagen(b)) - Number(imagen(a)));
+      // Primero las imágenes (algunas miniaturas del hub son .mp4), después los videos y al final el audio.
+      // Además de las del índice, la estándar `<nombre>-1.webp`; si el catálogo sabe qué archivos hay,
+      // también `<nombre>-2.webp` y, en las de audio, `<nombre>-1.mp3` (UX-25).
+      const conocidos = Object.keys(archivos).length > 0;
+      const extra = conocidos ? [`${t.name}-2.webp`, `${t.name}-1.png`, ...(t.mediaType === "audio" ? [`${t.name}-1.mp3`] : [])] : [];
+      const candidatas = [...new Set([...(t.thumbnail ?? []).map((x) => path.basename(x)), `${t.name}-1.webp`, ...extra])];
+      const orden = (x: string) => (/\.(webp|png|jpe?g|gif)$/i.test(x) ? 0 : /\.(mp4|webm)$/i.test(x) ? 1 : 2);
+      const miniaturas = candidatas.filter((x) => !conocidos || Object.hasOwn(archivos, x)).sort((a, b) => orden(a) - orden(b));
       vistos.set(t.name, {
         id: t.name,
         titulo: t.title ?? t.name,
@@ -146,13 +168,14 @@ const FORMATO_CATALOGO = 2;
 
 /** El catálogo de la versión instalada (se calcula una vez por versión del paquete de plantillas). */
 export async function leerCatalogo(dir = COMFYUI_DIR, python = COMFYUI_PYTHON): Promise<CacheCatalogo> {
-  const falta = faltaComfyui(dir, python);
+  // La instalación lo lee en su último paso, antes de que exista la marca del final.
+  const falta = faltaBase(dir, python);
   if (falta) throw new Error(falta);
   const marca = path.join(dir, ".geeper-commit");
   const hub = path.join(dirHub(dir), "templates", "index.json");
   const clave = `${dir}:${await fs.readFile(marca, "utf8").catch(() => "?")}:${HUB_COMMIT}:${existsSync(hub)}:v${FORMATO_CATALOGO}`;
   if (g.__catalogoComfy?.clave === clave) return g.__catalogoComfy;
-  const cache = path.join(dir, ".geeper-catalogo.json");
+  const cache = path.join(dir, CACHE_CATALOGO);
   let datos: { indice: CategoriaIndice[]; archivos: Record<string, string> } | null = null;
   try {
     const c = JSON.parse(await fs.readFile(cache, "utf8")) as { clave: string; indice: CategoriaIndice[]; archivos: Record<string, string> };
@@ -195,10 +218,27 @@ export interface NodoUi {
   mode?: number;
   widgets_values?: unknown[] | Record<string, unknown>;
   properties?: { models?: { name?: string; url?: string; directory?: string }[]; [k: string]: unknown };
+  widgets_values_named?: Record<string, unknown>;
+  inputs?: { name?: string; type?: string; link?: number | null; widget?: { name?: string } }[];
+  outputs?: { links?: number[] | null }[];
+}
+/** Un enlace dentro de un subgrafo; `origin_id` -10 es una entrada del subgrafo. */
+export interface EnlaceUi {
+  id: number;
+  origin_id: number | string;
+  origin_slot: number;
+  target_id: number | string;
+  target_slot: number;
+}
+export interface SubgrafoUi {
+  id?: string;
+  nodes?: NodoUi[];
+  inputs?: { name?: string }[];
+  links?: EnlaceUi[];
 }
 export interface GrafoUi {
   nodes?: NodoUi[];
-  definitions?: { subgraphs?: { id?: string; nodes?: NodoUi[] }[] };
+  definitions?: { subgraphs?: SubgrafoUi[] };
   [k: string]: unknown;
 }
 
@@ -229,33 +269,174 @@ export interface CampoTexto {
   indice: number;
   etiqueta: string;
   valor: string;
+  /** Instrucciones para la IA que reescribe el pedido (system prompt): sólo para quien sabe. */
+  experto?: boolean;
 }
 
 const NO_ES_TEXTO = /Note|Math|Json|Resolution|Resize|PathAnimator|Expression/i;
-const ES_TEXTO = /Text|Prompt|String|Encode|Lyrics|Caption|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ES_TEXTO = /Text|Prompt|String|Encode|Lyrics|Caption|TTS|Speech|^PrimitiveNode$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Etiqueta en palabras de la persona para un campo de texto. */
+const NEGATIVO = "Lo que NO quieres que aparezca";
+const POSITIVO = "Qué quieres que salga";
+
+/** Etiqueta en palabras de la persona para un campo de texto, por el título del nodo. */
 export function etiquetaTexto(n: NodoUi): string {
   const t = `${n.title ?? ""} ${n.type}`;
-  if (/negative|negativ/i.test(t)) return "Lo que NO quieres que aparezca";
+  if (/negative|negativ/i.test(t)) return NEGATIVO;
   if (/lyric/i.test(t)) return "Letra";
+  if (/TTS|Speech/.test(n.type)) return "Lo que va a decir";
   if (/tag|style|estilo/i.test(t) && /audio|music|ace/i.test(t)) return "Estilo de la música";
-  return n.title?.trim() && !/^(CLIP Text Encode.*|Text|String.*|Prompt)$/i.test(n.title.trim()) ? n.title.trim() : "Qué quieres que salga";
+  return n.title?.trim() && !/^(CLIP Text Encode.*|Text|String.*|Prompt)$/i.test(n.title.trim()) ? n.title.trim() : POSITIVO;
 }
 
-/** Los textos que la persona puede cambiar (los prompts del nivel de arriba, no las notas). */
+/**
+ * A qué entrada llega un nodo siguiendo sus conexiones (función pura): «negative» o «positive» de un
+ * sampler, aunque pase antes por otros nodos (un texto → CLIPTextEncode → sampler). null si no llega a ninguna.
+ */
+function destinoDeConexion(n: NodoUi, nodos: NodoUi[]): "negative" | "positive" | null {
+  const vistos = new Set<string>([String(n.id)]);
+  let frente = [n];
+  for (let salto = 0; salto < 4 && frente.length; salto++) {
+    const enlaces = new Set(frente.flatMap((x) => (x.outputs ?? []).flatMap((o) => o.links ?? [])));
+    const siguientes: NodoUi[] = [];
+    let hallado: "negative" | "positive" | null = null;
+    for (const d of nodos) {
+      for (const i of d.inputs ?? []) {
+        if (i.link == null || !enlaces.has(i.link)) continue;
+        // La conexión directa a «positive» manda: Z-Image anula el texto para el negativo con ConditioningZeroOut.
+        if (/^positive/i.test(i.name ?? "")) return "positive";
+        if (/^negative/i.test(i.name ?? "")) hallado ??= "negative";
+        if (!vistos.has(String(d.id))) {
+          vistos.add(String(d.id));
+          siguientes.push(d);
+        }
+      }
+    }
+    if (hallado) return hallado;
+    frente = siguientes;
+  }
+  return null;
+}
+
+/** La etiqueta por la conexión (lo que entra por «negative» es lo que no se quiere) y, si no dice nada, por el título. */
+function etiquetaPorConexion(n: NodoUi, nodos: NodoUi[]): string {
+  const d = destinoDeConexion(n, nodos);
+  if (d === "negative") return NEGATIVO;
+  if (d === "positive") return /lyric/i.test(`${n.title ?? ""} ${n.type}`) ? "Letra" : POSITIVO;
+  return etiquetaTexto(n);
+}
+
+// Con espacios o en otra escritura (los prompts en chino de Wan no llevan espacios).
+const esTextoEditable = (v: unknown): v is string => typeof v === "string" && (/\s/.test(v.trim()) || /[^\u0000-\u024f]/.test(v)) && v.trim().length > 3 && !/\.(png|jpe?g|webp|mp4|wav|mp3|safetensors|gguf)$/i.test(v);
+const nodoDeTexto = (n: NodoUi) => n.mode !== 2 && n.mode !== 4 && !NO_ES_TEXTO.test(n.type) && ES_TEXTO.test(n.type) && Array.isArray(n.widgets_values);
+/**
+ * Qué es un widget por su nombre: lo que no se quiere, la letra, el estilo de la música, un texto, o «no» si
+ * no es un texto para la persona (un modelo, una atención, la tonalidad…). null si el nombre no dice nada.
+ */
+export function claseDeWidget(nombre: string): "negativo" | "letra" | "estilo" | "texto" | "no" | null {
+  const k = nombre.toLowerCase();
+  if (/negative/.test(k)) return "negativo";
+  if (/lyric/.test(k)) return "letra";
+  if (/^tags$|style/.test(k)) return "estilo";
+  if (/text|prompt|positive|caption|description|^(value|string)(_\d+)?$/.test(k)) return "texto";
+  return /name|attention|scale|language|mode|sampler|scheduler|method|device|precision|format|dtype|model|key|control|seed/.test(k) ? "no" : null;
+}
+
+const INSTRUCCIONES = "Instrucciones para la IA que mejora tu pedido";
+/** Un system prompt: lo dice su título o empieza como uno («You are…», «# … Prompt …»). */
+const esInstruccion = (t: CampoTexto) =>
+  /system|task.?prompt|template|rewrite/i.test(t.etiqueta) || /^\s*(you are|reason in the thinking|#[^\n]*prompt)/i.test(t.valor);
+
+/** Separa el id del subgrafo y el del nodo de adentro (`<subgrafo>:<nodo>`). */
+const SEP = ":";
+
+/**
+ * Los textos que la persona puede cambiar (no las notas), también los de adentro de los subgrafos (UX-11).
+ * Un subgrafo cuyo nodo de afuera no guarda valores (Z-Image-Turbo) usa los de su nodo de adentro: ése es el
+ * campo. Si el de afuera sí los guarda, mandan los de afuera (así carga ComfyUI los subgrafos). La etiqueta
+ * sale de la conexión: lo que entra por «negative» es «Lo que NO quieres que aparezca», y va al final.
+ */
 export function textosDeWorkflow(w: GrafoUi): CampoTexto[] {
   const out: CampoTexto[] = [];
-  for (const n of w.nodes ?? []) {
-    if (n.mode === 2 || n.mode === 4 || NO_ES_TEXTO.test(n.type) || !ES_TEXTO.test(n.type)) continue;
-    if (!Array.isArray(n.widgets_values)) continue;
-    n.widgets_values.forEach((v, i) => {
-      if (typeof v === "string" && /\s/.test(v.trim()) && v.trim().length > 3 && !/\.(png|jpe?g|webp|mp4|wav|mp3|safetensors|gguf)$/i.test(v)) {
-        out.push({ nodo: String(n.id), indice: i, etiqueta: etiquetaTexto(n), valor: v });
-      }
+  const subgrafos = w.definitions?.subgraphs ?? [];
+  const todos = [...(w.nodes ?? []), ...subgrafos.flatMap((s) => s.nodes ?? [])];
+
+  /**
+   * El nombre del widget de cada valor, cuando el workflow lo dice: `widgets_values_named` del nodo o, en
+   * el nodo de afuera de un subgrafo, `properties.proxyWidgets` ([nodo de adentro o "-1", widget]).
+   */
+  const nombreDeValor = (n: NodoUi, i: number): string | null => {
+    const nombrados = n.widgets_values_named && Object.keys(n.widgets_values_named);
+    if (nombrados && Array.isArray(n.widgets_values) && nombrados.length === n.widgets_values.length) return nombrados[i] ?? null;
+    const proxy = n.properties?.proxyWidgets;
+    if (Array.isArray(proxy) && Array.isArray(proxy[i])) return String((proxy[i] as unknown[])[1] ?? "") || null;
+    return (n.inputs ?? []).filter((x) => x.widget)[i]?.name ?? null;
+  };
+
+  const esDeTexto = (n: NodoUi) => nodoDeTexto(n) || (subgrafos.some((x) => x.id === n.type) && ES_TEXTO.test(n.type));
+  /** El nodo de adentro que recibe un valor del nodo de afuera de un subgrafo (el de texto, si hay varios). */
+  const nodoDeAdentro = (n: NodoUi, i: number): { nodo: NodoUi; nodos: NodoUi[] } | null => {
+    const s = subgrafos.find((x) => x.id === n.type);
+    if (!s) return null;
+    const proxy = n.properties?.proxyWidgets;
+    const directo = Array.isArray(proxy) && Array.isArray(proxy[i]) ? String((proxy[i] as unknown[])[0]) : "-1";
+    let destinos: string[] = directo !== "-1" ? [directo] : [];
+    if (!destinos.length) {
+      const ranura = s.inputs?.findIndex((x) => x.name === nombreDeValor(n, i)) ?? -1;
+      destinos = ranura >= 0 ? (s.links ?? []).filter((x) => String(x.origin_id) === "-10" && x.origin_slot === ranura).map((x) => String(x.target_id)) : [];
+    }
+    const nodos = destinos.map((d) => s.nodes?.find((x) => String(x.id) === d)).filter((x): x is NodoUi => !!x);
+    const nodo = nodos.find(esDeTexto) ?? nodos[0];
+    return nodo ? { nodo, nodos: s.nodes ?? [] } : null;
+  };
+
+  /** La etiqueta de un valor, o null si ese valor no es un texto para la persona (un modelo, un modo…). */
+  const etiquetaDeValor = (n: NodoUi, i: number, nodos: NodoUi[]): string | null => {
+    const nombre = nombreDeValor(n, i);
+    const clase = nombre ? claseDeWidget(nombre) : null;
+    if (clase === "no") return null;
+    if (clase === "negativo") return NEGATIVO;
+    if (clase === "letra") return "Letra";
+    if (clase === "estilo") return "Estilo de la música";
+    const adentro = nodoDeAdentro(n, i);
+    if (adentro && !esDeTexto(adentro.nodo)) return clase === "texto" ? POSITIVO : null;
+    return adentro ? etiquetaPorConexion(adentro.nodo, adentro.nodos) : etiquetaPorConexion(n, nodos);
+  };
+
+  const agregar = (n: NodoUi, nodos: NodoUi[], clave: string) => {
+    (n.widgets_values as unknown[]).forEach((v, i) => {
+      if (!esTextoEditable(v)) return;
+      const etiqueta = etiquetaDeValor(n, i, nodos);
+      if (etiqueta) out.push({ nodo: clave, indice: i, etiqueta, valor: v });
     });
+  };
+
+  /** Su texto llega por un cable desde otro nodo de adentro: lo que tiene escrito no se usa (lo lista ese otro nodo). */
+  const llegaPorCable = (n: NodoUi, s?: SubgrafoUi) =>
+    (n.inputs ?? []).some((i) => i.widget && i.type === "STRING" && i.link != null && !s?.links?.some((l) => l.id === i.link && String(l.origin_id) === "-10"));
+
+  for (const n of w.nodes ?? []) if (nodoDeTexto(n) && !llegaPorCable(n)) agregar(n, w.nodes ?? [], String(n.id));
+  for (const s of subgrafos) {
+    if (!s.id) continue;
+    const instancias = todos.filter((n) => n.type === s.id && n.mode !== 2 && n.mode !== 4);
+    if (!instancias.length) continue;
+    for (const n of s.nodes ?? []) {
+      if (!nodoDeTexto(n) || llegaPorCable(n, s)) continue;
+      // Recibe un valor desde afuera del subgrafo: sólo cuenta si afuera no hay nada que lo pise.
+      const desdeAfuera = (n.inputs ?? []).filter((i) => i.widget).map((i) => s.links?.find((l) => l.id === i.link && String(l.origin_id) === "-10")).filter((l) => !!l);
+      const pisado = desdeAfuera.some((l) => {
+        const nombre = s.inputs?.[l.origin_slot]?.name;
+        return instancias.some((x) => (Array.isArray(x.widgets_values) && x.widgets_values.length > 0) || (x.inputs ?? []).some((i) => i.name === nombre && i.link != null));
+      });
+      if (pisado) continue;
+      agregar(n, s.nodes ?? [], `${s.id}${SEP}${n.id}`);
+    }
   }
-  return out;
+  // Lo que se quiere primero: quien escribe en el primer campo no pide justo lo que no quiere. Las
+  // instrucciones para la IA que mejora el pedido van al final, aparte.
+  const marcados = out.map((t) => (esInstruccion(t) ? { ...t, etiqueta: INSTRUCCIONES, experto: true } : t));
+  const orden = (t: CampoTexto) => (t.experto ? 2 : t.etiqueta === NEGATIVO ? 1 : 0);
+  return marcados.map((t, i) => ({ t, i })).sort((a, b) => orden(a.t) - orden(b.t) || a.i - b.i).map((x) => x.t);
 }
 
 /** Notas del autor (MarkdownNote / Note), para «Cómo se usa» (vienen en inglés). */
@@ -277,6 +458,8 @@ export interface Cambios {
 export function aplicarCambios(w: GrafoUi, c: Cambios): GrafoUi {
   const copia = structuredClone(w);
   const porId = new Map((copia.nodes ?? []).map((n) => [String(n.id), n]));
+  // Los textos de adentro de un subgrafo vienen como «<subgrafo>:<nodo>» (UX-11).
+  for (const s of copia.definitions?.subgraphs ?? []) for (const n of s.nodes ?? []) if (s.id) porId.set(`${s.id}${SEP}${n.id}`, n);
   for (const t of c.textos ?? []) {
     const n = porId.get(t.nodo);
     if (!n || !Array.isArray(n.widgets_values) || typeof n.widgets_values[t.indice] !== "string") throw new Error(`El campo de texto ${t.nodo}/${t.indice} ya no existe en este workflow`);
@@ -323,7 +506,7 @@ export interface Servidor {
 export async function arrancarComfyui(op: { puerto: number; gpuSolo?: boolean; arranqueMs?: number; log?: (l: string) => void; signal?: AbortSignal; dir?: string; python?: string; nodos?: string[] }): Promise<Servidor> {
   const dir = op.dir ?? COMFYUI_DIR;
   const python = op.python ?? COMFYUI_PYTHON;
-  const falta = faltaComfyui(dir, python);
+  const falta = faltaBase(dir, python);
   if (falta) throw new Error(falta);
   const args = [path.join(dir, "main.py"), "--listen", "127.0.0.1", "--port", String(op.puerto), "--disable-auto-launch", "--output-directory", path.join(dir, "output"), ...argsAtencionComfyui(elegirAtencion(atencionInstalada(python))), ...(op.nodos ?? ["--disable-all-custom-nodes"])];
   const conGpuSolo = op.gpuSolo ?? existsSync(GPU_SOLO_BIN);

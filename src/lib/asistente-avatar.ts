@@ -55,6 +55,14 @@ export function retoquesVisibles<T extends TrabajoRetoque>(trabajos: T[], actual
   return out;
 }
 
+/**
+ * Si «Cancelar» del asistente tiene que parar el trabajo (función pura): hay un pedido y su avance todavía
+ * no llegó o sigue en marcha. Antes del primer avance el dibujo ya está en la fila (UX-13).
+ */
+export function cancelarAlSalir(pedido: { trabajo: string } | null, estado: string | null | undefined): boolean {
+  return !!pedido && (estado == null || estado === "pendiente" || estado === "corriendo");
+}
+
 /** Lo escrito en cada modo del paso 1, por separado: la descripción no se cuela en «Desde una foto» (UX-23). */
 export interface TextosAvatar {
   palabras: string;

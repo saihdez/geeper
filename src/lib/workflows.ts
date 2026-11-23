@@ -20,6 +20,7 @@ import { resolverArchivo } from "./hub-comfy";
 import { argsNodos, fijadoDe, infoNodos, instalarNodo } from "./nodos-comfy";
 import type { Contexto } from "./pasos";
 import { GPU_SOLO_BIN } from "./rutas";
+import { faltaEspacio } from "./workflows-texto";
 
 export { entradasSinArchivo, hayEjemplo, REINTENTABLES, textoFaltaArchivo, trabajoPorCorrida, tuArchivo } from "./workflows-texto";
 
@@ -79,6 +80,13 @@ export function aviso(w: Workflow): string | null {
   return null;
 }
 
+/** La corrida que terminó bien (función pura): sin el error de un intento anterior (retoque de UX-30). */
+export function corridaHecha(base: Corrida, salidas: Corrida["salidas"], segundos: number): Corrida {
+  const { error: _viejo, ...resto } = base;
+  void _viejo;
+  return { ...resto, estado: "hecha", salidas, segundos };
+}
+
 export async function escribirCorrida(c: Corrida) {
   const dir = dirCorrida(c.id);
   await fs.mkdir(dir, { recursive: true });
@@ -113,13 +121,31 @@ export interface AvanceWorkflow {
   avance: number;
 }
 
+/** Bytes libres en el disco de `dir` (o del primer padre que exista); null si no se puede saber. */
+export async function espacioLibre(dir: string): Promise<number | null> {
+  let d = path.resolve(dir);
+  while (!existsSync(d) && path.dirname(d) !== d) d = path.dirname(d);
+  try {
+    const s = await fs.statfs(d);
+    return s.bavail * s.bsize;
+  } catch {
+    return null;
+  }
+}
+
 /** Baja un archivo a `destino` (vía .part, para no dejar uno a medias con el nombre bueno). */
-async function bajarModelo(url: string, destino: string, alAvanzar: (bajado: number, total: number) => void, signal?: AbortSignal) {
+export async function bajarModelo(url: string, destino: string, alAvanzar: (bajado: number, total: number) => void, signal?: AbortSignal) {
   await fs.mkdir(path.dirname(destino), { recursive: true });
   const parte = `${destino}.part`;
   const r = await fetch(url, { signal, redirect: "follow" });
   if (!r.ok || !r.body) throw new Error(`No se pudo bajar ${path.basename(destino)} (${r.status}). Si es un modelo que pide aceptar términos en Hugging Face, ábrelo en el editor de ComfyUI.`);
   const total = Number(r.headers.get("content-length") ?? 0);
+  // Antes de llenar el disco (UX-36): con el tamaño a la vista, si no cabe se dice y no se baja nada.
+  const sinEspacio = faltaEspacio(path.basename(destino), total, await espacioLibre(path.dirname(destino)));
+  if (sinEspacio) {
+    await r.body.cancel().catch(() => {});
+    throw new Error(sinEspacio);
+  }
   let bajado = 0;
   let ultimo = 0;
   const flujo = Readable.fromWeb(r.body as import("node:stream/web").ReadableStream<Uint8Array>);
@@ -268,7 +294,7 @@ export async function correrWorkflow(ctx: ContextoWorkflow, id: string, pedido: 
         salidas.push({ archivo: nombre, tipo: tipoDeArchivo(nombre) });
       }
       if (!salidas.length) throw new Error("El workflow terminó pero no dejó ningún archivo.");
-      const c: Corrida = { ...base, estado: "hecha", salidas, segundos: Math.round((Date.now() - t0) / 1000) };
+      const c = corridaHecha(base, salidas, Math.round((Date.now() - t0) / 1000));
       await escribirCorrida(c);
       return c;
     } finally {
