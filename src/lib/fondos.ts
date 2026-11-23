@@ -7,16 +7,23 @@
  * la segunda capa), ya desenfocado y oscurecido; Chrome sólo lo agranda. Caché por hash en
  * `assets/fondo/`, como los clips con color (looks.ts): sólo cuesta la primera vez.
  *
+ * Sólo se hornea hasta donde el video usa el clip (más 1 s): de un clip largo del que se usan unos
+ * segundos no se procesa el resto. El comienzo no se corta: el fondo tiene que seguir en el mismo tiempo
+ * que el clip nítido de adelante (las dos piezas usan el mismo `desde`).
+ *
  * `GEEPER_FONDO_HORNEADO=0` vuelve al desenfoque de CSS, para comparar tiempos o si el fondo se ve raro.
- * Si ffmpeg falla con un clip, ese clip sigue con el desenfoque de CSS (se avisa en el registro).
+ * Si ffmpeg falla con un clip, ese clip sigue con el desenfoque de CSS (se avisa en el registro). Cancelar
+ * el trabajo corta ffmpeg y cancela el render (no sigue con el desenfoque de CSS).
  */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { existe, sha256Texto } from "./archivos";
-import { assetsConFondo } from "./compilador";
-import type { Proyecto } from "./esquema";
+import { ajusteDe } from "./caras";
+import { assetsConFondo, segmentosVisuales } from "./compilador";
+import { aplicarEstilo, type Proyecto } from "./esquema";
+import { escenasEnLinea } from "./linea";
 import { huellaFfmpeg } from "./media";
-import { correr, type Registro } from "./proceso";
+import { correr, senalDelTrabajo, type Registro } from "./proceso";
 import { FFMPEG } from "./rutas";
 
 type Entorno = Record<string, string | undefined>;
@@ -52,6 +59,30 @@ export function filtroFondo(W: number, H: number): string {
 }
 
 /**
+ * Hasta qué segundo del archivo usa el video cada clip contenido (el mismo cálculo de tramos que
+ * `compilar`). Con el fondo cortado ahí, no se hornea la parte del clip que no se ve.
+ */
+export function finUsado(original: Proyecto, W: number, H: number): Record<string, number> {
+  const p = aplicarEstilo(original);
+  const fin: Record<string, number> = {};
+  for (const es of escenasEnLinea(p)) {
+    const a = p.assets[es.visual.asset];
+    if (!a || a.tipo !== "video" || ajusteDe(es.visual, a, W, H) !== "contener") continue;
+    const velocidad = es.visual.sincro === "voz" ? 1 : (es.visual.velocidad ?? 1);
+    const entrada = es.indice === 0 ? es.inicio : 0;
+    for (const s of segmentosVisuales(es, a, velocidad, entrada)) fin[a.id] = Math.max(fin[a.id] ?? 0, s.desde + s.dur * velocidad);
+  }
+  return fin;
+}
+
+/** Segundo donde cortar el fondo (con 1 s de margen), o null si conviene hornear el clip entero. */
+export function corteFondo(fin: number | undefined, duracion: number | undefined): number | null {
+  if (fin === undefined || !duracion) return null;
+  const corte = Math.ceil(fin) + 1;
+  return corte < duracion ? corte : null;
+}
+
+/**
  * Hornea los fondos que hacen falta y devuelve id de asset → ruta absoluta (para `compilar`).
  * `sustitutos` son los clips con color (prepararColor): el fondo sale de ellos para que combine.
  */
@@ -63,32 +94,39 @@ export async function prepararFondos(
   H: number,
   log?: Registro,
   env: Entorno = process.env,
+  signal?: AbortSignal,
 ): Promise<Record<string, string>> {
   if (!fondoHorneado(env)) return {};
   const candidatos = assetsConFondo(p, W, H).filter((a) => a.tipo === "video" || (a.tipo === "imagen" && !/\.svg$/i.test(a.ruta)));
   if (!candidatos.length) return {};
   const huella = await huellaFfmpeg();
   const filtro = filtroFondo(W, H);
+  const fines = finUsado(p, W, H);
   const fondos: Record<string, string> = {};
   for (const a of candidatos) {
     const origen = sustitutos[a.id] ?? path.join(dirProyecto, a.ruta);
     const ext = a.tipo === "video" ? ".mp4" : ".jpg";
-    const clave = sha256Texto(JSON.stringify({ a: a.hash, o: path.basename(origen), filtro, huella, v: VERSION_FONDO })).slice(0, 12);
+    const corte = a.tipo === "video" ? corteFondo(fines[a.id], a.duracion) : null;
+    const clave = sha256Texto(JSON.stringify({ a: a.hash, o: path.basename(origen), filtro, huella, v: VERSION_FONDO, ...(corte ? { t: corte } : {}) })).slice(0, 12);
     const destino = path.join(dirProyecto, "assets", "fondo", `${a.id}-${clave}${ext}`);
     if (!(await existe(destino))) {
       await fs.mkdir(path.dirname(destino), { recursive: true });
-      // Temporal único: el render y la vista previa pueden preparar el mismo clip a la vez.
+      // Temporal único: dos renders del mismo proyecto (otro formato, otro intento) pueden preparar el mismo
+      // clip a la vez. La vista previa no hornea fondos: usa el desenfoque de CSS.
       const tmp = `${destino}.tmp-${process.pid}-${Math.random().toString(36).slice(2, 8)}${ext}`;
       const comunes = ["-hide_banner", "-nostdin", "-y", "-v", "error", "-i", path.resolve(origen), "-map", "0:v:0", "-vf", filtro];
       try {
         if (a.tipo === "video") {
           // CPU (libx264): la GPU es de un trabajo a la vez. Sin sonido (el video va mudo) y un keyframe por segundo.
-          await correr(FFMPEG, [...comunes, "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-g", "30", "-movflags", "+faststart", path.resolve(tmp)], { log });
+          const hasta = corte ? ["-t", String(corte)] : [];
+          await correr(FFMPEG, [...comunes, ...hasta, "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-g", "30", "-movflags", "+faststart", path.resolve(tmp)], { log, signal });
         } else {
-          await correr(FFMPEG, [...comunes, "-frames:v", "1", "-q:v", "3", path.resolve(tmp)], { log });
+          await correr(FFMPEG, [...comunes, "-frames:v", "1", "-q:v", "3", path.resolve(tmp)], { log, signal });
         }
         await fs.rename(tmp, destino);
       } catch (e) {
+        // Cancelado: no se sigue con el desenfoque de CSS, se corta el render.
+        if (signal?.aborted || senalDelTrabajo()?.aborted) throw e;
         log?.(`Aviso: no se pudo preparar el fondo borroso de ${a.id}; queda el de CSS (${String(e).slice(0, 200)})`);
         continue;
       } finally {

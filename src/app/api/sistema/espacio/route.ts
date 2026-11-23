@@ -9,7 +9,7 @@ export async function GET() {
   return manejar(async () => json(await medirEspacio()));
 }
 
-const Pedido = z.object({ que: z.enum(["renders", "crudos", "papelera"]), confirmo: z.literal(true) });
+const Pedido = z.object({ que: z.enum(["renders", "crudos", "papelera", "fuentes", "copias"]), confirmo: z.literal(true) });
 
 /** POST /api/sistema/espacio { que, confirmo: true } → borra ese tipo, sólo tras la confirmación de la persona. */
 export async function POST(req: Request) {
