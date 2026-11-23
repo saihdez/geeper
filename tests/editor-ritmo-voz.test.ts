@@ -19,6 +19,8 @@ describe("ritmo de la voz (UX-27)", () => {
     expect(avisoRitmo(0.85)).toBeNull();
     expect(avisoRitmo(0.9)).toMatch(/no se podrá descargar/);
     expect(avisoRitmo(1.05)).toMatch(/no se podrá descargar/);
+    // «pueden pasar» y «no se podrá» no se contradicen: sólo si pasa.
+    expect(avisoRitmo(0.9)).toBe("Con este ritmo los subtítulos pueden pasar muy rápido y, si pasa, el video no se podrá descargar.");
   });
   it("ni números sueltos ni selector en clips", () => {
     expect(editor).not.toContain("[0.85, 0.9, 0.95, 1, 1.05].map");

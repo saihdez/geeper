@@ -4,7 +4,8 @@ import path from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { VistaEnVivo, textoPreparando, tramoDeEscena } from "@/components/vista-en-vivo";
+import { VistaEnVivo, accionAlListo, textoPreparando, tramoDeEscena } from "@/components/vista-en-vivo";
+import { escenaDeEdicion } from "@/components/editor-estado";
 
 const fuente = fs.readFileSync(path.join(process.cwd(), "src", "components", "vista-en-vivo.tsx"), "utf8");
 
@@ -35,5 +36,34 @@ describe("vista previa en vivo (UX-37)", () => {
     expect(fuente).toContain('aria-label="Ocultar la vista pequeña"');
     // Un solo <hyperframes-player>: flotar no lo vuelve a cargar.
     expect(fuente.match(/createElement\("hyperframes-player"/g)).toHaveLength(1);
+  });
+});
+
+describe("salto a la escena cambiada (UX-37)", () => {
+  const base = { clave: "a-5", montado: null as string | null, aplicado: 0, versionVista: 5, version: 5 };
+
+  it("un player recién montado retoma el segundo visto", () => {
+    expect(accionAlListo(base)).toBe("retomar");
+  });
+
+  it("el mismo player no vuelve a saltar cuando cambia la versión o llega otro render", () => {
+    // La versión nueva todavía no llegó (versionVista 5, version 6): no se toca el player que se ve.
+    expect(accionAlListo({ ...base, montado: "a-5", version: 6 })).toBe("nada");
+    expect(accionAlListo({ ...base, montado: "a-5", version: 6, irA: { segundo: 12, vez: 1 } })).toBe("nada");
+    expect(accionAlListo({ ...base, montado: "a-5" })).toBe("nada");
+  });
+
+  it("el salto pedido se aplica una vez, en el player de la versión al día", () => {
+    expect(accionAlListo({ ...base, montado: "a-5", irA: { segundo: 12, vez: 1 } })).toBe("tramo");
+    expect(accionAlListo({ ...base, montado: "a-5", irA: { segundo: 12, vez: 1 }, aplicado: 1 })).toBe("nada");
+  });
+
+  it("el editor pasa el salto a la vista en vivo y salta sólo con cambios de una escena", () => {
+    const editor = fs.readFileSync(path.join(process.cwd(), "src", "components", "editor-proyecto.tsx"), "utf8");
+    expect(editor).toMatch(/<VistaEnVivo [^>]*irA=\{irA\}/);
+    expect(escenaDeEdicion({ tipo: "ajusteVisual", escena: "e03" })).toBe("e03");
+    expect(escenaDeEdicion({ tipo: "corregirSubtitulo", escena: "e01", desde: 0, hasta: 2, texto: "hola" })).toBe("e01");
+    expect(escenaDeEdicion({ tipo: "quitarEscena", escena: "e03" })).toBeNull();
+    expect(escenaDeEdicion({ tipo: "cambiarFormato", formato: "16:9" })).toBeNull();
   });
 });

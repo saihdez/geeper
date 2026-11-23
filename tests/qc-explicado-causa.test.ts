@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { OBJETIVO, revisarSubtitulos } from "@/lib/qc";
 import { explicarRegla, frasesQc, LIMITES_SUBTITULOS } from "@/lib/qc-explicado";
-import { InformeQc } from "@/components/editor-proyecto";
+import { escenaDeFrase, InformeQc } from "@/components/editor-proyecto";
 
 const rapida = "«El faro de Alejandría guiaba a los barcos» (2 líneas, 25 car./línea, 19.2 car./s, 3.40 s)";
 const larga = "«Una frase larguísima que no cabe en dos líneas cortas para nada» (3 líneas, 30 car./línea, 9.0 car./s, 8.00 s)";
@@ -51,5 +51,25 @@ describe("QC explicado por su causa (UX-01)", () => {
     expect(html).toContain("Ir a la escena 3");
     expect(html).toContain("19,2 letras por segundo");
     expect(html).toContain("ya cambió desde que se hizo este video");
+  });
+
+  it("si la frase se repite en dos escenas, enlaza a la que la tiene en ese segundo", () => {
+    const escenas = [
+      { id: "e1", indice: 0, grupos: [{ texto: "Y eso no es todo", inicio: 2, fin: 4 }] },
+      { id: "e5", indice: 4, grupos: [{ texto: "Y eso no es todo", inicio: 30, fin: 32 }] },
+    ];
+    expect(escenaDeFrase({ texto: "Y eso no es todo", t: 30.5 }, escenas)?.id).toBe("e5");
+    expect(escenaDeFrase({ texto: "Y eso no es todo", t: 3 }, escenas)?.id).toBe("e1");
+    expect(escenaDeFrase({ texto: "Y eso no es todo" }, escenas)?.id).toBe("e1");
+    expect(escenaDeFrase({ texto: "Otra", t: 3 }, escenas)).toBeNull();
+  });
+
+  it("el enlace «Ir a la escena» va subrayado siempre (A11-15)", () => {
+    const render = {
+      id: "r", versionNumero: 3, perfil: "shorts-9x16", ruta: "renders/v3.mp4", estado: "rechazado", duracion: 30, segundos: 60, creado: "",
+      informeQc: { aprobado: false, fotogramas: [], reglas: [{ id: "subtitulos", nombre: "Subtítulos legibles", ok: false, medido: { peorCps: 19.2 }, objetivo: "", detalle: rapida }] },
+    };
+    const html = renderToStaticMarkup(createElement(InformeQc, { r: render, slug: "p", escenas: [{ id: "e03", indice: 2, grupos: [{ texto: "El faro de Alejandría guiaba a los barcos" }] }] }));
+    expect(html).toMatch(/class="text-acento underline" href="#escena-e03"/);
   });
 });

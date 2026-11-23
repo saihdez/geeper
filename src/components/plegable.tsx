@@ -19,7 +19,7 @@ export function Plegable({ id, titulo, detalle, inicial = false, abierto, alCamb
   const [propio, setPropio] = useState(inicial);
   const open = abierto ?? propio;
   return (
-    <details id={id} className="tarjeta scroll-mt-4 p-4" open={open}
+    <details id={id} className="tarjeta scroll-mt-28 p-4" open={open}
       onToggle={(ev) => {
         const a = (ev.currentTarget as HTMLDetailsElement).open;
         if (a === open) return;

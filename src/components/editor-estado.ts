@@ -48,6 +48,30 @@ export function renderEnCurso(trabajos: TrabajoV[]): TrabajoV | null {
   return trabajos.find((t) => t.tipo === "render.entregar" && estaActivo(t)) ?? null;
 }
 
+/**
+ * UX-19: el aviso tras guardar. Ofrece «Crear el video» sólo si no hay uno creándose (si no, pediría
+ * otro igual encima); en ese caso dice que el que se está creando no tiene el cambio.
+ */
+export function avisoGuardado(trabajos: TrabajoV[]): { texto: string; ofrecerCrear: boolean } {
+  return renderEnCurso(trabajos)
+    ? { texto: "Guardado. Ya se ve en «En vivo». El video que se está creando no lo tiene: créalo otra vez cuando termine.", ofrecerCrear: false }
+    : { texto: "Guardado. Ya se ve en «En vivo». Para descargarlo, crea el video otra vez.", ofrecerCrear: true };
+}
+
+/** UX-19: el ritmo de la voz no cambia el video hasta que se vuelva a decir el guion. */
+export const TEXTO_RITMO_GUARDADO = "Listo: el ritmo cuenta la próxima vez que se diga el guion.";
+
+/**
+ * UX-10: el último render que falló o se cortó, si es más nuevo que el último video guardado (si falla
+ * antes de guardar, no queda fila Render y arriba no se decía nada). Uno cancelado por la persona no cuenta.
+ */
+export function renderFallido(trabajos: TrabajoV[], ultimoRender?: { creado: string } | null): TrabajoV | null {
+  const t = trabajos.find((x) => x.tipo === "render.entregar");
+  if (!t || (t.estado !== "fallido" && t.estado !== "interrumpido")) return null;
+  if (ultimoRender && t.creado && new Date(t.creado).getTime() <= new Date(ultimoRender.creado).getTime()) return null;
+  return t;
+}
+
 /** UX-10: el paso del render en palabras de quien no sabe de video. */
 export function pasoRender(t: Pick<TrabajoV, "estado" | "etapa">): string {
   if (t.estado === "pendiente") return "esperando su turno";
@@ -75,12 +99,31 @@ export function estadoCreacion(trabajos: TrabajoV[]): { fase: "en-curso" | "fall
   return { fase: "esperando", trabajo: ultimo };
 }
 
+/** UX-29: qué decir cuando no se pudo hacer el video. Si lo canceló la persona, no se dice que «no se pudo». */
+export function textoFalloCreacion(t: Pick<TrabajoV, "estado"> | null): string {
+  return t?.estado === "cancelado"
+    ? "Cancelaste la creación del video. Puedes volver a pedirlo cuando quieras."
+    : "No se pudo hacer el video. Puedes volver a intentarlo; si vuelve a fallar, abajo en «Trabajos de este proyecto» ves qué pasó.";
+}
+
 /**
  * WEB-10: la lista de trabajos pide /api/trabajos cada 2 s mientras está montada. Se monta sólo si la
- * persona la abrió o si hay algo en marcha (o el proyecto aún se está creando); en reposo, cero.
+ * persona la abrió, si hay algo en marcha, si el proyecto aún se está creando o si el último trabajo
+ * acaba de fallar (para que su registro se vea sin buscarlo); en reposo, cero.
  */
-export function verTrabajos(abiertaPorPersona: boolean | null, hayActivos: boolean, creando: boolean): boolean {
-  return abiertaPorPersona ?? (hayActivos || creando);
+export function verTrabajos(abiertaPorPersona: boolean | null, hayActivos: boolean, creando: boolean, falloReciente = false): boolean {
+  return abiertaPorPersona ?? (hayActivos || creando || falloReciente);
+}
+
+/** Cuánto sigue abierta sola la lista tras un fallo: después vuelve a no pedir nada en reposo. */
+export const MINUTOS_FALLO_VISIBLE = 10;
+
+/** WEB-10: el último trabajo del proyecto falló o se cortó hace menos de MINUTOS_FALLO_VISIBLE. */
+export function falloReciente(trabajos: TrabajoV[], ahora: number = Date.now()): boolean {
+  const c = estadoCreacion(trabajos);
+  if (c.fase !== "fallo" || c.trabajo?.estado === "cancelado") return false;
+  const cuando = c.trabajo?.terminado ?? c.trabajo?.creado;
+  return !!cuando && ahora - new Date(cuando).getTime() < MINUTOS_FALLO_VISIBLE * 60_000;
 }
 
 /** «2», «2 y 5», «2, 4 y 5». */
@@ -130,7 +173,7 @@ export function opcionesRitmo(actual: number): { valor: number; nombre: string }
 
 /** Desde 0,9 los subtítulos pueden pasar de 17 letras por segundo y el QC rechaza el video. */
 export function avisoRitmo(velocidad: number): string | null {
-  return velocidad >= 0.9 ? "Con este ritmo los subtítulos pueden pasar muy rápido y el video no se podrá descargar." : null;
+  return velocidad >= 0.9 ? "Con este ritmo los subtítulos pueden pasar muy rápido y, si pasa, el video no se podrá descargar." : null;
 }
 
 /**
@@ -169,13 +212,34 @@ export function versionParaDeshacer(versiones: VersionV[], actual: number): Vers
   return antes.find((x) => !hoy?.hash || !x.hash || x.hash !== hoy.hash) ?? null;
 }
 
-/** UX-38: «hace un momento», «hace 5 min», «hace 2 h», «ayer» o la fecha. */
-export function haceCuanto(fecha: string | Date, ahora: number = Date.now()): string {
-  const t = new Date(fecha).getTime();
-  const s = Math.max(0, (ahora - t) / 1000);
-  if (s < 60) return "hace un momento";
-  if (s < 3600) return `hace ${Math.floor(s / 60)} min`;
-  if (s < 86_400) return `hace ${Math.floor(s / 3600)} h`;
-  if (s < 2 * 86_400) return "ayer";
-  return new Date(t).toLocaleDateString("es-MX", { day: "numeric", month: "short" });
+/**
+ * UX-37: la escena que cambia una edición, para que la vista en vivo salte a ella al guardar. Quitar una
+ * escena no salta (ya no está) y lo que es de todo el video tampoco.
+ */
+export function escenaDeEdicion(ed: object): string | null {
+  const e = ed as { tipo?: unknown; escena?: unknown };
+  return typeof e.escena === "string" && e.escena && e.tipo !== "quitarEscena" ? e.escena : null;
+}
+
+/** UX-08: los 4 pasos del editor, en el orden en que se usan. El índice fijo de arriba salta a cada uno. */
+export const PASOS_EDITOR = [
+  { id: "paso-1", titulo: "Mira tu video" },
+  { id: "paso-2", titulo: "Corrige lo que se dice y se ve" },
+  { id: "paso-3", titulo: "Voz y estilo" },
+  { id: "paso-4", titulo: "Crea, descarga y publica" },
+] as const;
+
+/**
+ * UX-08: la línea fija «Siguiente paso: …» del editor. `ir` es el ancla a la que lleva.
+ * - creando: hay un video creándose; fallo: el último intento falló (el aviso con «Volver a intentar» está arriba).
+ * - alDia: el último video tiene los últimos cambios; qc: el resultado de su revisión.
+ */
+export function siguientePaso(a: { creando: boolean; fallo: boolean; hayVideo: boolean; alDia: boolean; qc: "listo" | "con-avisos" | "falta" | null; aprobado: boolean }): { texto: string; ir: string } {
+  if (a.creando) return { texto: "Se está creando tu video. Mientras tanto puedes seguir corrigiendo.", ir: "#paso-2" };
+  if (a.fallo) return { texto: "No se pudo crear el video. Arriba puedes volver a intentarlo.", ir: "#arriba" };
+  if (!a.hayVideo) return { texto: "Corrige lo que haga falta y después crea el video con el botón de arriba.", ir: "#paso-2" };
+  if (!a.alDia) return { texto: "Tus cambios todavía no están en el video: créalo otra vez con el botón de arriba.", ir: "#arriba" };
+  if (a.qc && (a.qc === "falta" || !a.aprobado)) return { texto: "Arregla lo que marca «¿Está listo para publicar?».", ir: "#listo" };
+  if (!a.aprobado) return { texto: "El video no pasó la revisión: créalo otra vez con el botón de arriba.", ir: "#arriba" };
+  return { texto: "Tu video está listo: descárgalo o publícalo.", ir: "#paso-4" };
 }

@@ -1,18 +1,29 @@
 /** UX-12 (parte del editor): no dejar el video con dos voces sin avisar. */
 import { describe, expect, it } from "vitest";
 import { escenasConOtraVoz, preguntaVozEscena } from "@/components/editor-estado";
-import { idDeVoz, nombreDeVoz } from "@/lib/vista";
+import { claveVoz } from "@/lib/ediciones";
+import { nombreDeVoz } from "@/lib/vista";
+import fs from "node:fs";
+import path from "node:path";
+
+const vista = fs.readFileSync(path.join(process.cwd(), "src", "lib", "vista.ts"), "utf8");
 
 const esc = (id: string, indice: number, voz: string | null) => ({ id, indice, voz: { voz } });
 const voces = { elegida: "em_alex", nombres: { em_alex: "Álex", ef_dora: "Dora" } };
 
 describe("voces mezcladas (UX-12)", () => {
   it("iguala «kokoro:ef_dora» y «ef_dora», y da el nombre de la voz", () => {
-    expect(idDeVoz("kokoro:ef_dora")).toBe("ef_dora");
-    expect(idDeVoz("ef_dora")).toBe("ef_dora");
-    expect(idDeVoz(undefined)).toBeNull();
+    expect(claveVoz("kokoro:ef_dora")).toBe("ef_dora");
+    expect(claveVoz("EF_Dora")).toBe("ef_dora");
     expect(nombreDeVoz("em_alex")).toBe("Álex");
     expect(nombreDeVoz("v-abc", [{ id: "v-abc", nombre: "Mi voz" }])).toBe("Mi voz");
+    // La voz diseñada se encuentra aunque su id tenga mayúsculas (claveVoz pasa a minúsculas).
+    expect(nombreDeVoz(claveVoz("V-Abc"), [{ id: "V-Abc", nombre: "Mi voz" }])).toBe("Mi voz");
+  });
+
+  it("la vista usa la misma cuenta que la revisión final (ediciones.ts), no una propia", () => {
+    expect(vista).toContain("vocesDeEscenas(proyecto)");
+    expect(vista).not.toMatch(/function idDeVoz/);
   });
 
   it("antes de regenerar una escena con otra voz, pregunta con cuántas quedan", () => {

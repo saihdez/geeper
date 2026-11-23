@@ -11,6 +11,19 @@ export function revisionVieja(versionRevisada: number, versionActual: number): b
 /** Nota para cuando un texto largo quedó repartido en dos subtítulos al guardarlo. */
 export const NOTA_SUBTITULO_REPARTIDO = "Lo acomodamos en dos subtítulos para que se lea mejor.";
 
+/**
+ * Subtítulos donde empieza un texto corregido que quedó repartido en dos o más: los que caen dentro de la
+ * misma corrección. Devuelve sus posiciones en `grupos` (sólo el primero de cada reparto lleva la nota).
+ */
+export function gruposRepartidos(grupos: { desde: number; hasta: number }[], correcciones: { desde: number; hasta: number }[]): Set<number> {
+  const primeros = new Set<number>();
+  for (const c of correcciones) {
+    const dentro = grupos.flatMap((g, i) => (g.desde >= c.desde && g.hasta <= c.hasta ? [i] : []));
+    if (dentro.length >= 2) primeros.add(dentro[0]!);
+  }
+  return primeros;
+}
+
 export function AvisoRevisionVieja({ versionRevisada, versionActual, ocupado, alCrear }: {
   versionRevisada: number;
   versionActual: number;

@@ -1,9 +1,10 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Aviso, Barra, Estado, archivo, pedir, postJson, segundos, useSondeo } from "./comun";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Aviso, Barra, Estado, archivo, haceCuanto, pedir, postJson, segundos, useSondeo } from "./comun";
 import { ACCEPT_IMAGEN, esVector } from "@/lib/formatos-vector";
+import { explicarError } from "@/lib/textos";
 import { avisoSubtitulosRapidos, explicarRegla, LIMITES_SUBTITULOS, porQueFalla, resumirQc, type FraseQc, type SubtitulosRapidos } from "@/lib/qc-explicado";
-import { VistaEnVivo } from "./vista-en-vivo";
+import { VistaEnVivo, type IrA } from "./vista-en-vivo";
 import { ListaTrabajos } from "./lista-trabajos";
 import { ListaPublicaciones, PanelPublicar, type PublicacionV } from "./panel-publicar";
 import { PanelAnimar, type OpcionesAnimar } from "./panel-animar";
@@ -18,7 +19,8 @@ import { SelectorEncuadre, type EncuadreV } from "./selector-encuadre";
 import { PanelOtroEditor } from "./panel-otro-editor";
 import { useAccionesProyecto } from "./acciones-proyecto";
 import { FranjaAviso, type MensajeEditor } from "./franja-aviso";
-import { avisoRitmo, correccionesVacias, enLista, haceCuanto, mensajeSinCambios, opcionesRitmo, versionParaDeshacer, errorSubtitulo, escenasConOtraVoz, estaActivo, estadoCreacion, mismoContenido, pasoRender, preguntaVozEscena, renderEnCurso, verTrabajos, type TrabajoV, type VocesV } from "./editor-estado";
+import { AvisoRevisionVieja, gruposRepartidos, NOTA_SUBTITULO_REPARTIDO } from "./aviso-revision-vieja";
+import { avisoGuardado, escenaDeEdicion, PASOS_EDITOR, siguientePaso, falloReciente, textoFalloCreacion, renderFallido, avisoRitmo, correccionesVacias, enLista, mensajeSinCambios, opcionesRitmo, versionParaDeshacer, errorSubtitulo, escenasConOtraVoz, estaActivo, estadoCreacion, mismoContenido, pasoRender, preguntaVozEscena, renderEnCurso, verTrabajos, TEXTO_RITMO_GUARDADO, type TrabajoV, type VocesV } from "./editor-estado";
 import { Plegable } from "./plegable";
 import { EdicionPorTexto, EfectosEscena, PanelAvanzado, PanelEstilo, type EfectosV, type EstiloV, type ExtrasV, type PalabraV } from "./edicion-avanzada";
 
@@ -118,12 +120,30 @@ interface Vectorizar {
   ocupado: boolean;
 }
 
-/** Escena donde está hoy una frase que marcó el QC (el informe puede ser de una versión anterior). */
-export function escenaDeFrase(f: Pick<FraseQc, "texto">, escenas: { id: string; indice: number; grupos: { texto: string }[] }[]) {
-  return escenas.find((e) => e.grupos.some((g) => g.texto === f.texto)) ?? null;
+type EscenaFrases = { id: string; indice: number; grupos: { texto: string; inicio?: number; fin?: number }[] };
+
+/**
+ * Escena donde está hoy una frase que marcó el QC (el informe puede ser de una versión anterior). Se busca
+ * por texto; si la frase se repite en varias escenas, gana la que la tiene más cerca del segundo `t` del informe.
+ */
+export function escenaDeFrase(f: Pick<FraseQc, "texto"> & { t?: number }, escenas: EscenaFrases[]) {
+  const lejos = (g: EscenaFrases["grupos"][number]) => {
+    if (f.t === undefined || g.inicio === undefined) return 0;
+    const fin = g.fin ?? g.inicio;
+    return f.t < g.inicio ? g.inicio - f.t : f.t > fin ? f.t - fin : 0;
+  };
+  let mejor: { e: EscenaFrases; d: number } | null = null;
+  for (const e of escenas) {
+    for (const g of e.grupos) {
+      if (g.texto !== f.texto) continue;
+      const d = lejos(g);
+      if (!mejor || d < mejor.d) mejor = { e, d };
+    }
+  }
+  return mejor?.e ?? null;
 }
 
-export function InformeQc({ r, slug, vectorizar, escenas = [] }: { r: Render; slug: string; vectorizar?: Vectorizar; escenas?: { id: string; indice: number; grupos: { texto: string }[] }[] }) {
+export function InformeQc({ r, slug, vectorizar, escenas = [] }: { r: Render; slug: string; vectorizar?: Vectorizar; escenas?: EscenaFrases[] }) {
   const inf = r.informeQc;
   if (!inf) return null;
   const res = resumirQc(inf.reglas);
@@ -145,7 +165,7 @@ export function InformeQc({ r, slug, vectorizar, escenas = [] }: { r: Render; sl
                     <li key={`${f.t}-${f.texto}`}>
                       «{f.texto}» {porQueFalla(f)}.{" "}
                       {esc
-                        ? <a className="text-acento hover:underline" href={`#escena-${esc.id}`}>Ir a la escena {esc.indice + 1}</a>
+                        ? <a className="text-acento underline" href={`#escena-${esc.id}`}>Ir a la escena {esc.indice + 1}</a>
                         : <span className="text-tenue">(ya cambió desde que se hizo este video)</span>}
                     </li>
                   );
@@ -191,7 +211,7 @@ export function InformeQc({ r, slug, vectorizar, escenas = [] }: { r: Render; sl
   );
 }
 
-export function EditorGrupo({ g, onGuardar, onQuitar, corregido }: { g: Grupo; corregido: boolean; onGuardar: (texto: string) => Promise<boolean>; onQuitar: () => Promise<void> }) {
+export function EditorGrupo({ g, onGuardar, onQuitar, corregido, repartido = false }: { g: Grupo; corregido: boolean; /** UX-16: el texto corregido quedó en dos subtítulos. */ repartido?: boolean; onGuardar: (texto: string) => Promise<boolean>; onQuitar: () => Promise<void> }) {
   // UX-02: lo escrito es un borrador sobre lo guardado; al guardar bien (o con Esc) el campo vuelve a
   // mostrar lo que quedó en la fila, así «Guardar» no queda pegado.
   const [borrador, setBorrador] = useState<string | null>(null);
@@ -229,6 +249,7 @@ export function EditorGrupo({ g, onGuardar, onQuitar, corregido }: { g: Grupo; c
       {!cambiado && g.cps > LIMITES_SUBTITULOS.maxCps && (
         <span className="w-full pl-[4.5rem] text-xs text-amber-200">Pasa muy rápido ({g.cps.toFixed(1).replace(".", ",")} letras por segundo): acórtalo un poco para que dé tiempo a leerlo.</span>
       )}
+      {repartido && !cambiado && <span className="w-full pl-[4.5rem] text-xs text-tenue">{NOTA_SUBTITULO_REPARTIDO}</span>}
       {g.oido !== g.mostradoPropio && <span className="w-full pl-[4.5rem] text-xs text-tenue">Se oye: «{g.oido}»</span>}
     </li>
   );
@@ -249,8 +270,9 @@ function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, 
   animar: (escena: string, opciones: OpcionesAnimar) => Promise<void>;
 }) {
   const [preguntando, setPreguntando] = useState(false);
+  const repartidos = gruposRepartidos(e.grupos, e.correcciones);
   return (
-    <li id={`escena-${e.id}`} className="tarjeta flex scroll-mt-4 flex-col gap-3 p-3 md:flex-row">
+    <li id={`escena-${e.id}`} className="tarjeta flex scroll-mt-28 flex-col gap-3 p-3 md:flex-row">
       <div className="shrink-0">
         <SelectorEncuadre escena={e.id} numero={e.indice + 1} encuadre={e.visual.encuadre} ocupado={ocupado}
           src={`/api/miniatura?p=${slug}&ruta=${encodeURIComponent(e.visual.ruta)}&t=${(e.visual.inicio + 0.5).toFixed(1)}`}
@@ -265,8 +287,8 @@ function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, 
         <EdicionPorTexto escena={e.id} audio={archivo(`${slug}/${e.voz.ruta}`)} palabras={e.detalle} duracion={e.duracion} duracionOriginal={e.duracionOriginal} editar={editar} ocupado={ocupado}
           vozReal={vozReal} correcciones={e.correcciones} />
         <ul className="space-y-1.5">
-          {e.grupos.map((g) => (
-            <EditorGrupo key={`${g.desde}-${g.hasta}-${g.mostradoPropio}`} g={g}
+          {e.grupos.map((g, i) => (
+            <EditorGrupo key={`${g.desde}-${g.hasta}-${g.mostradoPropio}`} g={g} repartido={repartidos.has(i)}
               corregido={e.correcciones.some((c) => c.desde >= g.desde && c.hasta <= g.hasta)}
               onGuardar={(texto) => editarOk({ tipo: "corregirSubtitulo", escena: e.id, desde: g.desde, hasta: g.hasta, texto })}
               onQuitar={async () => { for (const c of e.correcciones.filter((c) => c.desde >= g.desde && c.hasta <= g.hasta)) await editar({ tipo: "quitarCorreccion", escena: e.id, desde: c.desde }); }} />
@@ -346,6 +368,16 @@ export function EditorProyecto({ id }: { id: string }) {
   const [pestana, setPestana] = useState<"vivo" | "render" | null>(null);
   /** null: la persona no la tocó (se abre sola mientras hay algo en marcha). */
   const [trabajosAbiertos, setTrabajosAbiertos] = useState<boolean | null>(null);
+  /** UX-08: el historial va plegado; el botón «Historial» de arriba lo abre. */
+  const [historialAbierto, setHistorialAbierto] = useState(false);
+  /** La vista más reciente, para lo que se pulsa desde un aviso armado antes (UX-19). */
+  const vistaAlDia = useRef<Vista | null>(null);
+  useEffect(() => { vistaAlDia.current = v ?? null; }, [v]);
+  // UX-37: tras guardar un cambio de una escena, la vista en vivo salta a esa escena y la muestra 3 s.
+  // El segundo se toma de la vista ya recargada (al mover una escena cambia dónde empieza).
+  const [salto, setSalto] = useState<{ escena: string; vez: number } | null>(null);
+  const inicioSalto = salto ? v?.escenas.find((e) => e.id === salto.escena)?.inicio : undefined;
+  const irA = useMemo<IrA | undefined>(() => (salto && inicioSalto !== undefined ? { segundo: inicioSalto, vez: salto.vez } : undefined), [salto, inicioSalto]);
 
   /**
    * Si `fn` devuelve un texto, ése es el mensaje de éxito (p. ej. con avisos); si no, `ok`. Devuelve si
@@ -368,7 +400,11 @@ export function EditorProyecto({ id }: { id: string }) {
   }
   const hacer = async (fn: () => Promise<unknown>, ok: string | Omit<MensajeEditor, "tipo">) => { await intentar(fn, ok); };
   // UX-19: el aviso sale abajo, junto a lo que se edita, con el paso siguiente al lado.
-  const guardado = { texto: "Guardado. Ya se ve en «En vivo». Para descargarlo, crea el video otra vez.", accion: { texto: "Crear el video", hacer: () => void renderizar() } };
+  // Se arma al guardar: si ya se está creando un video, no se ofrece pedir otro encima.
+  const guardado = (): Omit<MensajeEditor, "tipo"> => {
+    const a = avisoGuardado(v?.fila.trabajos ?? []);
+    return a.ofrecerCrear ? { texto: a.texto, accion: { texto: "Crear el video", hacer: () => void renderizar() } } : { texto: a.texto };
+  };
   /** Guarda una edición y dice si salió bien. */
   // UX-18: si nada cambió, se dice eso (sin «Guardado» ni «Crear el video»).
   const guardar = async (eds: object[]) => {
@@ -376,9 +412,14 @@ export function EditorProyecto({ id }: { id: string }) {
     const nada = mensajeSinCambios(eds as { tipo?: unknown }[], r);
     return nada ?? r; // un texto reemplaza al «Guardado» (y a su «Crear el video»)
   };
-  const editarOk = (ed: object) => intentar(() => guardar([ed]), guardado);
+  const editarOk = async (ed: object, ok: string | Omit<MensajeEditor, "tipo"> = guardado()) => {
+    const bien = await intentar(() => guardar([ed]), ok);
+    const escena = escenaDeEdicion(ed);
+    if (bien && escena) setSalto((s) => ({ escena, vez: (s?.vez ?? 0) + 1 }));
+    return bien;
+  };
   const editar = async (ed: object) => { await editarOk(ed); };
-  const editarVarias = (eds: object[]) => hacer(() => guardar(eds), guardado);
+  const editarVarias = (eds: object[]) => hacer(() => guardar(eds), guardado());
   const subirClip = (escena: string, f: File) => hacer(async () => {
     const fd = new FormData();
     fd.set("escena", escena);
@@ -398,6 +439,11 @@ export function EditorProyecto({ id }: { id: string }) {
     if (confirm(preguntaUsarVoz(nombre))) await regenerarVoz(null);
   };
   const renderizar = async () => {
+    // UX-19: el botón de la franja puede pulsarse después de que empezó otro render (la vista es la del aviso).
+    if (renderEnCurso(vistaAlDia.current?.fila.trabajos ?? [])) {
+      setMsg({ tipo: "ok", texto: "Ya se está creando el video. Arriba ves cómo va." });
+      return;
+    }
     // REN-04: si el QC lo va a rechazar por subtítulos rápidos, se pregunta antes de esperar el render.
     const aviso = avisoSubtitulosRapidos(v?.subtitulosRapidos);
     if (aviso?.confirmar && !confirm(aviso.confirmar)) return;
@@ -439,6 +485,7 @@ export function EditorProyecto({ id }: { id: string }) {
   const modo = pestana ?? (renderAlDia ? "render" : "vivo");
   const activos = fila.trabajos.filter(estaActivo);
   const enCurso = renderEnCurso(fila.trabajos);
+  const fallo = enCurso ? null : renderFallido(fila.trabajos, render);
   /** Otro trabajo en marcha que no es el render (ése ya tiene su franja). */
   const otroActivo = activos.find((t) => t !== enCurso) ?? null;
   const deshacer = versionParaDeshacer(fila.versiones, fila.versionActual);
@@ -450,11 +497,12 @@ export function EditorProyecto({ id }: { id: string }) {
   const qc = render?.informeQc ? resumirQc(render.informeQc.reglas) : null;
   const avisoRapidos = avisoSubtitulosRapidos(v.subtitulosRapidos);
   const textoMostrar = mostrarTxt ?? (p?.mostrar ?? []).map((m) => `${m.de}=${m.a}`).join("\n");
+  const paso = siguientePaso({ creando: !!enCurso, fallo: !!fallo, hayVideo: !!render, alDia: renderAlDia, qc: qc?.estado ?? null, aprobado: render?.estado === "aprobado" });
 
   return (
     <div className={`space-y-6 ${msg ? "pb-24" : ""}`}>
       <FranjaAviso msg={msg} cerrar={cerrarMsg} />
-      <header className="flex flex-wrap items-start justify-between gap-3">
+      <header id="arriba" className="flex scroll-mt-4 flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">{fila.nombre}</h1>
           <p className="text-sm text-tenue">{fila.tema !== fila.nombre ? `${fila.tema} · ` : ""}versión {fila.versionActual} · {escenas.length} escenas · {segundos(v.total)}{fila.lote ? ` · ${fila.lote.nombre}` : ""}</p>
@@ -473,7 +521,7 @@ export function EditorProyecto({ id }: { id: string }) {
               title={activos.length > 0 ? "Espera a que termine lo que está en marcha" : `Vuelve a como estaba antes de «${notaActual}»`}
               onClick={() => volverA(deshacer.numero, `¿Deshacer el último cambio («${notaActual}»)? Vuelve a la versión ${deshacer.numero}; se guarda como versión nueva y no se pierde nada.`)}>↶ Deshacer</button>
           )}
-          <a className="boton" href="#historial">Historial</a>
+          <a className="boton" href="#historial" onClick={() => setHistorialAbierto(true)}>Historial</a>
           {fila.estado === "entregado" && render && !renderAlDia
             ? <span className="inline-block rounded-full bg-amber-800 px-2 py-0.5 text-xs font-medium text-amber-100">Con cambios sin exportar</span>
             : <Estado valor={fila.estado} />}
@@ -490,6 +538,12 @@ export function EditorProyecto({ id }: { id: string }) {
           </div>
           <Barra valor={enCurso.progreso ?? 0} etiqueta="Avance del video" />
           {render?.segundos ? <p className="text-xs text-tenue">La última vez tardó {segundos(render.segundos)}. Puedes seguir editando o cerrar esta página.</p> : null}
+        </div>
+      ) : fallo ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-red-900 bg-red-950/30 px-3 py-2 text-sm" role="alert">
+          <p className="min-w-0 flex-1">No se pudo crear el video. {explicarError(fallo.error).simple}</p>
+          <button type="button" className="boton py-1" disabled={ocupado}
+            onClick={() => void hacer(() => postJson(`/api/trabajos/${fallo.id}`, { accion: "relanzar" }), "Listo: lo estamos intentando otra vez.")}>Volver a intentar</button>
         </div>
       ) : render && renderAlDia && qc ? (
         <div className={`flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm ${qc.estado === "falta" ? "border-red-900 bg-red-950/30" : "border-emerald-800 bg-emerald-950/40"}`}>
@@ -537,8 +591,8 @@ export function EditorProyecto({ id }: { id: string }) {
         // UX-29: sin jerga, con cuánto tarda, y si falló no se dice que «se está generando».
         const c = estadoCreacion(fila.trabajos);
         if (c.fase === "fallo") return (
-          <Aviso tipo="error">
-            <p>No se pudo hacer el video. Puedes volver a intentarlo; si vuelve a fallar, abajo en «Trabajos de este proyecto» ves qué pasó.</p>
+          <Aviso tipo={c.trabajo?.estado === "cancelado" ? "info" : "error"}>
+            <p>{textoFalloCreacion(c.trabajo)}</p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <button type="button" className="boton py-1" disabled={ocupado} onClick={() => void hacer(() => postJson(`/api/trabajos/${c.trabajo!.id}`, { accion: "relanzar" }), "Listo: lo estamos intentando otra vez.")}>Volver a intentar</button>
               {c.trabajo?.error && <details className="text-xs"><summary className="cursor-pointer text-tenue">Ver el error</summary><p className="mt-1 whitespace-pre-wrap break-words">{c.trabajo.error}</p></details>}
@@ -554,54 +608,98 @@ export function EditorProyecto({ id }: { id: string }) {
       })()}
       {p?.origen?.traduccion && <InformeTraduccion informe={p.origen.traduccion} escenas={escenas.map((e) => ({ id: e.id, numero: e.indice + 1 }))} />}
 
+      {/* UX-08: índice fijo con los 4 pasos y el siguiente paso, para no perderse en una página larga. */}
       {p && (
-        <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-          <div className="tarjeta space-y-3 p-4">
-            <div className="flex items-center gap-2">
-              <h2 className="font-medium">Vista previa</h2>
-              <div className="ml-auto flex gap-1 text-sm" role="tablist" aria-label="Qué ver">
-                {(["vivo", "render"] as const).map((m) => (
-                  <button key={m} type="button" role="tab" aria-selected={modo === m}
-                    className={`rounded px-2 py-1 ${modo === m ? "bg-white/15" : "text-tenue hover:bg-white/5"}`}
-                    onClick={() => setPestana(m)}>
-                    {m === "vivo" ? "En vivo" : "Último render"}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {modo === "vivo" ? (
-              <>
-                <VistaEnVivo proyectoId={id} version={fila.versionActual} />
-                {/* UX-28: con cambios sin exportar se abre «En vivo»; la descarga del último video queda a mano. */}
-                {render?.estado === "aprobado" && (
-                  <p className="text-sm">
-                    <a className="text-acento hover:underline" href={archivo(`${fila.slug}/${render.ruta}`, true)}>Descargar el último video (versión {render.versionNumero})</a>
-                    {!renderAlDia && <span className="text-tenue"> · no tiene los últimos cambios</span>}
-                  </p>
-                )}
-              </>
-            ) : render ? (
-              <>
-                <video key={render.id} src={archivo(`${fila.slug}/${render.ruta}`)} controls preload="metadata"
-                  className={`mx-auto max-h-[70vh] w-full rounded bg-black ${render.perfil === "shorts-9x16" ? "max-w-sm" : ""}`} />
-                <div className="flex flex-wrap items-center gap-2 text-sm">
-                  <Estado valor={render.estado} />
-                  <span className="text-tenue">v{render.versionNumero} · {render.perfil} · {segundos(render.duracion)} · render en {segundos(render.segundos)}</span>
-                  {!renderAlDia && <span className="text-amber-300">Hay cambios sin renderizar</span>}
-                  {render.estado === "aprobado"
-                    ? <>
-                        <a className="boton ml-auto" href={archivo(`${fila.slug}/${render.ruta}`, true)}>Descargar MP4</a>
-                        {render.srt && <a className="boton" title="Para subirlos junto al video (accesibilidad y búsqueda)"
-                          href={archivo(`${fila.slug}/${render.ruta.replace(/\.mp4$/, ".srt")}`, true)}>Subtítulos (.srt)</a>}
-                        {render.informeQc?.master && <a className="boton" href={archivo(`${fila.slug}/${render.informeQc.master}`, true)}>Máster (.mov)</a>}
-                      </>
-                    : <span className="ml-auto text-xs text-red-300">No se descarga: no pasó el QC</span>}
+        <nav aria-label="Pasos del video" className="sticky top-0 z-30 -mx-4 space-y-1 border-b border-borde bg-[#0b0d12]/95 px-4 py-2 backdrop-blur">
+          <ol className="flex gap-1 overflow-x-auto text-sm">
+            {PASOS_EDITOR.map((x, i) => (
+              <li key={x.id} className="shrink-0"><a className="block whitespace-nowrap rounded px-2 py-1 hover:bg-white/10" href={`#${x.id}`}>{i + 1}. {x.titulo}</a></li>
+            ))}
+          </ol>
+          <p className="text-xs" role="status"><span className="text-tenue">Siguiente paso:</span> <a className="text-acento underline" href={paso.ir}>{paso.texto}</a></p>
+        </nav>
+      )}
+
+      {p && (
+        <section id="paso-1" aria-labelledby="titulo-paso-1" className="scroll-mt-28 space-y-3">
+          <h2 id="titulo-paso-1" className="text-lg font-semibold">1. Mira tu video</h2>
+          <div className={`grid gap-4 ${render?.informeQc ? "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]" : ""}`}>
+            <div className="tarjeta space-y-3 p-4">
+              <div className="flex items-center gap-2">
+                <h3 className="font-medium">Vista previa</h3>
+                <div className="ml-auto flex gap-1 text-sm" role="tablist" aria-label="Qué ver">
+                  {(["vivo", "render"] as const).map((m) => (
+                    <button key={m} type="button" role="tab" aria-selected={modo === m}
+                      className={`rounded px-2 py-1 ${modo === m ? "bg-white/15" : "text-tenue hover:bg-white/5"}`}
+                      onClick={() => setPestana(m)}>
+                      {m === "vivo" ? "En vivo" : "Último render"}
+                    </button>
+                  ))}
                 </div>
-              </>
-            ) : <p className="text-sm text-tenue">Sin render todavía.</p>}
+              </div>
+              {modo === "vivo" ? (
+                <>
+                  <VistaEnVivo proyectoId={id} version={fila.versionActual} irA={irA} />
+                  {/* UX-28: con cambios sin exportar se abre «En vivo»; la descarga del último video queda a mano. */}
+                  {render?.estado === "aprobado" && (
+                    <p className="text-sm">
+                      <a className="text-acento hover:underline" href={archivo(`${fila.slug}/${render.ruta}`, true)}>Descargar el último video (versión {render.versionNumero})</a>
+                      {!renderAlDia && <span className="text-tenue"> · no tiene los últimos cambios</span>}
+                    </p>
+                  )}
+                </>
+              ) : render ? (
+                <>
+                  <video key={render.id} src={archivo(`${fila.slug}/${render.ruta}`)} controls preload="metadata"
+                    className={`mx-auto max-h-[70vh] w-full rounded bg-black ${render.perfil === "shorts-9x16" ? "max-w-sm" : ""}`} />
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <Estado valor={render.estado} />
+                    <span className="text-tenue">v{render.versionNumero} · {render.perfil} · {segundos(render.duracion)} · render en {segundos(render.segundos)}</span>
+                    {!renderAlDia && <span className="text-amber-300">Hay cambios sin renderizar</span>}
+                    {render.estado === "aprobado"
+                      ? <>
+                          <a className="boton ml-auto" href={archivo(`${fila.slug}/${render.ruta}`, true)}>Descargar MP4</a>
+                          {render.srt && <a className="boton" title="Para subirlos junto al video (accesibilidad y búsqueda)"
+                            href={archivo(`${fila.slug}/${render.ruta.replace(/\.mp4$/, ".srt")}`, true)}>Subtítulos (.srt)</a>}
+                          {render.informeQc?.master && <a className="boton" href={archivo(`${fila.slug}/${render.informeQc.master}`, true)}>Máster (.mov)</a>}
+                        </>
+                      : <span className="ml-auto text-xs text-red-300">No se descarga: no pasó el QC</span>}
+                  </div>
+                </>
+              ) : <p className="text-sm text-tenue">Sin render todavía.</p>}
+            </div>
+            {render?.informeQc && (
+              <section id="listo" className="tarjeta scroll-mt-28 p-4">
+                <h3 className="mb-3 font-medium">¿Está listo para publicar?</h3>
+                {/* UX-16: si cambió algo después de este video, la revisión es de antes (al día por contenido, UX-21). */}
+                <AvisoRevisionVieja versionRevisada={render.versionNumero} versionActual={renderAlDia ? render.versionNumero : fila.versionActual}
+                  ocupado={ocupado || !!enCurso} alCrear={() => void renderizar()} />
+                <InformeQc r={render} slug={fila.slug} escenas={escenas} vectorizar={{ hacer: vectorizarImagen, sigue: (a) => !!v && (v.escenas.some((e) => e.visual.asset === a) || !!v.extras?.libres.some((pi) => pi.clips.some((c) => c.asset === a))), ocupado }} />
+              </section>
+            )}
           </div>
+        </section>
+      )}
+
+      {escenas.length > 0 && (
+        <section id="paso-2" aria-labelledby="titulo-paso-2" className="scroll-mt-28">
+          <h2 id="titulo-paso-2" className="mb-1 text-lg font-semibold">2. Corrige lo que se dice y se ve</h2>
+          <p className="mb-3 text-sm text-tenue">Cada escena con sus subtítulos, su imagen y su voz.</p>
+          <ol className="space-y-3">
+            {escenas.map((e, i) => (
+              <TarjetaEscena key={e.id} e={e} anterior={escenas[i - 1]} slug={fila.slug} total={escenas.length} formato={p?.formato ?? fila.formato}
+                estilo={v.extras?.estilo ?? null} editar={editar} editarOk={editarOk} subirClip={subirClip} regenerarVoz={regenerarVoz} reencuadrar={reencuadrar} animar={animar} proyectoId={id} ocupado={ocupado}
+                vozReal={Boolean(v.extras?.clip)} preguntaVoz={preguntaVozEscena(e.id, escenas, v.voces ?? null)} />
+            ))}
+          </ol>
+        </section>
+      )}
+
+      {p && (
+        <section id="paso-3" aria-labelledby="titulo-paso-3" className="scroll-mt-28 space-y-4">
+          <h2 id="titulo-paso-3" className="text-lg font-semibold">3. Voz y estilo</h2>
           <div className="tarjeta space-y-4 p-4">
-            <h2 className="font-medium">Ajustes (sólo cambian geeper.json)</h2>
+            <h3 className="font-medium">Formato y voz</h3>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <label className="etiqueta" htmlFor="formato">Formato</label>
@@ -647,7 +745,7 @@ export function EditorProyecto({ id }: { id: string }) {
                 <div>
                   <label className="etiqueta" htmlFor="vel">Ritmo de la voz (cuenta la próxima vez que se diga el guion)</label>
                   <select id="vel" className="campo w-auto" value={String(p.voz.velocidad)} disabled={ocupado} aria-describedby={avisoRitmo(p.voz.velocidad) ? "aviso-ritmo" : undefined}
-                    onChange={(e) => void editar({ tipo: "cambiarVoz", velocidad: Number(e.target.value) })}>
+                    onChange={(e) => void editarOk({ tipo: "cambiarVoz", velocidad: Number(e.target.value) }, TEXTO_RITMO_GUARDADO)}>
                     {opcionesRitmo(p.voz.velocidad).map((x) => <option key={x.valor} value={String(x.valor)}>{x.nombre}</option>)}
                   </select>
                 </div>
@@ -658,92 +756,89 @@ export function EditorProyecto({ id }: { id: string }) {
               </div>
             )}
           </div>
-        </section>
-      )}
-
-      {p && v.extras && (
-        <>
-          <PanelEstilo estilo={v.extras.estilo} escenas={escenas} formato={p.formato} imgs={escenas.slice(0, 2).map((e) => miniatura(fila.slug, e))}
-            editar={editar} editarVarias={editarVarias} ocupado={ocupado} />
-          <PanelEfectosSonido proyectoId={id} escenas={escenas.map((e) => ({ numero: e.indice + 1, inicio: e.inicio }))} total={v.total} ocupado={ocupado} alCambiar={() => void recargar()} />
-          <PanelAvanzado extras={v.extras} formato={p.formato} total={v.total} editar={editar} alinearMusica={alinearMusica} subirLibre={subirLibre} ocupado={ocupado} slug={fila.slug} />
-        </>
-      )}
-
-      {p && !v.extras?.clip && <PanelTraducir proyectoId={id} idiomaActual={p.voz.idioma} ocupado={ocupado} />}
-
-      {p && <PanelAvatarVideo proyectoId={id} ocupado={ocupado} />}
-
-      {p && !v.extras?.clip && <PanelPresentador proyectoId={id} escenas={escenas.map((e) => ({ id: e.id, numero: e.indice + 1, texto: e.texto }))} ocupado={ocupado} alCambiar={() => void recargar()} usarVoz={usarVoz} />}
-
-      {p && <PanelPortada proyectoId={id} nombre={fila.nombre} version={fila.versionActual} vertical={fila.formato === "9:16"} alDia={alDia} />}
-
-      {render?.estado === "aprobado" ? (
-        <PanelPublicar proyectoId={id} render={render} nombre={fila.nombre} tema={v.extras?.clip?.descripcion || fila.tema} publicaciones={fila.publicaciones} alCambiar={() => void recargar()} />
-      ) : fila.publicaciones.length > 0 && (
-        <section className="tarjeta space-y-2 p-4">
-          <h2 className="font-medium">Publicaciones de este proyecto</h2>
-          <p className="text-xs text-tenue">El último render no está aprobado: para publicar otra vez, renderiza y pasa el QC.</p>
-          <ListaPublicaciones publicaciones={fila.publicaciones} alCambiar={() => void recargar()} />
-        </section>
-      )}
-
-      {p && <PanelOtroEditor proyectoId={id} version={fila.versionActual} />}
-
-      {render?.informeQc && (
-        <section id="listo" className="tarjeta scroll-mt-4 p-4">
-          <h2 className="mb-3 font-medium">¿Está listo para publicar?</h2>
-          <InformeQc r={render} slug={fila.slug} escenas={escenas} vectorizar={{ hacer: vectorizarImagen, sigue: (a) => !!v && (v.escenas.some((e) => e.visual.asset === a) || !!v.extras?.libres.some((pi) => pi.clips.some((c) => c.asset === a))), ocupado }} />
-        </section>
-      )}
-
-      {escenas.length > 0 && (
-        <section>
-          <h2 className="mb-3 font-medium">Escenas</h2>
-          <ol className="space-y-3">
-            {escenas.map((e, i) => (
-              <TarjetaEscena key={e.id} e={e} anterior={escenas[i - 1]} slug={fila.slug} total={escenas.length} formato={p?.formato ?? fila.formato}
-                estilo={v.extras?.estilo ?? null} editar={editar} editarOk={editarOk} subirClip={subirClip} regenerarVoz={regenerarVoz} reencuadrar={reencuadrar} animar={animar} proyectoId={id} ocupado={ocupado}
-                vozReal={Boolean(v.extras?.clip)} preguntaVoz={preguntaVozEscena(e.id, escenas, v.voces ?? null)} />
-            ))}
-          </ol>
-        </section>
-      )}
-
-      <section className="grid gap-4 lg:grid-cols-2">
-        <div id="historial" className="tarjeta scroll-mt-4 p-4">
-          <h2 className="mb-2 font-medium">Historial</h2>
-          <ul className="max-h-80 space-y-1 overflow-auto text-sm">
-            {fila.versiones.map((x) => (
-              <li key={x.numero} className="flex items-center gap-2">
-                <span className="w-10 font-mono text-tenue">v{x.numero}</span>
-                <span className="flex-1">{x.nota}</span>
-                <span className="text-xs text-tenue" title={new Date(x.creado).toLocaleString("es-MX")}>{haceCuanto(x.creado)}</span>
-                {x.numero !== fila.versionActual && (
-                  <button type="button" className="boton py-0.5 text-xs" disabled={ocupado}
-                    onClick={() => volverA(x.numero, `¿Volver a la versión ${x.numero} («${x.nota}»)? Se guarda como versión nueva: no se pierde nada.`)}>Volver a esta</button>
-                )}
-              </li>
-            ))}
-          </ul>
-          {fila.renders.length > 1 && (
+          {v.extras && (
             <>
-              <h3 className="mb-1 mt-4 text-sm font-medium">Renders anteriores</h3>
-              <ul className="space-y-1 text-sm">
-                {fila.renders.slice(1).map((r) => (
-                  <li key={r.id} className="flex items-center gap-2">
-                    <Estado valor={r.estado} /><span className="text-tenue">v{r.versionNumero} · {r.perfil}</span>
-                    <a className="ml-auto text-acento hover:underline" href={archivo(`${fila.slug}/${r.ruta}`)}>Ver</a>
-                  </li>
-                ))}
-              </ul>
+              <PanelEstilo estilo={v.extras.estilo} escenas={escenas} formato={p.formato} imgs={escenas.slice(0, 2).map((e) => miniatura(fila.slug, e))}
+                editar={editar} editarVarias={editarVarias} ocupado={ocupado} />
+              <PanelEfectosSonido proyectoId={id} escenas={escenas.map((e) => ({ numero: e.indice + 1, inicio: e.inicio }))} total={v.total} ocupado={ocupado} alCambiar={() => void recargar()} />
+              <Plegable titulo="Más opciones" detalle="Para qué redes es, silencios y muletillas, música, textos en pantalla y superposiciones.">
+                <PanelAvanzado extras={v.extras} formato={p.formato} total={v.total} editar={editar} alinearMusica={alinearMusica} subirLibre={subirLibre} ocupado={ocupado} slug={fila.slug} />
+              </Plegable>
             </>
           )}
+
+          <PanelAvatarVideo proyectoId={id} ocupado={ocupado} />
+
+          {!v.extras?.clip && <PanelPresentador proyectoId={id} escenas={escenas.map((e) => ({ id: e.id, numero: e.indice + 1, texto: e.texto }))} ocupado={ocupado} alCambiar={() => void recargar()} usarVoz={usarVoz} />}
+        </section>
+      )}
+
+      <section id="paso-4" aria-labelledby="titulo-paso-4" className="scroll-mt-28 space-y-4">
+        <h2 id="titulo-paso-4" className="text-lg font-semibold">4. Crea, descarga y publica</h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" className="boton boton-primario" disabled={ocupado || !p || !!enCurso} onClick={() => void renderizar()}>{enCurso ? "Creando el video…" : "Crear el video"}</button>
+          {render?.estado === "aprobado" && renderAlDia && <a className="boton" href={archivo(`${fila.slug}/${render.ruta}`, true)}>Descargar</a>}
+          <p className="min-w-0 flex-1 text-sm text-tenue">Cuando el video pase la revisión, aquí lo descargas y lo publicas.</p>
         </div>
-        <Plegable id="trabajos" titulo="Trabajos de este proyecto" detalle="Lo que Geeper hizo o está haciendo con este video, con su registro."
-          abierto={verTrabajos(trabajosAbiertos, activos.length > 0, !p)} alCambiar={setTrabajosAbiertos}>
-          <ListaTrabajos proyectoId={id} />
-        </Plegable>
+        {render?.estado === "aprobado" ? (
+          <PanelPublicar proyectoId={id} render={render} nombre={fila.nombre} tema={v.extras?.clip?.descripcion || fila.tema} publicaciones={fila.publicaciones} alCambiar={() => void recargar()} />
+        ) : fila.publicaciones.length > 0 && (
+          <section className="tarjeta space-y-2 p-4">
+            <h2 className="font-medium">Publicaciones de este proyecto</h2>
+            <p className="text-xs text-tenue">El último render no está aprobado: para publicar otra vez, renderiza y pasa el QC.</p>
+            <ListaPublicaciones publicaciones={fila.publicaciones} alCambiar={() => void recargar()} />
+          </section>
+        )}
+        {p && (
+          <Plegable titulo="Portada" detalle="La imagen que se ve antes de darle a reproducir.">
+            <PanelPortada proyectoId={id} nombre={fila.nombre} version={fila.versionActual} vertical={fila.formato === "9:16"} alDia={alDia} />
+          </Plegable>
+        )}
+        {p && !v.extras?.clip && (
+          <Plegable titulo="Otro idioma" detalle="Hace una copia del video con la voz y los subtítulos en otro idioma.">
+            <PanelTraducir proyectoId={id} idiomaActual={p.voz.idioma} ocupado={ocupado} />
+          </Plegable>
+        )}
+        {p && (
+          <Plegable titulo="Terminar en otro editor" detalle="Para seguir el video en otro programa de edición.">
+            <PanelOtroEditor proyectoId={id} version={fila.versionActual} />
+          </Plegable>
+        )}
+        <section className="grid items-start gap-4 lg:grid-cols-2">
+          <Plegable id="historial" titulo="Historial" detalle="Todas las versiones guardadas; puedes volver a cualquiera."
+            abierto={historialAbierto} alCambiar={setHistorialAbierto}>
+            <ul className="max-h-80 space-y-1 overflow-auto text-sm">
+              {fila.versiones.map((x) => (
+                <li key={x.numero} className="flex items-center gap-2">
+                  <span className="w-10 font-mono text-tenue">v{x.numero}</span>
+                  <span className="flex-1">{x.nota}</span>
+                  <span className="text-xs text-tenue" title={new Date(x.creado).toLocaleString("es-MX")}>{haceCuanto(x.creado)}</span>
+                  {x.numero !== fila.versionActual && (
+                    <button type="button" className="boton py-0.5 text-xs" disabled={ocupado}
+                      onClick={() => volverA(x.numero, `¿Volver a la versión ${x.numero} («${x.nota}»)? Se guarda como versión nueva: no se pierde nada.`)}>Volver a esta</button>
+                  )}
+                </li>
+              ))}
+            </ul>
+            {fila.renders.length > 1 && (
+              <>
+                <h3 className="mb-1 mt-4 text-sm font-medium">Renders anteriores</h3>
+                <ul className="space-y-1 text-sm">
+                  {fila.renders.slice(1).map((r) => (
+                    <li key={r.id} className="flex items-center gap-2">
+                      <Estado valor={r.estado} /><span className="text-tenue">v{r.versionNumero} · {r.perfil}</span>
+                      <a className="ml-auto text-acento hover:underline" href={archivo(`${fila.slug}/${r.ruta}`)}>Ver</a>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </Plegable>
+          <Plegable id="trabajos" titulo="Trabajos de este proyecto" detalle="Lo que Geeper hizo o está haciendo con este video, con su registro."
+            abierto={verTrabajos(trabajosAbiertos, activos.length > 0, !p, falloReciente(fila.trabajos))} alCambiar={setTrabajosAbiertos}>
+            <ListaTrabajos proyectoId={id} />
+          </Plegable>
+        </section>
       </section>
     </div>
   );

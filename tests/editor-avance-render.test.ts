@@ -2,7 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { pasoRender, renderEnCurso } from "@/components/editor-estado";
+import { pasoRender, renderEnCurso, renderFallido } from "@/components/editor-estado";
 
 const editor = fs.readFileSync(path.join(process.cwd(), "src", "components", "editor-proyecto.tsx"), "utf8");
 
@@ -31,5 +31,19 @@ describe("avance del render junto al botón (UX-10)", () => {
     expect(editor).toMatch(/confirm\("¿Dejar de crear el video\?/);
     expect(editor).toContain("Tu video está listo.");
     expect(editor).toContain('href="#listo">Ver qué falta');
+  });
+
+  it("si el render falló sin dejar video, lo dice arriba y deja volver a intentarlo", () => {
+    const viejo = { creado: "2026-11-22T10:00:00Z" };
+    const fallido = { id: "r3", tipo: "render.entregar", estado: "fallido", creado: "2026-11-22T11:00:00Z" };
+    expect(renderFallido([fallido], viejo)?.id).toBe("r3");
+    expect(renderFallido([fallido], null)?.id).toBe("r3");
+    expect(renderFallido([{ ...fallido, estado: "interrumpido" }], viejo)?.id).toBe("r3");
+    // Más viejo que el último video, cancelado por la persona o con un render bien después: nada.
+    expect(renderFallido([{ ...fallido, creado: "2026-11-22T09:00:00Z" }], viejo)).toBeNull();
+    expect(renderFallido([{ ...fallido, estado: "cancelado" }], viejo)).toBeNull();
+    expect(renderFallido([{ id: "r4", tipo: "render.entregar", estado: "hecho" }, fallido], viejo)).toBeNull();
+    expect(editor).toContain("No se pudo crear el video. {explicarError(fallo.error).simple}");
+    expect(editor).toMatch(/postJson\(`\/api\/trabajos\/\$\{fallo\.id\}`, \{ accion: "relanzar" \}\)/);
   });
 });

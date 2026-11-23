@@ -2,7 +2,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { haceCuanto, versionParaDeshacer } from "@/components/editor-estado";
+import { versionParaDeshacer } from "@/components/editor-estado";
+import { haceCuanto } from "@/lib/formato";
+import * as estado from "@/components/editor-estado";
 
 const editor = fs.readFileSync(path.join(process.cwd(), "src", "components", "editor-proyecto.tsx"), "utf8");
 
@@ -30,12 +32,16 @@ describe("deshacer (UX-38)", () => {
     expect(haceCuanto("2026-11-22T11:59:30Z", ahora)).toBe("hace un momento");
     expect(haceCuanto("2026-11-22T11:55:00Z", ahora)).toBe("hace 5 min");
     expect(haceCuanto("2026-11-22T09:00:00Z", ahora)).toBe("hace 3 h");
-    expect(haceCuanto("2026-11-21T10:00:00Z", ahora)).toBe("ayer");
+    expect(haceCuanto("2026-11-21T10:00:00Z", ahora)).toMatch(/^ayer, /);
+    // Una sola copia (la de formato.ts, con la hora de «ayer»): el editor la toma de ./comun.
+    expect("haceCuanto" in estado).toBe(false);
+    expect(editor).toMatch(/import \{[^}]*\bhaceCuanto\b[^}]*\} from "\.\/comun"/);
   });
 
   it("el botón está arriba, pregunta, y «Volver a esta» también pregunta", () => {
     expect(editor).toContain("↶ Deshacer");
-    expect(editor).toContain('href="#historial">Historial</a>');
+    // UX-08: el historial va plegado; el botón de arriba lo abre.
+    expect(editor).toMatch(/href="#historial" onClick=\{\(\) => setHistorialAbierto\(true\)\}>Historial<\/a>/);
     expect(editor).toContain('id="historial"');
     expect(editor).toContain("onClick={() => volverA(x.numero,");
     expect(editor).toMatch(/if \(confirm\(pregunta\)\)/);
