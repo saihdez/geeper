@@ -809,7 +809,7 @@ Por la regla del 2026-11-21 (nada de GPU para probar), la sesión corta con la t
 4. **App de escritorio empaquetada:** copia y pega en Geeper y en una app Craft; abre y guarda un archivo en GridCraft; cierra Geeper con un trabajo en curso (tarda hasta 14 s) y al volver a abrir el trabajo debe decir «interrumpido».
 5. **Sistema:** debe aparecer el aviso de la copia de seguridad (`D:\geeper-respaldo`, 7 copias).
 
-### 7.8 Lo que queda
+### 7.8 Lo que quedaba tras la ronda 2 (resuelto: ver 7.10)
 
 - **Esperan a que la otra sesión commitee** (unos 25 hallazgos; archivos de `sucios.txt`): SEG-05 (que los ejecutores usen `guardarEncima`), REN-04 (mostrar el aviso de subtítulos rápidos: el dato ya viene en la vista), REN-05, GPU-03 a GPU-10, WRK-09, COD-04, ESC-03, el foco de `clips.tsx`, `useMotorVivo` en `avatares.tsx`, el «Subiendo… %» de SRV-01 y el sondeo de trabajos del editor. Además hay que reconciliar `compilador.ts` y `api/proyectos/route.ts`.
 - **Hacen falta en tu instalación al integrar:** `pnpm install` (entró `hyperframes@0.9.27` y se quitó `better-sqlite3@13`) y `pnpm run db:push` (índices nuevos).
@@ -830,4 +830,54 @@ Comprobado el 2026-11-22 con `docker image inspect` sobre las imágenes ya bajad
 - `webui` y `api` llevan ahora su propio `image:` en el compose local, que manda sobre el `:latest` de `docker-compose.release.yml`. Un `docker compose pull` ya no cambia lo que corre.
 - La copia de antes es `docker-compose.local.yml.antes-auditoria-2026-11` (ya estaba de la ronda de TER-01).
 - La próxima vez que hagas `docker compose up -d`, Docker recrea los contenedores aunque la imagen sea la misma, porque cambió cómo se nombra. Es un corte breve.
-- Quedan por hacer: anotar la versión en `MODELOS.md` y en `docs/fuentes.json` (están vedados mientras la otra sesión no commitee) y guardar el `pip freeze` del servidor de imágenes como restricciones de su build (es un archivo de MPT, fuera de lo aprobado).
+- La versión ya está anotada en `MODELOS.md` y `docs/fuentes.json`. Queda sin fijar el servidor de imágenes: guardar su `pip freeze` como restricciones del build es un archivo de MPT, fuera de lo aprobado.
+
+### 7.10 Cierre de la Fase 2 (2026-11-24)
+
+Rama `fix/auditoria-2026-11`: unos 320 commits desde `c9b7a35`, con **153 de los 166 hallazgos** tocados en el código. De los 13 que no: 9 son de disco y se resolvieron fuera del repo (limpieza, sección 6.2) o los decides tú (DSC-03, DSC-09); TER-01 se arregló en `gpu-solo`, fuera del repo; GPU-01 necesita la tarjeta (lo pruebas tú); GPU-12 quedó fuera por decisión tuya; UX-09 está en curso al escribir esto. Typecheck, lint, 1424 pruebas (217 archivos) y `next build` en verde.
+
+Se integró también la foto `wip/huerfanos-2026-11-22`: los cambios sin commitear que dejaron sesiones ya cerradas (demo web, traducir, efectos de sonido, whisper). Aprobado por el dueño; compilan y pasan las pruebas.
+
+Medido igual que 7.2–7.5: instancia aislada en `127.0.0.1:3311`, copia de los datos (7 proyectos, 42 trabajos), candado de GPU falso, build de producción, máquina con carga 2–7.
+
+| Qué | Línea base | Tras la ronda 2 | Al cierre |
+|---|---|---|---|
+| Editor abierto, peticiones por minuto | ≈98–110 | 58 | **12** (canal de avisos, WEB-13) |
+| Portada | 20 | 23 | **4** |
+| Clips | 20 | 22 | **3** |
+| Trabajos | 30 | 32 | **8** |
+| Media | 30 | 4 | 10 (incluía el panel flotante, ya corregido) |
+| Workflows | ≈21 | 24 | **9** (el estado de ComfyUI no sale de la base: sigue preguntando a su ritmo) |
+| Sistema | 2 diagnósticos completos + 4 | 6 | 11 en el minuto medido; el diagnóstico completo sólo al pedirlo |
+| `/api/sistema`, primera vez | 49,5 s | 3,7 s (en caliente) | **7,6 s** en frío; 1,5 s al «Volver a revisar» (ya no carga PyTorch ni enciende CUDA) |
+| `/api/proyectos` · `/api/trabajos` · un proyecto | 40 KB · 37 KB · 81 KB | 3,5 · 18 · 35 KB | 3,5 · 19 · 35 KB |
+| Web en reposo (RSS) | 161 MB | 123 MB | 127 MB |
+| Worker en reposo | 2,7 % de un núcleo (máquina saturada) | 0,12 % | **0,2 %**; el arranque suma una vez al día la copia de seguridad (unos 18 s de CPU la primera vez, 2,6 GB; los días siguientes sólo lo que cambió) |
+| JS del editor (gzip) | 253 KB | 252 KB | **285 KB** (+33 KB: índice de pasos, avisos y paneles nuevos) |
+| JS de la portada (gzip) | 178 KB | 181 KB | 186 KB |
+| Pruebas | 180 s, 462 | 32 s, 719 | 1424 en 217 archivos |
+
+- Con el canal de avisos, la pantalla pide sólo cuando cambia algo en la base, con un respaldo cada 60 s y nunca más seguido que su ritmo de antes. Con la pestaña oculta, nada.
+- **No mejoró:** el JavaScript por página (+5 a +33 KB por las funciones nuevas) y los avisos de Turbopack (16; vienen de rutas que leen el disco por nombre). `favicon.ico` sigue dando 404.
+- **Prueba inestable vista:** `tests/cola.test.ts` («lease vencido de GPU → interrumpido») falló una vez en una batería completa y pasó al repetirla. `salida-sin-medir` fallaba por el plazo de su `db push` y ya está corregida.
+
+#### Lo que tienes que correr al integrar
+
+1. `pnpm install` (entraron `hyperframes@0.9.27`, `gsap` y las fuentes; salió `better-sqlite3@13`).
+2. `pnpm run db:push`: índices nuevos y la columna `Trabajo.anteriores` (la columna también se agrega sola al arrancar).
+
+#### Lo que tienes que probar tú (usa la tarjeta o la app instalada)
+
+1. **Render con NVENC:** crea un video corto. Debe salir igual y sin «se repite una vez por CPU» en el registro.
+2. **Fondo borroso (REN-09):** un proyecto 16:9 con un clip vertical; compara los cuadros por segundo con `GEEPER_FONDO_HORNEADO=0`.
+3. **Check a la vez que el render (REN-12):** compara el tiempo total con `GEEPER_RENDER_CHECK_A_LA_VEZ=0`.
+4. **MoneyPrinterTurbo:** `docker compose up -d` en `~/dev/MoneyPrinterTurbo` (recrea los contenedores) y genera un short. Opcional: `GEEPER_MPT_SOLO_MATERIALES=1` para que MPT no arme su video final (TER-06).
+5. **Voz:** rehacer la voz de varias escenas con una voz diseñada (una sola carga de VoxCPM2, GPU-07) y comprobar que los subtítulos caen a tiempo (REN-05).
+6. **App de escritorio:** copiar y pegar en una app Craft, conectar una cuenta y volver (ESC-02), cerrar con un trabajo en curso (hasta 14 s) y ver «interrumpido» al volver, y que las letras se vean sin internet.
+7. **Pantallas:** el editor con su índice de 4 pasos a 1280, 768 y 390 px; Trabajos con el intento anterior; Workflows con las recetas en español.
+
+#### Lo que decides tú
+
+- **DSC-03:** dos discos de la recuperación del 6-nov ocupan 190,8 GiB de C:. Moverlos a D: no pierde nada (comandos en la fila de DSC-03).
+- **DSC-09:** `swapFile=D:\\wsl\\swap.vhdx` y `maxCrashDumpCount=1` bajo `[wsl2]` en `.wslconfig`, y `wsl --shutdown`.
+- **GPU-12:** quedó fuera; conviene retomarlo cuando la PC deje de reiniciarse con carga en la tarjeta.
