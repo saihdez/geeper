@@ -9,7 +9,7 @@ import { textosDePantalla } from "./ayudas/textos-pantalla";
  * Pantallas que todavía usan la jerga vieja porque son de otro grupo de trabajo (el cambio exacto está en
  * el informe de la auditoría, 7.8). Al pasarlas al vocabulario se quitan de aquí.
  */
-const PENDIENTES = new Set(["src/components/editor-proyecto.tsx", "src/components/edicion-avanzada.tsx", "src/components/paleta.tsx"]);
+const PENDIENTES = new Set<string>([]);
 
 function pantallas(dir: string): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {

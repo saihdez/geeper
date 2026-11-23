@@ -23,7 +23,7 @@ const menu = (html: string) => /<details[^>]*barra-mas[^>]*>([\s\S]*?)<\/details
 describe("barra de arriba compacta (A11-16)", () => {
   it("a la vista quedan las cinco secciones de todos los días; las demás van en «Más»", () => {
     expect([...PRINCIPALES]).toEqual(["/", "/nuevo", "/clips", "/trabajos", "/anuncios"]);
-    expect(enMas().map((d) => d.titulo)).toEqual(["Avatares", "Workflows", "Plantillas", "Media", "Cuentas", "Sistema"]);
+    expect(enMas().map((d) => d.titulo)).toEqual(["Avatares", "Workflows", "Estilos del canal", "Media", "Cuentas", "Sistema"]);
     // Ninguna sección se pierde: cada una está a la vista o en «Más».
     expect(DESTINOS.length).toBe(PRINCIPALES.size + enMas().length);
   });

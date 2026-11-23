@@ -23,6 +23,7 @@ import { AvisoRevisionVieja, NOTA_CONTINUACION, NOTA_EDITA_COMPLETO, NOTA_SUBTIT
 import { avisoGuardado, escenaDeEdicion, PASOS_EDITOR, siguientePaso, falloReciente, textoFalloCreacion, renderFallido, avisoRitmo, correccionesVacias, enLista, mensajeSinCambios, opcionesRitmo, versionParaDeshacer, errorSubtitulo, escenasConOtraVoz, estaActivo, idsConOtraVoz, estadoCreacion, mismoContenido, pasoRender, preguntaVozEscena, renderEnCurso, verTrabajos, TEXTO_RITMO_GUARDADO, type TrabajoV, type VocesV } from "./editor-estado";
 import { Plegable } from "./plegable";
 import { avisoMezclaVoces } from "@/lib/ediciones";
+import { FORMAS, nombreForma } from "@/lib/glosario";
 import { EdicionPorTexto, EfectosEscena, PanelAvanzado, PanelEstilo, type EfectosV, type EstiloV, type ExtrasV, type PalabraV } from "./edicion-avanzada";
 
 /** Miniatura de una escena (la misma que su tarjeta). */
@@ -207,7 +208,7 @@ export function InformeQc({ r, slug, vectorizar, escenas = [] }: { r: Render; sl
       {inf.hojaContacto && (
         <figure>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={archivo(`${slug}/${inf.hojaContacto}`)} alt="Hoja de contacto: fotogramas clave del render" className="w-full rounded border border-borde" />
+          <img src={archivo(`${slug}/${inf.hojaContacto}`)} alt="Hoja de contacto: fotogramas clave del video" className="w-full rounded border border-borde" />
           <figcaption className="mt-1 text-xs text-tenue">Hoja de contacto: {inf.fotogramas.map((f) => `${f.nota} (${f.t.toFixed(1)} s)`).join(" · ")}</figcaption>
         </figure>
       )}
@@ -467,7 +468,7 @@ export function EditorProyecto({ id }: { id: string }) {
   const animar = (escena: string, opciones: OpcionesAnimar) => hacer(() => postJson(`/api/proyectos/${id}/plano`, { escena, opciones }),
     "Animación en cola. Verás el avance en la escena y en «Trabajos»; al terminar queda como versión nueva (ya se ve en «En vivo»).");
   const regenerarVoz = (escena: string | null) => hacer(() => postJson(`/api/proyectos/${id}/voz`, { escena }),
-    "Voz en cola. Con una voz diseñada espera su turno en la tarjeta de video. Al terminar se realinean los subtítulos y se vuelve a renderizar.");
+    "Voz en cola. Con una voz diseñada espera su turno en la tarjeta de video. Al terminar se realinean los subtítulos y se vuelve a crear el video.");
   /** GPU-07: varias escenas en UN solo trabajo de voz y un solo video al final. */
   const rehacerVoces = (ids: string[], numeros: number[]) => hacer(() => postJson(`/api/proyectos/${id}/voz`, { escenas: ids }),
     `Voz en cola para ${numeros.length === 1 ? "la escena" : "las escenas"} ${enLista(numeros)}: se dicen todas juntas y al final se crea el video una sola vez.`);
@@ -486,14 +487,14 @@ export function EditorProyecto({ id }: { id: string }) {
     // REN-04: si el QC lo va a rechazar por subtítulos rápidos, se pregunta antes de esperar el render.
     const aviso = avisoSubtitulosRapidos(v?.subtitulosRapidos);
     if (aviso?.confirmar && !confirm(aviso.confirmar)) return;
-    await hacer(() => postJson(`/api/proyectos/${id}/render`, {}), "Render en cola: sólo compila y renderiza, no genera nada con la GPU.");
+    await hacer(() => postJson(`/api/proyectos/${id}/render`, {}), "Quedó en cola: sólo arma el video, no usa la tarjeta de video.");
   };
   const alinearMusica = () => hacer(async () => {
     const r = await postJson<{ cambio: boolean; motivo?: string }>(`/api/proyectos/${id}/musica`, {});
     if (!r.cambio) throw new Error(r.motivo ?? "No se pudo alinear la música");
-  }, "Música alineada: los pulsos quedan marcados y el QC mide cuántos cortes caen en pulso.");
+  }, "Música alineada: los pulsos quedan marcados y la revisión mide cuántos cortes caen en pulso.");
   const vectorizarImagen = (asset: string, donde: string) => hacer(async () =>
-    conAvisos(await postJson(`/api/proyectos/${id}/vectorizar`, { asset }), `${donde}: vectorizada (SVG nítido). Vuelve a renderizar para verla en el QC; si no te gusta, vuelve a la versión anterior en Historial.`),
+    conAvisos(await postJson(`/api/proyectos/${id}/vectorizar`, { asset }), `${donde}: vectorizada (SVG nítido). Vuelve a crear el video para verla en la revisión; si no te gusta, vuelve a la versión anterior en Historial.`),
   "Vectorizada.");
   const subirLibre = (f: File, pista: string, inicio: number, licencia: string) => hacer(async () => {
     const fd = new FormData();
@@ -569,7 +570,7 @@ export function EditorProyecto({ id }: { id: string }) {
           {fila.estado === "entregado" && render && !renderAlDia
             ? <span className="inline-block rounded-full bg-amber-800 px-2 py-0.5 text-xs font-medium text-amber-100">Con cambios sin exportar</span>
             : <Estado valor={fila.estado} />}
-          <button type="button" className="boton boton-primario" disabled={ocupado || !p || !!enCurso} onClick={() => void renderizar()}>{enCurso ? "Creando el video…" : "Renderizar (sin GPU para generar)"}</button>
+          <button type="button" className="boton boton-primario" disabled={ocupado || !p || !!enCurso} onClick={() => void renderizar()}>{enCurso ? "Creando el video…" : "Crear el video (sin usar la tarjeta de video)"}</button>
         </div>
       </header>
       {/* UX-10: el avance y el resultado del render, junto al botón (antes, la barra quedaba al final de la página). */}
@@ -643,7 +644,7 @@ export function EditorProyecto({ id }: { id: string }) {
             </div>
           </Aviso>
         );
-        if (activos.some((t) => t.tipo === "proyecto.traducir")) return <Aviso tipo="info">Geeper está haciendo esta versión en otro idioma: traduce el guion, graba la voz nueva, acomoda los subtítulos y la renderiza. Tarda unos minutos; puedes cerrar esta página y volver después. Abajo ves en qué paso va.</Aviso>;
+        if (activos.some((t) => t.tipo === "proyecto.traducir")) return <Aviso tipo="info">Geeper está haciendo esta versión en otro idioma: traduce el guion, graba la voz nueva, acomoda los subtítulos y crea el video. Tarda unos minutos; puedes cerrar esta página y volver después. Abajo ves en qué paso va.</Aviso>;
         return (
           <Aviso tipo="info">
             Estamos haciendo tu video{c.trabajo?.etapa && c.fase === "en-curso" ? ` (ahora: ${c.trabajo.etapa})` : ""}. Tarda unos minutos; puedes cerrar esta página y volver. Abajo ves en qué paso va.
@@ -676,7 +677,7 @@ export function EditorProyecto({ id }: { id: string }) {
                     <button key={m} type="button" role="tab" aria-selected={modo === m}
                       className={`rounded px-2 py-1 ${modo === m ? "bg-white/15" : "text-tenue hover:bg-white/5"}`}
                       onClick={() => setPestana(m)}>
-                      {m === "vivo" ? "En vivo" : "Último render"}
+                      {m === "vivo" ? "En vivo" : "Último video"}
                     </button>
                   ))}
                 </div>
@@ -692,25 +693,27 @@ export function EditorProyecto({ id }: { id: string }) {
                     </p>
                   )}
                 </>
-              ) : render ? (
+              ) : null}
+              {modo !== "vivo" && render && (
                 <>
                   <video key={render.id} src={archivo(`${fila.slug}/${render.ruta}`)} controls preload="metadata" aria-label={`Video creado (versión ${render.versionNumero})`}
                     className={`mx-auto max-h-[70vh] w-full rounded bg-black ${render.perfil === "shorts-9x16" ? "max-w-sm" : ""}`} />
                   <div className="flex flex-wrap items-center gap-2 text-sm">
                     <Estado valor={render.estado} />
-                    <span className="text-tenue">v{render.versionNumero} · {render.perfil} · {segundos(render.duracion)} · render en {segundos(render.segundos)}</span>
-                    {!renderAlDia && <span className="text-amber-300">Hay cambios sin renderizar</span>}
+                    <span className="text-tenue">v{render.versionNumero} · {nombreForma(render.perfil)} · {segundos(render.duracion)} · se hizo en {segundos(render.segundos)}</span>
+                    {!renderAlDia && <span className="text-amber-300">Hay cambios sin crear el video</span>}
                     {render.estado === "aprobado"
                       ? <>
                           <a className="boton ml-auto" href={archivo(`${fila.slug}/${render.ruta}`, true)}>Descargar MP4</a>
-                          {render.srt && <a className="boton" title="Para subirlos junto al video (accesibilidad y búsqueda)"
-                            href={archivo(`${fila.slug}/${render.ruta.replace(/\.mp4$/, ".srt")}`, true)}>Subtítulos (.srt)</a>}
+                          {render.srt && <a className="boton" title="Un archivo con los subtítulos, para subirlo junto al video (ayuda a quien no oye y a que te encuentren)"
+                            href={archivo(`${fila.slug}/${render.ruta.replace(/\.mp4$/, ".srt")}`, true)}>Subtítulos aparte</a>}
                           {render.informeQc?.master && <a className="boton" href={archivo(`${fila.slug}/${render.informeQc.master}`, true)}>Máster (.mov)</a>}
                         </>
-                      : <span className="ml-auto text-xs text-red-300">No se descarga: no pasó el QC</span>}
+                      : <span className="ml-auto text-xs text-red-300">No se descarga: no pasó la revisión</span>}
                   </div>
                 </>
-              ) : <p className="text-sm text-tenue">Sin render todavía.</p>}
+              )}
+              {modo !== "vivo" && !render && <p className="text-sm text-tenue">Todavía no creaste el video.</p>}
             </div>
             {render?.informeQc && (
               <section id="listo" className="tarjeta scroll-mt-28 p-4">
@@ -744,16 +747,16 @@ export function EditorProyecto({ id }: { id: string }) {
         <section id="paso-3" aria-labelledby="titulo-paso-3" className="scroll-mt-28 space-y-4">
           <h2 id="titulo-paso-3" className="text-lg font-semibold">3. Voz y estilo</h2>
           <div className="tarjeta space-y-4 p-4">
-            <h3 className="font-medium">Formato y voz</h3>
+            <h3 className="font-medium">Forma del video y voz</h3>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <label className="etiqueta" htmlFor="formato">Formato</label>
+                <label className="etiqueta" htmlFor="formato">Forma del video</label>
                 <select id="formato" className="campo" value={p.formato} disabled={ocupado} onChange={(e) => void editar({ tipo: "cambiarFormato", formato: e.target.value })}>
-                  <option value="9:16">9:16 (Shorts)</option><option value="16:9">16:9 (YouTube)</option><option value="1:1">1:1 (cuadrado)</option>
+                  {(Object.keys(FORMAS) as (keyof typeof FORMAS)[]).map((f) => <option key={f} value={f}>{nombreForma(f)} · {FORMAS[f].para}</option>)}
                 </select>
               </div>
               <div>
-                <label className="etiqueta" htmlFor="plant">Plantilla</label>
+                <label className="etiqueta" htmlFor="plant">Estilo del canal</label>
                 <select id="plant" className="campo" value={p.plantilla} disabled={ocupado} onChange={(e) => void editar({ tipo: "cambiarPlantilla", plantilla: e.target.value })}>
                   {pl?.plantillas.map((x) => <option key={x.slug} value={x.slug}>{x.nombre}</option>)}
                 </select>
@@ -798,7 +801,7 @@ export function EditorProyecto({ id }: { id: string }) {
                     {opcionesRitmo(p.voz.velocidad).map((x) => <option key={x.valor} value={String(x.valor)}>{x.nombre}</option>)}
                   </select>
                 </div>
-                <button type="button" className="boton" disabled={ocupado} onClick={() => { if (confirm("¿Regenerar la voz de todo el guion? Se realinean los subtítulos y se vuelve a renderizar. Con una voz diseñada espera su turno en la tarjeta de video.")) void regenerarVoz(null); }}>
+                <button type="button" className="boton" disabled={ocupado} onClick={() => { if (confirm("¿Regenerar la voz de todo el guion? Se realinean los subtítulos y se vuelve a crear el video. Con una voz diseñada espera su turno en la tarjeta de video.")) void regenerarVoz(null); }}>
                   Regenerar voz del guion completo
                 </button>
                 {avisoRitmo(p.voz.velocidad) && <p id="aviso-ritmo" className="w-full text-xs text-amber-200">{avisoRitmo(p.voz.velocidad)}</p>}
@@ -834,7 +837,7 @@ export function EditorProyecto({ id }: { id: string }) {
         ) : fila.publicaciones.length > 0 && (
           <section className="tarjeta space-y-2 p-4">
             <h2 className="font-medium">Publicaciones de este proyecto</h2>
-            <p className="text-xs text-tenue">El último render no está aprobado: para publicar otra vez, renderiza y pasa el QC.</p>
+            <p className="text-xs text-tenue">El último video no está aprobado: para publicar otra vez, créalo de nuevo y pasa la revisión.</p>
             <ListaPublicaciones publicaciones={fila.publicaciones} alCambiar={() => void recargar()} />
           </section>
         )}
@@ -871,11 +874,11 @@ export function EditorProyecto({ id }: { id: string }) {
             </ul>
             {fila.renders.length > 1 && (
               <>
-                <h3 className="mb-1 mt-4 text-sm font-medium">Renders anteriores</h3>
+                <h3 className="mb-1 mt-4 text-sm font-medium">Videos anteriores</h3>
                 <ul className="space-y-1 text-sm">
                   {fila.renders.slice(1).map((r) => (
                     <li key={r.id} className="flex items-center gap-2">
-                      <Estado valor={r.estado} /><span className="text-tenue">v{r.versionNumero} · {r.perfil}</span>
+                      <Estado valor={r.estado} /><span className="text-tenue">v{r.versionNumero} · {nombreForma(r.perfil)}</span>
                       <a className="ml-auto text-acento hover:underline" href={archivo(`${fila.slug}/${r.ruta}`)}>Ver</a>
                     </li>
                   ))}

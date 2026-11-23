@@ -180,7 +180,7 @@ export function VistaEnVivo({ proyectoId, version, irA }: { proyectoId: string; 
       </div>
       </div>
       <p className="text-xs text-tenue">
-        En vivo · versión {vista.version} · {segundos(vista.duracion)}. Es la composición sin renderizar: el QC y la descarga son del render.
+        En vivo · versión {vista.version} · {segundos(vista.duracion)}. Muestra tus cambios al momento: la revisión y la descarga son del último video creado.
       </p>
     </div>
   );

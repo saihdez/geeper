@@ -44,13 +44,13 @@ async function main() {
   await p.waitForFunction((n) => document.querySelectorAll("ol > li").length === n - 1, totalAntes, { timeout: 20_000 });
 
   // 4: cambiar a 16:9.
-  await p.getByLabel("Formato").selectOption("16:9");
+  await p.getByLabel("Forma del video").selectOption("16:9");
   await esperarGuardado(p);
   await p.waitForTimeout(3500);
 
-  // 5: renderizar (no genera nada con la GPU).
-  await p.getByRole("button", { name: /^Renderizar/ }).click();
-  await p.getByText("Render en cola").waitFor({ timeout: 20_000 });
+  // 5: crear el video (no genera nada con la tarjeta de video).
+  await p.getByRole("button", { name: /^Crear el video \(sin usar/ }).click();
+  await p.getByText("Quedó en cola").waitFor({ timeout: 20_000 });
   await p.screenshot({ path: path.join(salida, "reedicion-pedida.png"), fullPage: true });
   console.log(JSON.stringify({ subtitulos: cambios, escenas: `${totalAntes} → ${totalAntes - 1}`, formato: "16:9" }, null, 1));
   await b.close();

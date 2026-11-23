@@ -301,7 +301,7 @@ export function EdicionPorTexto({ escena, audio, palabras, duracion, duracionOri
             </p>
           ) : (
             <p className="text-xs text-tenue">
-              «Sí, suena bien» la marca como revisada y deja de contar como dudosa en el control de calidad. Si se oye otra cosa,
+              «Sí, suena bien» la marca como revisada y deja de contar como dudosa en la revisión. Si se oye otra cosa,
               no la recortes: usa «Regenerar voz de la escena».
             </p>
           )}
@@ -637,7 +637,7 @@ export function PanelAvanzado({ extras, formato, total, editar, alinearMusica, s
         <h2 className="font-medium">Destino y entrega</h2>
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" checked={d.comercial} disabled={ocupado} onChange={(e) => void editar({ tipo: "cambiarDestino", comercial: e.target.checked })} />
-          <span>Uso comercial (monetizado o para un cliente): el QC <strong>bloquea</strong> cualquier asset cuya licencia no lo permita o no se sepa.</span>
+          <span>Uso comercial (monetizado o para un cliente): la revisión <strong>bloquea</strong> cualquier asset cuya licencia no lo permita o no se sepa.</span>
         </label>
         <fieldset className="space-y-1 text-sm" disabled={ocupado}>
           <legend className="etiqueta">Dónde se publica {formato !== "9:16" && <span className="text-tenue">(sólo cambia algo en 9:16)</span>}</legend>
@@ -650,7 +650,7 @@ export function PanelAvanzado({ extras, formato, total, editar, alinearMusica, s
         </fieldset>
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" checked={d.master} disabled={ocupado} onChange={(e) => void editar({ tipo: "cambiarDestino", master: e.target.checked })} />
-          <span>Guardar también un máster de archivo (.mov, calidad alta) en cada render. Tarda más y ocupa mucho más disco.</span>
+          <span>Guardar también un máster de archivo (.mov, calidad alta) cada vez que crees el video. Tarda más y ocupa mucho más disco.</span>
         </label>
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" checked={d.marca} disabled={ocupado} onChange={(e) => void editar({ tipo: "cambiarDestino", marca: e.target.checked })} />
