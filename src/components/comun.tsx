@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { mensajeHttp, traer } from "@/lib/conexion";
 import type { FiltroAviso } from "@/lib/eventos-avisos";
 import { canalDeLaPagina } from "@/lib/eventos-cliente";
@@ -158,4 +158,88 @@ export function MotorApagado({ escritorio }: { escritorio?: boolean }) {
 /** «Cargando…» igual en todas las pantallas, y anunciado al lector de pantalla. */
 export function Cargando({ children = "Cargando…" }: { children?: React.ReactNode }) {
   return <p className="text-sm text-tenue" role="status">{children}</p>;
+}
+
+/**
+ * UX-09: el aviso antes de lo que usa toda la tarjeta de video (crear un video, animar, avatares, el
+ * presentador, recetas, sonidos nuevos…). La PC del dueño se ha reiniciado sola con la tarjeta a tope: se
+ * pide guardar antes, con las mismas palabras en todas las pantallas.
+ */
+export const AVISO_TARJETA = "Esto usa toda la tarjeta de video unos minutos. A veces la computadora se reinicia sola: guarda antes lo que tengas abierto.";
+export const YA_GUARDE = "Ya guardé lo que tenía abierto";
+/** Lo que va en «Para continuar falta: …» mientras la casilla está sin marcar. */
+export const FALTA_GUARDAR = `marcar «${YA_GUARDE}»`;
+const CLAVE_GUARDE = "geeper:ya-guarde";
+
+// Marcada una vez, vale para toda la pestaña (sessionStorage) y para las otras acciones de tarjeta de la
+// misma sesión, sin volver a pedirla. Si el navegador no deja guardar, se recuerda mientras la página viva.
+let guardeEnMemoria = false;
+const oyentesGuarde = new Set<() => void>();
+
+export function leerGuarde(): boolean {
+  try {
+    return window.sessionStorage.getItem(CLAVE_GUARDE) === "1" || guardeEnMemoria;
+  } catch {
+    return guardeEnMemoria;
+  }
+}
+
+export function escribirGuarde(v: boolean) {
+  guardeEnMemoria = v;
+  try {
+    if (v) window.sessionStorage.setItem(CLAVE_GUARDE, "1");
+    else window.sessionStorage.removeItem(CLAVE_GUARDE);
+  } catch {
+    /* sin sessionStorage: queda en memoria */
+  }
+  for (const o of oyentesGuarde) o();
+}
+
+function suscribirGuarde(o: () => void) {
+  oyentesGuarde.add(o);
+  return () => {
+    oyentesGuarde.delete(o);
+  };
+}
+
+export interface GuardeAntes {
+  /** Marcó «Ya guardé lo que tenía abierto» (en esta pestaña). */
+  guardado: boolean;
+  marcar: (v: boolean) => void;
+  /** id del texto del aviso (lo nombra la casilla). */
+  idAviso: string;
+  /** id de la línea «Para continuar falta: …» (la nombra el botón con aria-describedby). */
+  idFalta: string;
+}
+
+/** Estado de la casilla «Ya guardé…»: el botón de la acción queda apagado hasta que `guardado` sea true. */
+export function useGuardeAntes(): GuardeAntes {
+  const guardado = useSyncExternalStore(suscribirGuarde, leerGuarde, () => false);
+  const base = useId();
+  return { guardado, marcar: escribirGuarde, idAviso: `${base}-aviso-tarjeta`, idFalta: `${base}-falta` };
+}
+
+/** El aviso y la casilla. Va encima del botón de la acción. */
+export function AvisoTarjeta({ g, children }: { g: GuardeAntes; children?: React.ReactNode }) {
+  return (
+    <Aviso tipo="alerta">
+      <p id={g.idAviso} className="font-medium">{AVISO_TARJETA}</p>
+      {children && <div className="mt-1">{children}</div>}
+      <label className="mt-2 flex items-center gap-2">
+        <input type="checkbox" checked={g.guardado} onChange={(e) => g.marcar(e.target.checked)} aria-describedby={g.idAviso} />
+        {YA_GUARDE}
+      </label>
+    </Aviso>
+  );
+}
+
+/** «Para continuar falta: …» debajo del botón apagado (UX-31). No pinta nada si no falta nada. */
+export function LineaFalta({ id, faltan }: { id: string; faltan: readonly string[] }) {
+  if (!faltan.length) return null;
+  return <p id={id} className="text-xs text-amber-300">Para continuar falta: {faltan.join(" · ")}.</p>;
+}
+
+/** Lo que falta para la acción: `otros` y, si la casilla está sin marcar, marcarla. */
+export function faltanConGuardar(g: GuardeAntes, otros: readonly string[] = []): string[] {
+  return g.guardado ? [...otros] : [...otros, FALTA_GUARDAR];
 }
