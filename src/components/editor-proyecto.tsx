@@ -328,12 +328,11 @@ function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, 
               onChange={(ev) => { const f = ev.target.files?.[0]; if (f) void subirClip(e.id, f); ev.target.value = ""; }} />
           </label>
           {e.visual.tipo === "video" && (
-            <select aria-label="Pantalla dividida para clips de directos" className="campo w-auto py-1" value="" disabled={ocupado}
-              onChange={(ev) => { const l = ev.target.value; ev.target.value = ""; if (l) void reencuadrar(e.id, l); }}>
-              <option value="">Pantalla dividida (directos)…</option>
-              <option value="react">React: cara arriba, juego abajo</option>
-              <option value="cara">Cara a toda la altura</option>
-            </select>
+            // A11-09: dos botones (antes, un menú que ya encolaba el trabajo al moverse con las flechas).
+            <span role="group" aria-label="Pantalla dividida para clips de directos" className="flex flex-wrap gap-2">
+              <button type="button" className="boton" disabled={ocupado} onClick={() => void reencuadrar(e.id, "react")}>Cara arriba y juego abajo</button>
+              <button type="button" className="boton" disabled={ocupado} onClick={() => void reencuadrar(e.id, "cara")}>Cara a toda la altura</button>
+            </span>
           )}
           {e.voz.source !== "archivo" && (
             <button type="button" className="boton" disabled={ocupado} onClick={() => { if (preguntaVoz) setPreguntando(true); else void regenerarVoz(e.id); }}>Regenerar voz de la escena</button>
