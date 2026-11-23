@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { AvisoPrivados } from "./aviso-privados";
 import { AppsRedes } from "./apps-redes";
-import { Aviso, Estado, pedir, useSondeo } from "./comun";
+import { Aviso, Estado, fecha, pedir, useSondeo } from "./comun";
 
 export interface RedInfo {
   id: string;
@@ -41,7 +41,6 @@ const ESTADO_VPN: Record<Vpn["estado"], { texto: string; color: string }> = {
   sin_configurar: { texto: "sin configurar", color: "text-amber-300" },
 };
 
-const fecha = (s: string) => new Date(s).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" });
 
 /**
  * El aviso del VPN con la hora de la medida: la lista de cuentas ya no mide en cada refresco (WEB-09),

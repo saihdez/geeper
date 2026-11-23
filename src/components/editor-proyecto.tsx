@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Aviso, Barra, Estado, archivo, haceCuanto, pedir, postJson, segundos, useSondeo } from "./comun";
+import { Aviso, Barra, Estado, archivo, fecha, haceCuanto, numero, pedir, postJson, segundos, useSondeo } from "./comun";
 import { ACCEPT_IMAGEN, esVector } from "@/lib/formatos-vector";
 import { explicarError } from "@/lib/textos";
 import { avisoSubtitulosRapidos, explicarRegla, LIMITES_SUBTITULOS, porQueFalla, resumirQc, type FraseQc, type SubtitulosRapidos } from "@/lib/qc-explicado";
@@ -105,7 +105,7 @@ const SALTO = "sr-only focus:not-sr-only focus:rounded focus:bg-panel focus:px-3
 const t2 = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`;
 
 function medido(v: unknown): string {
-  if (typeof v === "number") return String(Number(v.toFixed(2)));
+  if (typeof v === "number") return numero(v, 2);
   if (typeof v === "string") return v;
   if (Array.isArray(v)) return `${v.length} elementos`;
   if (v && typeof v === "object") return Object.entries(v as Record<string, unknown>).filter(([, x]) => typeof x !== "object").map(([k, x]) => `${k}: ${String(x)}`).join(", ");
@@ -209,7 +209,7 @@ export function InformeQc({ r, slug, vectorizar, escenas = [] }: { r: Render; sl
         <figure>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={archivo(`${slug}/${inf.hojaContacto}`)} alt="Hoja de contacto: fotogramas clave del video" className="w-full rounded border border-borde" />
-          <figcaption className="mt-1 text-xs text-tenue">Hoja de contacto: {inf.fotogramas.map((f) => `${f.nota} (${f.t.toFixed(1)} s)`).join(" · ")}</figcaption>
+          <figcaption className="mt-1 text-xs text-tenue">Hoja de contacto: {inf.fotogramas.map((f) => `${f.nota} (${numero(f.t, 1)} s)`).join(" · ")}</figcaption>
         </figure>
       )}
     </div>
@@ -261,15 +261,15 @@ export function EditorGrupo({ g, onGuardar, onQuitar, corregido, repartido = fal
   const idError = `error-sub-${g.desde}-${g.hasta}`;
   if (continuacion) return (
     <li className="flex flex-wrap items-center gap-2 text-sm">
-      <span className="w-16 shrink-0 font-mono text-xs text-tenue">{g.inicio.toFixed(2)} s</span>
+      <span className="w-16 shrink-0 font-mono text-xs text-tenue">{numero(g.inicio, 2)} s</span>
       <span className="min-w-0 flex-1 px-3 py-1">{g.mostradoPropio}</span>
       <span className="w-full pl-[4.5rem] text-xs text-tenue">{NOTA_CONTINUACION}</span>
     </li>
   );
   return (
     <li className="flex flex-wrap items-center gap-2 text-sm">
-      <span className="w-16 shrink-0 font-mono text-xs text-tenue">{g.inicio.toFixed(2)} s</span>
-      <input aria-label={`Subtítulo en ${g.inicio.toFixed(2)} s`} className="campo min-w-0 flex-1 py-1" value={texto}
+      <span className="w-16 shrink-0 font-mono text-xs text-tenue">{numero(g.inicio, 2)} s</span>
+      <input aria-label={`Subtítulo en ${numero(g.inicio, 2)} s`} className="campo min-w-0 flex-1 py-1" value={texto}
         aria-invalid={error ? true : undefined} aria-describedby={error ? idError : undefined}
         onChange={(e) => setBorrador(e.target.value)}
         onKeyDown={(e) => {
@@ -284,7 +284,7 @@ export function EditorGrupo({ g, onGuardar, onQuitar, corregido, repartido = fal
       {g.cruza && <span className="text-xs text-tenue">sigue en la escena siguiente</span>}
       {error && <span id={idError} className="w-full pl-[4.5rem] text-xs text-red-300">{error}</span>}
       {!cambiado && g.cps > LIMITES_SUBTITULOS.maxCps && (
-        <span className="w-full pl-[4.5rem] text-xs text-amber-200">Pasa muy rápido ({g.cps.toFixed(1).replace(".", ",")} letras por segundo): acórtalo un poco para que dé tiempo a leerlo.</span>
+        <span className="w-full pl-[4.5rem] text-xs text-amber-200">Pasa muy rápido ({numero(g.cps, 1)} letras por segundo): acórtalo un poco para que dé tiempo a leerlo.</span>
       )}
       {repartido && !cambiado && <span className="w-full pl-[4.5rem] text-xs text-tenue">{NOTA_SUBTITULO_REPARTIDO}{completo !== undefined ? ` ${NOTA_EDITA_COMPLETO}` : ""}</span>}
       {g.oido !== base && <span className="w-full pl-[4.5rem] text-xs text-tenue">Se oye: «{g.oido}»</span>}
@@ -318,7 +318,7 @@ function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, 
       <div className="min-w-0 flex-1 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="font-medium">Escena {e.indice + 1}</h3>
-          <span className="font-mono text-xs text-tenue">{t2(e.inicio)} – {t2(e.inicio + e.duracion)} ({e.duracion.toFixed(2)} s)</span>
+          <span className="font-mono text-xs text-tenue">{t2(e.inicio)} – {t2(e.inicio + e.duracion)} ({numero(e.duracion, 2)} s)</span>
           <span className="text-xs text-tenue">clip: {e.visual.source}{e.visual.source === "archivo" ? " (propio)" : ""} · voz: {e.voz.source}</span>
         </div>
         <EdicionPorTexto escena={e.id} audio={archivo(`${slug}/${e.voz.ruta}`)} palabras={e.detalle} duracion={e.duracion} duracionOriginal={e.duracionOriginal} editar={editar} ocupado={ocupado}
@@ -502,8 +502,8 @@ export function EditorProyecto({ id }: { id: string }) {
     fd.set("inicio", String(inicio));
     fd.set("licencia", licencia);
     fd.set("archivo", f);
-    return conAvisos(await pedir(`/api/proyectos/${id}/clip`, { method: "POST", body: fd }), `«${f.name}» agregado en ${inicio.toFixed(1)} s${esVector(f.name) ? " (convertido a SVG)" : ""}.`);
-  }, `«${f.name}» agregado en ${inicio.toFixed(1)} s.`);
+    return conAvisos(await pedir(`/api/proyectos/${id}/clip`, { method: "POST", body: fd }), `«${f.name}» agregado en ${numero(inicio, 1)} s${esVector(f.name) ? " (convertido a SVG)" : ""}.`);
+  }, `«${f.name}» agregado en ${numero(inicio, 1)} s.`);
 
   useAccionesProyecto(v?.p ? {
     id, slug: v.fila.slug, formato: v.p.formato, plantilla: v.p.plantilla, plantillas: pl?.plantillas ?? [],
@@ -864,7 +864,7 @@ export function EditorProyecto({ id }: { id: string }) {
                 <li key={x.numero} className="flex items-center gap-2">
                   <span className="w-10 font-mono text-tenue">v{x.numero}</span>
                   <span className="flex-1">{x.nota}</span>
-                  <span className="text-xs text-tenue" title={new Date(x.creado).toLocaleString("es-MX")}>{haceCuanto(x.creado)}</span>
+                  <span className="text-xs text-tenue" title={fecha(x.creado)}>{haceCuanto(x.creado)}</span>
                   {x.numero !== fila.versionActual && (
                     <button type="button" className="boton py-0.5 text-xs" disabled={ocupado}
                       onClick={() => volverA(x.numero, `¿Volver a la versión ${x.numero} («${x.nota}»)? Se guarda como versión nueva: no se pierde nada.`)}>Volver a esta</button>

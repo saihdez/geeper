@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { AVISO_DESPERTANDO, Aviso, Estado, archivo, postJson, useSondeo } from "./comun";
+import { AVISO_DESPERTANDO, Aviso, Estado, archivo, fecha, postJson, useSondeo } from "./comun";
 import { textoVpn, type CuentaInfo, type DatosCuentas, type RedInfo } from "./cuentas";
 import { nombreForma } from "@/lib/glosario";
 import { arreglar, bloquea, LIMITES, revisarTexto, type Problema, type TextoPublicacion } from "@/lib/redes/revision-texto";
@@ -29,7 +29,6 @@ interface PortadaV { archivo: string; titulo: string; creada: string }
 const PRIVACIDAD: Record<string, string> = { publico: "Público", no_listado: "No listado", privado: "Privado", borrador: "Borrador" };
 const NOMBRE_RED: Record<string, string> = { youtube: "YouTube", tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
 
-const fecha = (s: string) => new Date(s).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" });
 /** «Público» para la red: Instagram no tiene privado, se publica al terminar. */
 const esPublico = (red: string, privacidad: string) => privacidad === "publico" || red === "instagram";
 /** Cada gravedad con palabra e ícono, no sólo color. */

@@ -4,7 +4,7 @@ import { aHex, ajustarHasta, aTexto, contrastePeor, leerColor, legibilidad, opac
 import { esVector } from "@/lib/formatos-vector";
 import type { DatosPlantilla } from "@/lib/plantillas";
 import { Campo } from "./anuncios/ui";
-import { Aviso, archivo, pedir } from "./comun";
+import { Aviso, archivo, numero, pedir } from "./comun";
 import { Muestras, PaletaDeImagen, SubirImagen, subirParaPaleta, type Paleta } from "./paleta-imagen";
 
 export interface FilaPlantilla { slug: string; nombre: string; datos: DatosPlantilla; usos: number; logoRuta: string | null }
@@ -138,7 +138,7 @@ function Legibilidad({ d, cambiar }: { d: DatosPlantilla; cambiar: (f: (x: Datos
           <li key={p.que} className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="w-36 shrink-0 text-tenue">{p.que}</span>
             <span className={ESTILO_LEGIBILIDAD[l]}>{l === "bien" ? "●" : l === "justo" ? "◐" : "○"} {NOMBRE_LEGIBILIDAD[l]}</span>
-            <span className="text-xs tabular-nums text-tenue">({p.k.toFixed(1)}:1)</span>
+            <span className="text-xs tabular-nums text-tenue">({numero(p.k, 1)}:1)</span>
             {p.nota && <span className="basis-full text-xs text-tenue">{p.nota}</span>}
             {l !== "bien" && (p.arreglo
               ? <button type="button" className="boton !py-0.5 text-xs" onClick={p.arreglo.aplicar}>Arreglar: {p.arreglo.texto.toLowerCase()}</button>
@@ -327,7 +327,7 @@ export function EditorPlantilla({ fila, alGuardar, alCerrar }: { fila: FilaPlant
             <Campo etiqueta="Botón (lo que le pides a la gente)" ayuda="Ej.: «Suscríbete para más», «Compra en la web»."><input className="campo" value={d.cta} maxLength={40} onChange={(e) => cambiar((x) => { x.cta = e.target.value; })} /></Campo>
           </div>
           <label className="block text-sm">
-            <span className="etiqueta">Duración de la tarjeta final: {d.tarjetaFinal.duracion.toFixed(1)} s</span>
+            <span className="etiqueta">Duración de la tarjeta final: {numero(d.tarjetaFinal.duracion, 1)} s</span>
             <input type="range" min={2} max={6} step={0.1} value={d.tarjetaFinal.duracion} className="w-full" onChange={(e) => cambiar((x) => { x.tarjetaFinal.duracion = Number(e.target.value); })} />
           </label>
         </Grupo>

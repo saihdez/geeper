@@ -2,6 +2,7 @@
  * Lo que la página del proyecto decide a partir de la vista, sin React (puro, para poder probarlo):
  * qué mostrar, qué avisar y qué ofrecer como paso siguiente.
  */
+import { numero } from "@/lib/formato";
 
 /** UX-02: un subtítulo vacío deja una palabra que se oye y no se ve, sin un campo para recuperarla. */
 export function errorSubtitulo(texto: string): string | null {
@@ -177,7 +178,7 @@ export const RITMOS: { valor: number; nombre: string }[] = [
 
 /** Las opciones del selector; si el proyecto tiene otro valor, se agrega para no perderlo. */
 export function opcionesRitmo(actual: number): { valor: number; nombre: string }[] {
-  return RITMOS.some((r) => r.valor === actual) ? RITMOS : [...RITMOS, { valor: actual, nombre: `Otro (${String(actual).replace(".", ",")})` }].sort((a, b) => a.valor - b.valor);
+  return RITMOS.some((r) => r.valor === actual) ? RITMOS : [...RITMOS, { valor: actual, nombre: `Otro (${numero(actual, 2)})` }].sort((a, b) => a.valor - b.valor);
 }
 
 /** Desde 0,9 los subtítulos pueden pasar de 17 letras por segundo y el QC rechaza el video. */

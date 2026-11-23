@@ -40,8 +40,8 @@ describe("Movimiento de cámara en tarjetas (UX-35)", () => {
 describe("Textos en pantalla por escena (UX-35)", () => {
   it("dice cuándo aparece en palabras", () => {
     expect(cuandoAparece(4.5, ESCENAS)).toBe("Al empezar la escena 2");
-    expect(cuandoAparece(6, ESCENAS)).toBe("En la escena 2, a los 1,5 s");
-    expect(cuandoAparece(0, ESCENAS)).toBe("Al empezar el video, a los 0,0 s");
+    expect(cuandoAparece(6, ESCENAS)).toBe("En la escena 2, a los 1.5 s");
+    expect(cuandoAparece(0, ESCENAS)).toBe("Al empezar el video, a los 0 s");
   });
 
   it("«Al empezar la escena 2» y «Toda la escena» se vuelven segundos al guardar", () => {
@@ -75,7 +75,7 @@ describe("Textos en pantalla por escena (UX-35)", () => {
     expect(html).toContain("Al empezar la escena 2");
     expect(html).toContain("¿Cuánto dura?");
     expect(html).toContain("Toda la escena");
-    expect(html).toContain("(Al empezar la escena 1, 3,0 s · Rótulo, arriba)");
+    expect(html).toContain("(Al empezar la escena 1, 3 s · Rótulo, arriba)");
     // Ya no se piden los segundos a mano (salvo «En un segundo exacto…»).
     expect(html.split("Textos en pantalla")[1]!.split("Superposiciones")[0]).not.toContain("Desde (s)");
   });

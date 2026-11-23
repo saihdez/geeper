@@ -2,6 +2,7 @@
 import { AvisoPrivados } from "./aviso-privados";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Aviso, Cargando, pedir } from "./comun";
+import { IDIOMA_FORMATO } from "@/lib/formato";
 import { InstalarHerramienta } from "./instalar-herramienta";
 import { InstalarWan2gp } from "./instalar-wan2gp";
 import { LiberarEspacio } from "./liberar-espacio";
@@ -54,7 +55,7 @@ export function estadoChequeo(c: Pick<Chequeo, "ok" | "aviso">): { signo: string
   return { signo: "✗", texto: "Falta o falla", clase: "text-red-400" };
 }
 
-const fechaLarga = (iso: string) => new Date(iso).toLocaleString("es", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+const fechaLarga = (iso: string) => new Date(iso).toLocaleString(IDIOMA_FORMATO, { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
 
 /** Qué decir de la copia de seguridad: aviso si no hay, si tiene más de 2 días o si no llegó al otro disco. */
 export function textoRespaldo(r: Respaldo, fecha: (iso: string) => string = fechaLarga): { tipo: "ok" | "alerta"; titulo: string; detalle: string } {

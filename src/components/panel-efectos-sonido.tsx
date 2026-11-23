@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Aviso, archivo, postJson, useSondeo } from "./comun";
+import { Aviso, archivo, numero, postJson, useSondeo } from "./comun";
 
 interface Datos {
   instalado: boolean;
@@ -41,7 +41,7 @@ export function PanelEfectosSonido({ proyectoId, escenas, total, ocupado, alCamb
       const cuerpo = eleccion.tipo === "biblioteca" ? { biblioteca: eleccion.id, inicio } : eleccion.tipo === "preset" ? { preset: eleccion.id, inicio } : { descripcion, segundos, inicio };
       const r = await postJson<{ listo: boolean; efecto?: string }>(`/api/proyectos/${proyectoId}/efecto`, cuerpo);
       setMsg(r.listo
-        ? { tipo: "ok", texto: `Listo: «${r.efecto}» suena en el segundo ${inicio.toFixed(1)}. Escúchalo en «En vivo»; si no te convence, quítalo en «Superposiciones y efectos de sonido».` }
+        ? { tipo: "ok", texto: `Listo: «${r.efecto}» suena en el segundo ${numero(inicio, 1)}. Escúchalo en «En vivo»; si no te convence, quítalo en «Superposiciones y efectos de sonido».` }
         : { tipo: "info", texto: "Creando el sonido con la tarjeta de video (unos 3 minutos). Se agrega solo al terminar; el avance está en «Trabajos». Queda guardado para usarlo otra vez al instante." });
       alCambiar();
     } catch (e) {
@@ -106,13 +106,13 @@ export function PanelEfectosSonido({ proyectoId, escenas, total, ocupado, alCamb
         <label className="etiqueta" htmlFor="cuando-efecto">2. ¿Cuándo suena?</label>
         <div className="flex flex-wrap items-center gap-2">
           <select id="cuando-efecto" className="campo w-auto" value={cuando} onChange={(e) => setCuando(e.target.value)}>
-            {escenas.map((e) => <option key={e.numero} value={`escena-${e.numero}`}>Al empezar la escena {e.numero} ({e.inicio.toFixed(1)} s)</option>)}
+            {escenas.map((e) => <option key={e.numero} value={`escena-${e.numero}`}>Al empezar la escena {e.numero} ({numero(e.inicio, 1)} s)</option>)}
             <option value="exacto">En un segundo exacto…</option>
           </select>
           {cuando === "exacto" && (
             <label className="flex items-center gap-2 text-sm">
               <input type="number" className="campo w-24" min={0} max={Math.max(0, total - 0.5)} step={0.1} value={exacto} onChange={(e) => setExacto(Math.max(0, Number(e.target.value)))} />
-              segundos (el video dura {total.toFixed(1)} s)
+              segundos (el video dura {numero(total, 1)} s)
             </label>
           )}
         </div>

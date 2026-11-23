@@ -1,6 +1,6 @@
 "use client";
 /** Acciones del proyecto abierto para el buscador (Ctrl+K). Hacen lo mismo que los botones del editor. */
-import { archivo } from "./comun";
+import { archivo, numero } from "./comun";
 import { useAccionesPaleta, type AccionPaleta } from "./paleta";
 
 interface Datos {
@@ -42,7 +42,7 @@ export function useAccionesProyecto(d: Datos | null) {
     { id: "render", grupo, titulo: "Crear el video", palabras: "render renderizar exportar generar terminar control calidad qc revision", detalle: "No usa la tarjeta de video: arma el video y lo revisa.", deshabilitada: d.ocupado, hacer: d.renderizar },
     ...(d.renderAprobado ? [{ id: "descargar", grupo, titulo: "Descargar el video (MP4)", palabras: "bajar guardar archivo mp4", hacer: () => { window.location.href = archivo(`${d.slug}/${d.renderAprobado}`, true); } }] : []),
     ...(d.dudosas > 0 ? [{ id: "dudosas", grupo, titulo: `Revisar palabras dudosas (${d.dudosas})`, palabras: "confianza tiempos escuchar verificar subtitulos", detalle: "Escucha cada una y confirma que suena bien o recórtala.", hacer: revisarDudosas }] : []),
-    { id: "silencios", grupo, titulo: "Acortar silencios largos", palabras: "pausas quitar silencio ritmo", detalle: "Las pausas de más de 0,6 s quedan en 0,25 s.", deshabilitada: d.ocupado, hacer: () => d.editar({ tipo: "quitarSilencios" }) },
+    { id: "silencios", grupo, titulo: "Acortar silencios largos", palabras: "pausas quitar silencio ritmo", detalle: `Las pausas de más de ${numero(0.6, 1)} s quedan en ${numero(0.25, 2)} s.`, deshabilitada: d.ocupado, hacer: () => d.editar({ tipo: "quitarSilencios" }) },
     { id: "muletillas", grupo, titulo: "Quitar muletillas (eh, em, mmm…)", palabras: "muletillas relleno eh este", deshabilitada: d.ocupado, hacer: () => d.editar({ tipo: "quitarMuletillas" }) },
     { id: "recortes", grupo, titulo: "Deshacer todos los recortes", palabras: "restaurar recuperar volver palabras", confirmar: "¿Deshacer todos los recortes del proyecto?", deshabilitada: d.ocupado, hacer: () => d.editar({ tipo: "quitarRecortes" }) },
     ...Object.entries(FORMATOS).filter(([f]) => f !== d.formato).map(([f, x]) => ({

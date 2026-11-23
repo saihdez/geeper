@@ -33,6 +33,6 @@ describe("aviso de subtítulos rápidos antes de renderizar (REN-04)", () => {
     expect(editor).toMatch(/aviso\?\.confirmar && !confirm\(aviso\.confirmar\)\) return;/);
     const g = { texto: "x", inicio: 0, fin: 1, desde: 0, hasta: 1, oido: "x", lineas: 1, cruza: false, mostradoPropio: "x", cps: 21.4 };
     const html = renderToStaticMarkup(createElement(EditorGrupo, { g, corregido: false, onGuardar: async () => true, onQuitar: async () => undefined }));
-    expect(html).toContain("Pasa muy rápido (21,4 letras por segundo)");
+    expect(html).toContain("Pasa muy rápido (21.4 letras por segundo)");
   });
 });
