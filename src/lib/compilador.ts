@@ -71,7 +71,6 @@ export interface Anim {
   ease?: string;
 }
 
-
 const ENCUADRE_BASE: Encuadre = { escala: 1, x: 0, y: 0 };
 const mezclarEncuadre = (a: Encuadre, b: Encuadre, k: number): Record<string, number> => ({
   scale: a.escala + (b.escala - a.escala) * k,
