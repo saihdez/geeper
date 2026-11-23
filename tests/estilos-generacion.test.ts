@@ -9,10 +9,13 @@ describe("estilos de generación de «Nuevo»", () => {
     expect(ESTILOS_GENERACION.rapido.animar).toBeNull();
   });
 
-  it("los que animan usan modelos que existen; «lo más real» usa el I2V-A14B fiel a la foto", () => {
+  it("los que animan usan modelos que existen; «Máxima calidad» usa el I2V-A14B fiel a la foto, con Lightning y RIFE ×2", () => {
     for (const d of Object.values(ESTILOS_GENERACION)) if (d.animar) expect(() => modeloPlano(d.animar!.modelo)).not.toThrow();
-    expect(modeloPlano(ESTILOS_GENERACION.real.animar!.modelo).necesitaImagen).toBe(true);
-    expect(ESTILOS_GENERACION.real.medido).toBe(false);
+    const real = ESTILOS_GENERACION.real;
+    expect(real.nombre).toBe("Máxima calidad");
+    expect(modeloPlano(real.animar!.modelo).necesitaImagen).toBe(true);
+    expect(real.animar!.extra).toMatchObject({ num_inference_steps: 4, temporal_upsampling: "rife*2" });
+    expect(real.medido).toBe(false);
   });
 
   it("el estilo que se guarda en el proyecto es válido (grano fino en «lo más real»)", () => {
@@ -33,7 +36,7 @@ describe("estilos de generación de «Nuevo»", () => {
   it("dice cuánto tarda, y si es estimado", () => {
     expect(tiempoEstimado("rapido")).toBe("Unos 3 minutos por tema.");
     expect(tiempoEstimado("equilibrado", 6)).toBe("2 minutos por escena, unos 15 minutos en un video de 6 escenas.");
-    expect(tiempoEstimado("real", 6)).toBe("Estimado: 15 minutos por escena, unas 2 horas en un video de 6 escenas.");
+    expect(tiempoEstimado("real", 6)).toBe("Estimado: 6 minutos por escena, unos 40 minutos en un video de 6 escenas.");
   });
 });
 

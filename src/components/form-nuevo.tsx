@@ -35,7 +35,7 @@ export function FormNuevo() {
   // Tu avatar en el video (protagonista.ts): protagoniza cada escena, dentro de su fondo, y es la única persona.
   const { datos: lib } = useSondeo<{ avatares: { id: string; nombre: string; retrato: string }[] }>("/api/avatares", 60_000);
   const [avatar, setAvatar] = useState<string | null>(null);
-  // Qué tan real (estilos-generacion.ts): «Lo más real posible» anima cada escena con Wan.
+  // Qué tan real (estilos-generacion.ts): «Máxima calidad» anima cada escena con Wan 2.2 y la interpola a 32 fps.
   const [estilo, setEstilo] = useState<EstiloGeneracion>("rapido");
   const [cuerpo, setCuerpo] = useState<"medio" | "completo">("medio");
   const [enviando, setEnviando] = useState(false);
@@ -128,7 +128,7 @@ export function FormNuevo() {
               </button>
             ))}
           </div>
-          <p className="text-xs text-tenue">{avatar ? "Con tu avatar de protagonista el video ya es video de verdad: esto sólo cambia el acabado («Lo más real posible» suma un grano fino de cámara) y no suma tiempo." : tiempoEstimado(estilo)}</p>
+          <p className="text-xs text-tenue">{avatar ? "Con tu avatar de protagonista el video ya es video de verdad: esto sólo cambia el acabado («Máxima calidad» suma un grano fino de cámara) y no suma tiempo." : tiempoEstimado(estilo)}</p>
         </fieldset>
       )}
       {/* Para quien instaló MoneyPrinterTurbo (UX-39): queda guardado en «Más opciones». */}

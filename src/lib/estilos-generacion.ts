@@ -5,17 +5,20 @@
  *
  * - **Rápido**: lo de siempre, cada imagen con un zoom suave. Unos 3 minutos por tema.
  * - **Equilibrado**: cada escena pasa a video con Wan 2.2 TI2V-5B + FastWan (3 pasos, medido ~100 s).
- * - **Lo más real posible**: cada escena con Wan 2.2 I2V-A14B completo (el más fiel a la foto y con el
- *   movimiento más natural que cabe en 16 GB), un prompt de cámara real (luz natural, piel con textura,
- *   cámara en mano leve) y uno negativo contra lo que delata a la IA (piel de plástico, manos raras,
- *   cuerpos que se deforman), más un grano fino en todo el video, que esconde lo «demasiado limpio».
+ * - **Máxima calidad** (id `real`): lo mejor que cabe en 16 GB (decisión del dueño, 2026-11-23). Cada
+ *   escena con Wan 2.2 I2V-A14B (el más fiel a la foto y con el movimiento más natural) con Lightning (4
+ *   pasos), interpolado con RIFE de 16 a 32 cuadros por segundo (sin saltos), un prompt de cámara real
+ *   (luz natural, piel con textura, cámara en mano leve) y un grano fino en todo el video, que esconde lo
+ *   «demasiado limpio». LTX-2.3/2.5 no: su licencia no permite uso comercial sin revisarla.
  *
  * Función pura: la usan el formulario (lo que tarda), el servidor (qué guarda en el proyecto) y el
  * trabajo que anima las escenas (qué le pide a plano.ts).
  */
 import { z } from "zod";
 import type { EstiloVideo } from "./esquema";
+import { FLUIDO_X2, LIGHTNING_I2V } from "./lightning";
 import type { Camara } from "./prompt-camara";
+import type { AjustesWan2gp } from "./wan2gp";
 
 export const EstiloGeneracion = z.enum(["rapido", "equilibrado", "real"]);
 export type EstiloGeneracion = z.infer<typeof EstiloGeneracion>;
@@ -30,7 +33,7 @@ export interface DefinicionEstilo {
   /** Si lo que tarda ya se midió en la RTX 5080 (si no, es una estimación y se dice). */
   medido: boolean;
   /** Cómo se anima cada escena (opciones de plano.ts). null: no se anima. */
-  animar: { modelo: string; camara?: Camara; realista: boolean } | null;
+  animar: { modelo: string; camara?: Camara; realista: boolean; extra?: AjustesWan2gp } | null;
   /** Estilo del video que se guarda en el proyecto (lo heredan todas las escenas). */
   estilo?: EstiloVideo;
 }
@@ -54,11 +57,11 @@ export const ESTILOS_GENERACION: Record<EstiloGeneracion, DefinicionEstilo> = {
   },
   real: {
     id: "real",
-    nombre: "Lo más real posible",
-    descripcion: "Movimiento natural de persona real, luz y piel creíbles y grano de cámara: que no se note que es IA. Es lo más lento.",
-    minutosPorEscena: 15,
+    nombre: "Máxima calidad",
+    descripcion: "Lo mejor que corre en tu PC: movimiento natural y fiel a la imagen, fluido (32 cuadros por segundo), luz y piel creíbles y grano de cámara. Es lo más lento.",
+    minutosPorEscena: 6,
     medido: false,
-    animar: { modelo: "i2v", camara: { movimiento: "mano", look: "documental" }, realista: true },
+    animar: { modelo: "i2v", camara: { movimiento: "mano", look: "documental" }, realista: true, extra: { ...LIGHTNING_I2V, ...FLUIDO_X2 } },
     estilo: { efectos: [{ tipo: "grano", cantidad: 0.06, color: false, semilla: 7 }] },
   },
 };

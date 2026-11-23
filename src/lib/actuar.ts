@@ -22,11 +22,12 @@ import { ajustesEdicion, ESTILOS, leerAvatar, rutaRetrato, type Avatar } from ".
 import type { Formato, Proyecto } from "./esquema";
 import { escenasEnLinea, type EscenaEnLinea } from "./linea";
 import type { Contexto } from "./pasos";
+import { LIGHTNING_I2V } from "./lightning";
 import { generarPlanoEscena } from "./plano";
 import { generarPresentador } from "./presentador";
 import { correr } from "./proceso";
 import { dirProyecto, FFMPEG } from "./rutas";
-import { generarImagenes, instalacionWan2gp, type AjustesWan2gp, type Avance } from "./wan2gp";
+import { generarImagenes, instalacionWan2gp, type Avance } from "./wan2gp";
 
 export const ENCUADRES = {
   cara: { nombre: "Solo la cara", prompt: "head and shoulders shot, the face fills most of the frame" },
@@ -52,22 +53,7 @@ export const EJEMPLOS_ACCION = [
   "aplaude y celebra",
 ] as const;
 
-/** Lightning 4 pasos para Wan 2.2 I2V A14B (perfil «Lightning i2v v2025-10-14 2 Phases» de Wan2GP). */
-export const LIGHTNING_I2V: AjustesWan2gp = {
-  num_inference_steps: 4,
-  guidance_scale: 1,
-  guidance2_scale: 1,
-  switch_threshold: 876,
-  model_switch_phase: 1,
-  guidance_phases: 2,
-  flow_shift: 5,
-  sample_solver: "euler",
-  loras_multipliers: "1;0 0;1",
-  activated_loras: [
-    "https://huggingface.co/DeepBeepMeep/Wan2.2/resolve/main/loras_accelerators/Wan2.2_I2V_A14B_HIGH_lightx2v_MoE_distill_lora_rank_64_bf16.safetensors",
-    "https://huggingface.co/DeepBeepMeep/Wan2.2/resolve/main/loras_accelerators/Wan2.2_I2V_A14B_LOW_4steps_lora_rank64_Seko_V1_forKJ.safetensors",
-  ],
-};
+export { LIGHTNING_I2V } from "./lightning";
 
 /** Tamaño de las imágenes que arma Qwen Edit según el formato del video (o vertical para un encuadre). */
 export const RESOLUCION_CUADRO: Record<Formato, string> = { "9:16": "720x1280", "16:9": "1280x720", "1:1": "1024x1024" };

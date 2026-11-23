@@ -1,5 +1,5 @@
 /**
- * Paso «escenas.animar» de un video nuevo con estilo «Equilibrado» o «Lo más real posible»
+ * Paso «escenas.animar» de un video nuevo con estilo «Equilibrado» o «Máxima calidad»
  * (estilos-generacion.ts): después de importar lo de MPT (y de que el avatar entre en sus escenas), cada
  * escena que sigue siendo la imagen de MPT pasa a un plano de video con plano.ts, con el prompt del estilo.
  * Las que ya rehízo el avatar no se tocan. Una escena que falla queda como estaba (se reintenta desde el
@@ -71,7 +71,7 @@ export async function animarEscenasDelVideo(ctx: ContextoPlano, proyectoId: stri
       const base = planearPlano(p, x.escena, { modelo: def.animar.modelo }).promptBase;
       const { prompt, negativo } = promptEstilo(estilo, base);
       await generarPlanoEscena(ctx, proyectoId, p, x.escena, {
-        modelo: def.animar.modelo, prompt, negativo, camara: def.animar.camara, nota: `Escena ${x.numero} animada («${def.nombre}»)`,
+        modelo: def.animar.modelo, prompt, negativo, camara: def.animar.camara, extra: def.animar.extra, nota: `Escena ${x.numero} animada («${def.nombre}»)`,
       });
       hechas.push(x.numero);
       ({ p } = await versionDeProyecto(proyectoId));
