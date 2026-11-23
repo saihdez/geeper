@@ -529,8 +529,27 @@ export function limpiarAssets(p: Proyecto): Proyecto {
  * Voces del video (UX-12). «Regenerar voz de la escena» usa la voz ELEGIDA del proyecto, que puede no
  * ser la que suena en el resto. El aviso antes de rehacer y la lista de escenas con otra voz están en
  * components/editor-estado.ts (preguntaVozEscena, escenasConOtraVoz), con las voces de cada escena que da
- * vista.ts (idDeVoz). Esto es lo que falta para la revisión final: sólo avisa, no bloquea.
+ * vista.ts (que usa claveVoz y vocesDeEscenas de aquí). avisoMezclaVoces es para la revisión final:
+ * sólo avisa, no bloquea.
  */
+
+/** Nombre comparable de una voz: «kokoro:ef_dora» (MPT) y «ef_dora» (Kokoro local) son la misma. */
+export function claveVoz(voz: string): string {
+  return voz.trim().toLowerCase().replace(/^kokoro:/, "");
+}
+
+/**
+ * Con qué voz suena cada escena (en el orden del video). `voz` es null si es una voz real (un clip, un
+ * audio propio) o si el asset no dice cuál es: ésas no cuentan para comparar.
+ */
+export function vocesDeEscenas(p: Proyecto): { escena: string; numero: number; voz: string | null }[] {
+  return pista(p, "voz").clips.map((c, i) => {
+    const a = p.assets[c.asset];
+    const sintetica = a && (a.source === "tts" || a.source === "mpt") && a.regenerar.origen !== "clip";
+    const voz = sintetica && typeof a.regenerar.voz === "string" && a.regenerar.voz.trim() ? claveVoz(a.regenerar.voz) : null;
+    return { escena: c.escena ?? "", numero: i + 1, voz };
+  });
+}
 
 /** Lo que la vista da de cada escena: su n.º (desde 0) y la voz con que suena (null: voz real o desconocida). */
 interface EscenaConVoz {
