@@ -19,7 +19,7 @@ import { SelectorEncuadre, type EncuadreV } from "./selector-encuadre";
 import { PanelOtroEditor } from "./panel-otro-editor";
 import { useAccionesProyecto } from "./acciones-proyecto";
 import { FranjaAviso, type MensajeEditor } from "./franja-aviso";
-import { AvisoRevisionVieja, gruposRepartidos, NOTA_SUBTITULO_REPARTIDO } from "./aviso-revision-vieja";
+import { AvisoRevisionVieja, NOTA_CONTINUACION, NOTA_EDITA_COMPLETO, NOTA_SUBTITULO_REPARTIDO, repartoDeGrupos } from "./aviso-revision-vieja";
 import { avisoGuardado, escenaDeEdicion, PASOS_EDITOR, siguientePaso, falloReciente, textoFalloCreacion, renderFallido, avisoRitmo, correccionesVacias, enLista, mensajeSinCambios, opcionesRitmo, versionParaDeshacer, errorSubtitulo, escenasConOtraVoz, estaActivo, estadoCreacion, mismoContenido, pasoRender, preguntaVozEscena, renderEnCurso, verTrabajos, TEXTO_RITMO_GUARDADO, type TrabajoV, type VocesV } from "./editor-estado";
 import { Plegable } from "./plegable";
 import { avisoMezclaVoces } from "@/lib/ediciones";
@@ -230,13 +230,23 @@ export function AvisoVocesMezcladas({ escenas, voces }: { escenas: { indice: num
   );
 }
 
-export function EditorGrupo({ g, onGuardar, onQuitar, corregido, repartido = false }: { g: Grupo; corregido: boolean; /** UX-16: el texto corregido quedó en dos subtítulos. */ repartido?: boolean; onGuardar: (texto: string) => Promise<boolean>; onQuitar: () => Promise<void> }) {
+export function EditorGrupo({ g, onGuardar, onQuitar, corregido, repartido = false, completo, continuacion = false }: {
+  g: Grupo; corregido: boolean;
+  /** UX-16: el texto corregido quedó en dos subtítulos (éste es el primero). */
+  repartido?: boolean;
+  /** UX-16: el texto completo de la corrección repartida; la casilla edita ése, no sólo su parte. */
+  completo?: string;
+  /** UX-16: parte de una corrección repartida que se corrige en la casilla de arriba (sin casilla propia). */
+  continuacion?: boolean;
+  onGuardar: (texto: string) => Promise<boolean>; onQuitar: () => Promise<void>;
+}) {
   // UX-02: lo escrito es un borrador sobre lo guardado; al guardar bien (o con Esc) el campo vuelve a
   // mostrar lo que quedó en la fila, así «Guardar» no queda pegado.
   const [borrador, setBorrador] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
-  const texto = borrador ?? g.mostradoPropio;
-  const cambiado = borrador !== null && borrador.trim() !== g.mostradoPropio;
+  const base = completo ?? g.mostradoPropio;
+  const texto = borrador ?? base;
+  const cambiado = borrador !== null && borrador.trim() !== base;
   const error = cambiado ? errorSubtitulo(texto) : null;
   const guardar = async () => {
     if (!cambiado || error || guardando) return;
@@ -248,6 +258,13 @@ export function EditorGrupo({ g, onGuardar, onQuitar, corregido, repartido = fal
     }
   };
   const idError = `error-sub-${g.desde}-${g.hasta}`;
+  if (continuacion) return (
+    <li className="flex flex-wrap items-center gap-2 text-sm">
+      <span className="w-16 shrink-0 font-mono text-xs text-tenue">{g.inicio.toFixed(2)} s</span>
+      <span className="min-w-0 flex-1 px-3 py-1">{g.mostradoPropio}</span>
+      <span className="w-full pl-[4.5rem] text-xs text-tenue">{NOTA_CONTINUACION}</span>
+    </li>
+  );
   return (
     <li className="flex flex-wrap items-center gap-2 text-sm">
       <span className="w-16 shrink-0 font-mono text-xs text-tenue">{g.inicio.toFixed(2)} s</span>
@@ -268,8 +285,8 @@ export function EditorGrupo({ g, onGuardar, onQuitar, corregido, repartido = fal
       {!cambiado && g.cps > LIMITES_SUBTITULOS.maxCps && (
         <span className="w-full pl-[4.5rem] text-xs text-amber-200">Pasa muy rápido ({g.cps.toFixed(1).replace(".", ",")} letras por segundo): acórtalo un poco para que dé tiempo a leerlo.</span>
       )}
-      {repartido && !cambiado && <span className="w-full pl-[4.5rem] text-xs text-tenue">{NOTA_SUBTITULO_REPARTIDO}</span>}
-      {g.oido !== g.mostradoPropio && <span className="w-full pl-[4.5rem] text-xs text-tenue">Se oye: «{g.oido}»</span>}
+      {repartido && !cambiado && <span className="w-full pl-[4.5rem] text-xs text-tenue">{NOTA_SUBTITULO_REPARTIDO}{completo !== undefined ? ` ${NOTA_EDITA_COMPLETO}` : ""}</span>}
+      {g.oido !== base && <span className="w-full pl-[4.5rem] text-xs text-tenue">Se oye: «{g.oido}»</span>}
     </li>
   );
 }
@@ -289,7 +306,7 @@ function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, 
   animar: (escena: string, opciones: OpcionesAnimar) => Promise<void>;
 }) {
   const [preguntando, setPreguntando] = useState(false);
-  const repartidos = gruposRepartidos(e.grupos, e.correcciones);
+  const reparto = repartoDeGrupos(e.grupos, e.correcciones);
   return (
     <li id={`escena-${e.id}`} className="tarjeta flex scroll-mt-28 flex-col gap-3 p-3 md:flex-row">
       <div className="shrink-0">
@@ -307,7 +324,8 @@ function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, 
           vozReal={vozReal} correcciones={e.correcciones} />
         <ul className="space-y-1.5">
           {e.grupos.map((g, i) => (
-            <EditorGrupo key={`${g.desde}-${g.hasta}-${g.mostradoPropio}`} g={g} repartido={repartidos.has(i)}
+            <EditorGrupo key={`${g.desde}-${g.hasta}-${g.mostradoPropio}`} g={g} repartido={reparto.get(i)?.primero ?? false}
+              completo={reparto.get(i)?.completo} continuacion={reparto.get(i)?.primero === false}
               corregido={e.correcciones.some((c) => c.desde >= g.desde && c.hasta <= g.hasta)}
               onGuardar={(texto) => editarOk({ tipo: "corregirSubtitulo", escena: e.id, desde: g.desde, hasta: g.hasta, texto })}
               onQuitar={async () => { for (const c of e.correcciones.filter((c) => c.desde >= g.desde && c.hasta <= g.hasta)) await editar({ tipo: "quitarCorreccion", escena: e.id, desde: c.desde }); }} />

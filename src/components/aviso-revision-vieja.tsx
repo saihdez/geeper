@@ -12,17 +12,27 @@ export function revisionVieja(versionRevisada: number, versionActual: number): b
 export const NOTA_SUBTITULO_REPARTIDO = "Lo acomodamos en dos subtítulos para que se lea mejor.";
 
 /**
- * Subtítulos donde empieza un texto corregido que quedó repartido en dos o más: los que caen dentro de la
- * misma corrección. Devuelve sus posiciones en `grupos` (sólo el primero de cada reparto lleva la nota).
+ * Para cada subtítulo que es parte de un texto corregido repartido en dos o más: el texto completo de esa
+ * corrección y si es el primero. La casilla del primero edita el texto completo (guardar el de una sola
+ * casilla reemplazaba toda la corrección y se perdía el resto); las demás lo muestran como continuación.
  */
-export function gruposRepartidos(grupos: { desde: number; hasta: number }[], correcciones: { desde: number; hasta: number }[]): Set<number> {
-  const primeros = new Set<number>();
+export function repartoDeGrupos(
+  grupos: { desde: number; hasta: number }[],
+  correcciones: { desde: number; hasta: number; texto: string }[],
+): Map<number, { completo: string; primero: boolean }> {
+  const out = new Map<number, { completo: string; primero: boolean }>();
   for (const c of correcciones) {
     const dentro = grupos.flatMap((g, i) => (g.desde >= c.desde && g.hasta <= c.hasta ? [i] : []));
-    if (dentro.length >= 2) primeros.add(dentro[0]!);
+    if (dentro.length < 2) continue;
+    dentro.forEach((i, n) => out.set(i, { completo: c.texto, primero: n === 0 }));
   }
-  return primeros;
+  return out;
 }
+
+/** Bajo la casilla del primer subtítulo repartido: se corrige ahí el texto entero. */
+export const NOTA_EDITA_COMPLETO = "Aquí corriges el texto completo, también lo que va en el subtítulo siguiente.";
+/** En lugar de la casilla, en los que siguen. */
+export const NOTA_CONTINUACION = "Sigue del subtítulo de arriba: se corrige ahí.";
 
 export function AvisoRevisionVieja({ versionRevisada, versionActual, ocupado, alCrear }: {
   versionRevisada: number;

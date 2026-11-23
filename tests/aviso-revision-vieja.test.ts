@@ -4,7 +4,7 @@ import path from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { AvisoRevisionVieja, gruposRepartidos, NOTA_SUBTITULO_REPARTIDO, revisionVieja } from "@/components/aviso-revision-vieja";
+import { AvisoRevisionVieja, NOTA_CONTINUACION, NOTA_EDITA_COMPLETO, NOTA_SUBTITULO_REPARTIDO, repartoDeGrupos, revisionVieja } from "@/components/aviso-revision-vieja";
 import { EditorGrupo } from "@/components/editor-proyecto";
 
 const nada = () => {};
@@ -44,10 +44,12 @@ describe("montado en el editor (UX-16)", () => {
 
   it("marca el primer subtítulo de un texto corregido que quedó en dos", () => {
     const grupos = [{ desde: 0, hasta: 3 }, { desde: 3, hasta: 6 }, { desde: 3, hasta: 6 }, { desde: 6, hasta: 9 }];
-    expect([...gruposRepartidos(grupos, [{ desde: 3, hasta: 6 }])]).toEqual([1]);
-    expect(gruposRepartidos(grupos, [{ desde: 0, hasta: 3 }]).size).toBe(0);
-    expect(gruposRepartidos(grupos, []).size).toBe(0);
-    expect(editor).toContain("repartido={repartidos.has(i)}");
+    const r = repartoDeGrupos(grupos, [{ desde: 3, hasta: 6, texto: "y que los navegantes vean" }]);
+    expect([...r.entries()]).toEqual([[1, { completo: "y que los navegantes vean", primero: true }], [2, { completo: "y que los navegantes vean", primero: false }]]);
+    expect(repartoDeGrupos(grupos, [{ desde: 0, hasta: 3, texto: "x" }]).size).toBe(0);
+    expect(repartoDeGrupos(grupos, []).size).toBe(0);
+    expect(editor).toContain("repartido={reparto.get(i)?.primero ?? false}");
+    expect(editor).toContain("completo={reparto.get(i)?.completo} continuacion={reparto.get(i)?.primero === false}");
     expect(editor).toContain("{NOTA_SUBTITULO_REPARTIDO}");
   });
 
@@ -55,5 +57,23 @@ describe("montado en el editor (UX-16)", () => {
     const g = { texto: "y que los", inicio: 1, fin: 2, desde: 3, hasta: 6, oido: "y que los navegantes vean", lineas: 1, cruza: false, mostradoPropio: "y que los", cps: 10 };
     const html = renderToStaticMarkup(createElement(EditorGrupo, { g, corregido: true, repartido: true, onGuardar: async () => true, onQuitar: async () => {} }));
     expect(html).toContain(NOTA_SUBTITULO_REPARTIDO);
+  });
+
+  it("la casilla repartida edita el texto COMPLETO de la corrección, no sólo su parte", () => {
+    const g = { texto: "y que los", inicio: 1, fin: 2, desde: 3, hasta: 6, oido: "y que los navegantes vean", lineas: 1, cruza: false, mostradoPropio: "y que los", cps: 10 };
+    const html = renderToStaticMarkup(createElement(EditorGrupo, { g, corregido: true, repartido: true, completo: "y que los navegantes vean", onGuardar: async () => true, onQuitar: async () => {} }));
+    expect(html).toContain('value="y que los navegantes vean"');
+    expect(html).toContain(NOTA_EDITA_COMPLETO);
+    // Guardar manda lo de la casilla con el desde/hasta de toda la corrección: así no se pierde el resto.
+    expect(editor).toContain("const base = completo ?? g.mostradoPropio;");
+    expect(editor).toContain("const texto = borrador ?? base;");
+  });
+
+  it("la parte siguiente no tiene casilla propia: dice que se corrige arriba", () => {
+    const g = { texto: "navegantes vean", inicio: 2, fin: 3, desde: 3, hasta: 6, oido: "y que los navegantes vean", lineas: 1, cruza: false, mostradoPropio: "navegantes vean", cps: 10 };
+    const html = renderToStaticMarkup(createElement(EditorGrupo, { g, corregido: true, continuacion: true, completo: "y que los navegantes vean", onGuardar: async () => true, onQuitar: async () => {} }));
+    expect(html).not.toContain("<input");
+    expect(html).toContain("navegantes vean");
+    expect(html).toContain(NOTA_CONTINUACION);
   });
 });
