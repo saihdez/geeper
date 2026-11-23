@@ -98,6 +98,9 @@ export const preguntaUsarVoz = (nombre: string) =>
 /** Mensaje de una subida: el de éxito más lo que VectorCraft avisó al convertir (p. ej. una fuente que faltaba). */
 const conAvisos = (r: { avisos?: string[] }, ok: string) => (r.avisos?.length ? `${ok} Ojo: ${r.avisos.join(" · ")}` : ok);
 
+/** A11-07: enlace para saltar, oculto hasta que llega el foco del teclado. */
+const SALTO = "sr-only focus:not-sr-only focus:rounded focus:bg-panel focus:px-3 focus:py-2 focus:text-sm";
+
 const t2 = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`;
 
 function medido(v: unknown): string {
@@ -518,6 +521,11 @@ export function EditorProyecto({ id }: { id: string }) {
   return (
     <div className={`space-y-6 ${msg ? "pb-24" : ""}`}>
       <FranjaAviso msg={msg} cerrar={cerrarMsg} />
+      {/* A11-07: con teclado, saltar las decenas de controles de arriba. Se ven sólo al llegar con Tab. */}
+      <nav aria-label="Saltar a" className="flex gap-2">
+        {escenas.length > 0 && <a href="#escenas" className={SALTO}>Ir a las escenas</a>}
+        <a href="#historial" className={SALTO} onClick={() => setHistorialAbierto(true)}>Ir al historial</a>
+      </nav>
       <header id="arriba" className="flex scroll-mt-4 flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">{fila.nombre}</h1>
@@ -666,7 +674,7 @@ export function EditorProyecto({ id }: { id: string }) {
                 </>
               ) : render ? (
                 <>
-                  <video key={render.id} src={archivo(`${fila.slug}/${render.ruta}`)} controls preload="metadata"
+                  <video key={render.id} src={archivo(`${fila.slug}/${render.ruta}`)} controls preload="metadata" aria-label={`Video creado (versión ${render.versionNumero})`}
                     className={`mx-auto max-h-[70vh] w-full rounded bg-black ${render.perfil === "shorts-9x16" ? "max-w-sm" : ""}`} />
                   <div className="flex flex-wrap items-center gap-2 text-sm">
                     <Estado valor={render.estado} />
@@ -702,7 +710,7 @@ export function EditorProyecto({ id }: { id: string }) {
         <section id="paso-2" aria-labelledby="titulo-paso-2" className="scroll-mt-28">
           <h2 id="titulo-paso-2" className="mb-1 text-lg font-semibold">2. Corrige lo que se dice y se ve</h2>
           <p className="mb-3 text-sm text-tenue">Cada escena con sus subtítulos, su imagen y su voz.</p>
-          <ol className="space-y-3">
+          <ol id="escenas" className="scroll-mt-28 space-y-3" aria-label="Escenas">
             {escenas.map((e, i) => (
               <TarjetaEscena key={e.id} e={e} anterior={escenas[i - 1]} slug={fila.slug} total={escenas.length} formato={p?.formato ?? fila.formato}
                 estilo={v.extras?.estilo ?? null} editar={editar} editarOk={editarOk} subirClip={subirClip} regenerarVoz={regenerarVoz} reencuadrar={reencuadrar} animar={animar} proyectoId={id} ocupado={ocupado}

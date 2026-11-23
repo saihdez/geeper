@@ -168,6 +168,8 @@ export function VistaEnVivo({ proyectoId, version, irA }: { proyectoId: string; 
           width: vista.ancho,
           height: vista.alto,
           controls: true,
+          "aria-label": `Vista en vivo del video (versión ${vista.version})`,
+          role: "region",
           style: { display: "block", width: "100%", height: "100%" },
         })}
         {flotante && (
