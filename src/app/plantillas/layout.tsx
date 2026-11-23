@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-export const metadata: Metadata = { title: "Plantillas" };
+export const metadata: Metadata = { title: "Estilos del canal" };
 
 export default function Seccion({ children }: { children: React.ReactNode }) {
   return children;

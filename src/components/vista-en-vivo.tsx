@@ -168,6 +168,8 @@ export function VistaEnVivo({ proyectoId, version, irA }: { proyectoId: string; 
           width: vista.ancho,
           height: vista.alto,
           controls: true,
+          "aria-label": `Vista en vivo del video (versión ${vista.version})`,
+          role: "region",
           style: { display: "block", width: "100%", height: "100%" },
         })}
         {flotante && (
@@ -178,7 +180,7 @@ export function VistaEnVivo({ proyectoId, version, irA }: { proyectoId: string; 
       </div>
       </div>
       <p className="text-xs text-tenue">
-        En vivo · versión {vista.version} · {segundos(vista.duracion)}. Es la composición sin renderizar: el QC y la descarga son del render.
+        En vivo · versión {vista.version} · {segundos(vista.duracion)}. Muestra tus cambios al momento: la revisión y la descarga son del último video creado.
       </p>
     </div>
   );

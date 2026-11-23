@@ -3,7 +3,7 @@ import { UNIDADES_PRUEBA, VARIABLES_PRUEBA } from "@/lib/anuncios/catalogo";
 import type { Prueba } from "@/lib/anuncios/esquema";
 import { leerPrueba, type Veredicto } from "@/lib/anuncios/lectura";
 import { tamanoMuestra } from "@/lib/anuncios/muestra";
-import { Aviso } from "../comun";
+import { Aviso, numero as cifra } from "../comun";
 import type { Ctx } from "./campana";
 import { QUE } from "./textos";
 import { Ayuda, Campo, Chip, NOMBRE_RESULTADO, Seccion } from "./ui";
@@ -20,7 +20,7 @@ function numero(v: string): number | null {
   return v.trim() === "" || !Number.isFinite(n) ? null : n;
 }
 
-const miles = (n: number) => n.toLocaleString("es");
+const miles = (n: number) => cifra(n);
 
 export function PestanaPrueba({ ctx }: { ctx: Ctx }) {
   const p = ctx.datos.prueba;
@@ -160,7 +160,7 @@ export function PestanaPrueba({ ctx }: { ctx: Ctx }) {
                 <p className="text-sm text-tenue">personas por anuncio · {miles(m.total)} en total</p>
               </div>
               <p className="text-sm">{m.dias != null ? <>Déjala correr unos <b className="tabular-nums">{Math.max(7, m.dias)} días</b>{m.dias < 7 ? " (mínimo una semana)" : ""}.</> : <span className="text-tenue">Dinos cuántas personas ve cada anuncio por día para calcular los días.</span>}</p>
-              <p className="text-xs text-tenue">Hoy: {(m.p1 * 100).toFixed(2).replace(".", ",")} %. Para notar la mejora debería llegar a {(m.p2 * 100).toFixed(2).replace(".", ",")} %.</p>
+              <p className="text-xs text-tenue">Hoy: {cifra(m.p1 * 100, 2)} %. Para notar la mejora debería llegar a {cifra(m.p2 * 100, 2)} %.</p>
               {m.avisos.filter((a) => !a.startsWith("Menos de una semana")).map((a) => <Aviso key={a} tipo="alerta">{a}</Aviso>)}
             </div>
           ) : (
@@ -235,7 +235,7 @@ function Resultados({ ctx, planeada }: { ctx: Ctx; planeada: number | null }) {
           <tbody>
             {variantes.map((id, i) => {
               const r = p.resultados[id];
-              const tasa = r?.unidades && r.conversiones != null ? `${((r.conversiones / r.unidades) * 100).toFixed(2).replace(".", ",")}` : "—";
+              const tasa = r?.unidades && r.conversiones != null ? cifra((r.conversiones / r.unidades) * 100, 2) : "—";
               return (
                 <tr key={id} className="border-t border-borde">
                   <td className="py-1.5 pr-2">{nombres[id] ?? id} {i === 0 && <span className="text-xs text-tenue">(base)</span>}</td>
@@ -265,7 +265,7 @@ function Resultados({ ctx, planeada }: { ctx: Ctx; planeada: number | null }) {
         {l.avisos.map((a) => <Aviso key={a} tipo="alerta">{a}</Aviso>)}
         <details className="text-xs text-tenue">
           <summary className="cursor-pointer">Cómo se calcula</summary>
-          <p className="mt-1">Prueba z de dos proporciones, bilateral, con α = {(l.alfaCorregido * 100).toFixed(2).replace(".", ",")} % por comparación (corregido si hay varias ideas compitiendo). El intervalo es el rango probable de la diferencia real; p es la probabilidad de ver una diferencia así por pura suerte.</p>
+          <p className="mt-1">Prueba z de dos proporciones, bilateral, con α = {cifra(l.alfaCorregido * 100, 2)} % por comparación (corregido si hay varias ideas compitiendo). El intervalo es el rango probable de la diferencia real; p es la probabilidad de ver una diferencia así por pura suerte.</p>
         </details>
       </div>
     </Seccion>

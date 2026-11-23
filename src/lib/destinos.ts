@@ -17,7 +17,7 @@ export const DESTINOS: Destino[] = [
   { titulo: "Workflows", ruta: "/workflows", palabras: "recetas comfyui imagen ia quitar fondo" },
   { titulo: "Trabajos", ruta: "/trabajos", palabras: "cola avance log progreso en marcha" },
   { titulo: "Anuncios", ruta: "/anuncios", palabras: "campañas ads publicidad" },
-  { titulo: "Plantillas", ruta: "/plantillas", palabras: "estilo diseño canal" },
+  { titulo: "Estilos del canal", ruta: "/plantillas", palabras: "plantillas estilo diseño canal" },
   { titulo: "Media", ruta: "/media", palabras: "apps craft photocraft filmcraft vectorcraft effectcraft lightcraft designcraft pdfcraft soundcraft photoshop premiere illustrator after effects editar foto" },
   { titulo: "Cuentas", ruta: "/cuentas", palabras: "redes youtube tiktok instagram facebook conectar vpn publicar" },
   { titulo: "Sistema", ruta: "/sistema", palabras: "diagnostico doctor problemas estado revisar" },

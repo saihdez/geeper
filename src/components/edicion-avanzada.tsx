@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ACCEPT_IMAGEN } from "@/lib/formatos-vector";
 import type { Fusion } from "@/lib/efectos-esquema";
-import { segundos } from "./comun";
+import { numero, segundos } from "./comun";
 import { ASPECTOS, claveAspecto, claveTransicion, GaleriaAspectos, GaleriaTransiciones, nombreDe, SelectorMezcla, SelectorRitmo, TRANSICIONES, type TransicionV } from "./galeria-efectos";
 
 export type Motivo = "palabras" | "silencio" | "muletilla";
@@ -193,7 +193,7 @@ export function EdicionPorTexto({ escena, audio, palabras, duracion, duracionOri
       <p className="text-xs text-tenue">
         Edición por texto: toca una palabra, o la primera y la última de un tramo, y escúchala o recórtala: recortar quita lo que se oye y su tiempo.
         {" "}Con el teclado: flechas para moverte, Enter para elegir, Mayús+flecha para alargar y Esc para cerrar.
-        {duracionOriginal - duracion > 0.05 && <> Recortado: {(duracionOriginal - duracion).toFixed(2)} s.</>}
+        {duracionOriginal - duracion > 0.05 && <> Recortado: {numero(duracionOriginal - duracion, 2)} s.</>}
       </p>
       {terminada && !revisando && (
         <div className="flex flex-wrap items-center gap-2 rounded border border-emerald-800 bg-emerald-950/40 px-2 py-1.5 text-xs" role="status">
@@ -301,7 +301,7 @@ export function EdicionPorTexto({ escena, audio, palabras, duracion, duracionOri
             </p>
           ) : (
             <p className="text-xs text-tenue">
-              «Sí, suena bien» la marca como revisada y deja de contar como dudosa en el control de calidad. Si se oye otra cosa,
+              «Sí, suena bien» la marca como revisada y deja de contar como dudosa en la revisión. Si se oye otra cosa,
               no la recortes: usa «Regenerar voz de la escena».
             </p>
           )}
@@ -412,7 +412,7 @@ function GaleriaMovimiento({ valor, formato, img, deshabilitado, onElegir }: {
 }
 
 const VELOCIDADES = [0.5, 0.75, 1, 1.25, 1.5, 2];
-const coma = (x: number) => String(Math.round(x * 100) / 100).replace(".", ",");
+const coma = (x: number) => numero(x, 2);
 
 /**
  * Opciones de «Velocidad del video de la escena». Si la escena va a una velocidad que no está en la lista
@@ -581,11 +581,11 @@ export interface EscenaT {
   duracion: number;
 }
 
-const coma1 = (x: number) => x.toFixed(1).replace(".", ",");
+const coma1 = (x: number) => numero(x, 1);
 const ESTILOS_TEXTO: Record<string, string> = { rotulo: "Rótulo", titulo: "Título", cita: "Cita" };
 const POSICIONES_TEXTO: Record<string, string> = { arriba: "arriba", centro: "al centro", abajo: "sobre los subtítulos" };
 
-/** Cuándo aparece un texto, dicho por escenas (UX-35): «Al empezar la escena 2» o «En la escena 2, a los 1,5 s». */
+/** Cuándo aparece un texto, dicho por escenas (UX-35): «Al empezar la escena 2» o «En la escena 2, a los 1.5 s». */
 export function cuandoAparece(inicio: number, escenas: EscenaT[]): string {
   const e = [...escenas].reverse().find((x) => inicio >= x.inicio - 0.05);
   if (!e) return `Al empezar el video, a los ${coma1(inicio)} s`;
@@ -637,7 +637,7 @@ export function PanelAvanzado({ extras, formato, total, editar, alinearMusica, s
         <h2 className="font-medium">Destino y entrega</h2>
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" checked={d.comercial} disabled={ocupado} onChange={(e) => void editar({ tipo: "cambiarDestino", comercial: e.target.checked })} />
-          <span>Uso comercial (monetizado o para un cliente): el QC <strong>bloquea</strong> cualquier asset cuya licencia no lo permita o no se sepa.</span>
+          <span>Uso comercial (monetizado o para un cliente): la revisión <strong>bloquea</strong> cualquier asset cuya licencia no lo permita o no se sepa.</span>
         </label>
         <fieldset className="space-y-1 text-sm" disabled={ocupado}>
           <legend className="etiqueta">Dónde se publica {formato !== "9:16" && <span className="text-tenue">(sólo cambia algo en 9:16)</span>}</legend>
@@ -650,7 +650,7 @@ export function PanelAvanzado({ extras, formato, total, editar, alinearMusica, s
         </fieldset>
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" checked={d.master} disabled={ocupado} onChange={(e) => void editar({ tipo: "cambiarDestino", master: e.target.checked })} />
-          <span>Guardar también un máster de archivo (.mov, calidad alta) en cada render. Tarda más y ocupa mucho más disco.</span>
+          <span>Guardar también un máster de archivo (.mov, calidad alta) cada vez que crees el video. Tarda más y ocupa mucho más disco.</span>
         </label>
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" checked={d.marca} disabled={ocupado} onChange={(e) => void editar({ tipo: "cambiarDestino", marca: e.target.checked })} />
@@ -661,7 +661,7 @@ export function PanelAvanzado({ extras, formato, total, editar, alinearMusica, s
       <div className="tarjeta space-y-3 p-4">
         <h2 className="font-medium">Edición por texto y ritmo</h2>
         <div className="flex flex-wrap gap-2">
-          <button type="button" className="boton" disabled={ocupado} onClick={() => void editar({ tipo: "quitarSilencios" })} title="Pausas de más de 0,6 s quedan en 0,25 s">Acortar silencios largos</button>
+          <button type="button" className="boton" disabled={ocupado} onClick={() => void editar({ tipo: "quitarSilencios" })} title={`Pausas de más de ${numero(0.6, 1)} s quedan en ${numero(0.25, 2)} s`}>Acortar silencios largos</button>
           <button type="button" className="boton" disabled={ocupado} onClick={() => void editar({ tipo: "quitarMuletillas" })} title="eh, em, mmm, uh…">Quitar muletillas</button>
           <button type="button" className="boton" disabled={ocupado} onClick={() => { if (confirm("¿Deshacer todos los recortes del proyecto?")) void editar({ tipo: "quitarRecortes" }); }}>Deshacer recortes</button>
         </div>
@@ -670,7 +670,7 @@ export function PanelAvanzado({ extras, formato, total, editar, alinearMusica, s
           : <p className="text-xs text-tenue">Tiempos de la voz sin medir (proyecto anterior): regenera la voz para medir su confianza.</p>}
         {extras.musica && (
           <div className="flex flex-wrap items-center gap-2 border-t border-borde pt-3 text-sm">
-            <span>Música desde {extras.musica.inicio.toFixed(2)} s · {extras.musica.pulsos ? `${extras.musica.pulsos} pulsos marcados` : "sin pulsos"}</span>
+            <span>Música desde {numero(extras.musica.inicio, 2)} s · {extras.musica.pulsos ? `${extras.musica.pulsos} pulsos marcados` : "sin pulsos"}</span>
             <button type="button" className="boton ml-auto" disabled={ocupado} onClick={() => void alinearMusica()}>Alinear cortes al ritmo</button>
           </div>
         )}
@@ -728,7 +728,7 @@ export function PanelAvanzado({ extras, formato, total, editar, alinearMusica, s
             {extras.libres.flatMap((pi) => pi.clips.map((c) => (
               <li key={c.id} className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="w-24 shrink-0 font-mono text-xs text-tenue">{c.inicio.toFixed(1)} s · {segundos(c.duracion)}</span>
+                  <span className="w-24 shrink-0 font-mono text-xs text-tenue">{numero(c.inicio, 1)} s · {segundos(c.duracion)}</span>
                   <span className="min-w-0 flex-1 truncate">{pi.tipo === "audio" ? "Sonido" : "Imagen/video"}: {c.ruta.split("/").pop()}</span>
                   <button type="button" className="boton py-0.5 text-xs" disabled={ocupado} onClick={() => void editar({ tipo: "quitarClipLibre", clip: c.id })}>Quitar</button>
                 </div>

@@ -5,7 +5,7 @@
  */
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { Aviso, Barra, MotorApagado, archivo, numero, pedir, postJson, segundos, useSondeo } from "./comun";
+import { AVISO_DESPERTANDO, Aviso, Barra, CIRCULO_PASO, CLASE_PASO, MotorApagado, archivo, numero, pedir, postJson, segundos, useSondeo } from "./comun";
 import { SugerenciasBusqueda } from "./sugerencias-busqueda";
 import { sugerirGlosario, sumarAlGlosario } from "@/lib/glosario";
 import { etapaSimple, explicarError, ERROR_GENERICO } from "@/lib/textos";
@@ -93,8 +93,8 @@ function Pasos({ actual, ir }: { actual: number; ir: (n: number) => void }) {
         return (
           <li key={n}>
             <button type="button" disabled={!hecho} onClick={() => ir(k)} aria-current={k === actual ? "step" : undefined}
-              className={`flex items-center gap-2 rounded-full border px-3 py-1 ${k === actual ? "border-cyan-500 bg-cyan-950/50 text-white" : hecho ? "border-borde text-tenue hover:text-white" : "border-borde text-tenue opacity-60"}`}>
-              <span className={`grid h-5 w-5 place-items-center rounded-full text-xs ${k === actual ? "bg-cyan-600" : "bg-[#232a38]"}`}>{hecho ? "✓" : k}</span>{n}
+              className={`flex items-center gap-2 rounded-full px-2 py-1 ${CLASE_PASO[k === actual ? "actual" : hecho ? "hecho" : "pendiente"]}`}>
+              <span className={`grid h-5 w-5 place-items-center rounded-full text-xs ${CIRCULO_PASO[k === actual ? "actual" : hecho ? "hecho" : "pendiente"]}`}>{hecho ? "✓" : k}</span>{n}
             </button>
           </li>
         );
@@ -186,9 +186,9 @@ export function Paso1({ datos, recargar, elegir, trabajoInicial = null }: { dato
   return (
     <div className="space-y-6">
       <section className="tarjeta space-y-4 p-5">
-        <div className="flex gap-2" role="tablist">
+        <div className="flex gap-2" role="radiogroup" aria-label="De dónde sale el video">
           {(["enlace", "archivo"] as const).map((m) => (
-            <button key={m} type="button" role="tab" aria-selected={modo === m} onClick={() => setModo(m)} className={`boton ${modo === m ? "boton-primario" : ""}`}>
+            <button key={m} type="button" role="radio" aria-checked={modo === m} onClick={() => setModo(m)} className="opcion">
               {m === "enlace" ? "Pegar un enlace" : "Subir un video"}
             </button>
           ))}
@@ -648,7 +648,7 @@ function Paso3({ f, c, volver }: { f: Fuente; c: Candidato; volver: () => void }
         <h3 className="font-medium">2. ¿Cómo se ve en el teléfono?</h3>
         <div className="grid gap-3 sm:grid-cols-3" role="radiogroup" aria-label="Estilo">
           {ESTILOS.map((s) => (
-            <label key={s.id} className={`cursor-pointer rounded-xl border p-3 text-center ${estilo === s.id ? "border-cyan-500 bg-cyan-950/40 ring-2 ring-cyan-500" : "border-borde hover:border-cyan-800"}`}>
+            <label key={s.id} className="opcion-tarjeta p-3 text-center">
               <input type="radio" name="estilo" value={s.id} checked={estilo === s.id} onChange={() => setEstilo(s.id)} className="sr-only" />
               <Dibujo id={s.id} />
               <span className="mt-2 block font-medium">{s.nombre}</span>
@@ -665,14 +665,15 @@ function Paso3({ f, c, volver }: { f: Fuente; c: Candidato; volver: () => void }
         <div className="flex flex-wrap gap-2">
           <input aria-label="Gancho" className="campo grow" value={gancho} maxLength={160} onChange={(e) => setGancho(e.target.value)} placeholder="Ej.: Nadie vio venir lo que pasó aquí" />
           <button type="button" className="boton" disabled={pensando || !c.texto} onClick={() => void sugerir()} title={!c.texto ? "Este momento no tiene palabras" : undefined}>
-            {pensando ? "Pensando (hasta 1 min)…" : "✨ Sugerirme ideas"}
+            {pensando ? "Pensando…" : "✨ Sugerirme ideas"}
           </button>
+          {pensando && <span className="self-center text-xs text-tenue" role="status">{AVISO_DESPERTANDO}</span>}
         </div>
         {errorIdeas && <Aviso tipo="alerta">{errorIdeas}</Aviso>}
         {ideas && ideas.ganchos.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {ideas.ganchos.map((g) => (
-              <button key={g} type="button" aria-pressed={gancho === g} onClick={() => setGancho(g)} className={`rounded-full border px-3 py-1 text-sm ${gancho === g ? "border-cyan-500 bg-cyan-950/50 ring-2 ring-cyan-500" : "border-borde hover:border-cyan-700"}`}>{g}</button>
+              <button key={g} type="button" aria-pressed={gancho === g} onClick={() => setGancho(g)} className="opcion rounded-full">{g}</button>
             ))}
           </div>
         )}

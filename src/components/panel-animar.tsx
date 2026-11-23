@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { Aviso, useSondeo } from "./comun";
+import { Aviso, numero as cifra, useSondeo } from "./comun";
 import { NOMBRES, type Camara } from "@/lib/prompt-camara";
 
 interface ModeloV { id: string; nombre: string; nota: string; descripcion: string; simple: boolean; maxSegundos: number; necesitaImagen: boolean; licencia: string; estado: string | null }
@@ -170,7 +170,7 @@ function Contenido({ proyectoId, escena, numero, ocupado, animar, trabajo, base 
       </fieldset>
 
       <label className="etiqueta block">
-        Duración del video nuevo: {valorSeg.toFixed(1)} s{plan ? <span className="text-tenue"> (la escena dura {plan.largo.toFixed(1)} s; como mucho {max} s)</span> : null}
+        Duración del video nuevo: {cifra(valorSeg, 1)} s{plan ? <span className="text-tenue"> (la escena dura {cifra(plan.largo, 1)} s; como mucho {max} s)</span> : null}
         <input type="range" className="mt-1 block w-72 max-w-full" min={1} max={max} step={0.5} value={valorSeg} onChange={(ev) => setSegundos(Number(ev.target.value))} />
       </label>
 

@@ -2,6 +2,7 @@
  * Lo que la página del proyecto decide a partir de la vista, sin React (puro, para poder probarlo):
  * qué mostrar, qué avisar y qué ofrecer como paso siguiente.
  */
+import { numero } from "@/lib/formato";
 
 /** UX-02: un subtítulo vacío deja una palabra que se oye y no se ve, sin un campo para recuperarla. */
 export function errorSubtitulo(texto: string): string | null {
@@ -141,6 +142,15 @@ export function escenasConOtraVoz(escenas: EscenaVoz[], elegida: string | null):
 }
 
 /**
+ * GPU-07: los ids de las escenas que suenan con otra voz que la elegida, para rehacerlas en UN solo
+ * trabajo (con una voz diseñada, el modelo se carga una vez y el video se crea una vez al final).
+ */
+export function idsConOtraVoz(escenas: EscenaVoz[], elegida: string | null): string[] {
+  if (!elegida) return [];
+  return escenas.filter((e) => e.voz.voz && e.voz.voz !== elegida).map((e) => e.id);
+}
+
+/**
  * UX-12: antes de regenerar una sola escena con la voz elegida, si el resto del video suena con otra:
  * «Esta escena quedará con la voz Álex y las otras 7 escenas seguirán con Dora.» Si no hay mezcla, null.
  */
@@ -168,7 +178,7 @@ export const RITMOS: { valor: number; nombre: string }[] = [
 
 /** Las opciones del selector; si el proyecto tiene otro valor, se agrega para no perderlo. */
 export function opcionesRitmo(actual: number): { valor: number; nombre: string }[] {
-  return RITMOS.some((r) => r.valor === actual) ? RITMOS : [...RITMOS, { valor: actual, nombre: `Otro (${String(actual).replace(".", ",")})` }].sort((a, b) => a.valor - b.valor);
+  return RITMOS.some((r) => r.valor === actual) ? RITMOS : [...RITMOS, { valor: actual, nombre: `Otro (${numero(actual, 2)})` }].sort((a, b) => a.valor - b.valor);
 }
 
 /** Desde 0,9 los subtítulos pueden pasar de 17 letras por segundo y el QC rechaza el video. */

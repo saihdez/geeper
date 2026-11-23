@@ -1,6 +1,6 @@
 "use client";
 /** Acciones del proyecto abierto para el buscador (Ctrl+K). Hacen lo mismo que los botones del editor. */
-import { archivo } from "./comun";
+import { archivo, numero } from "./comun";
 import { useAccionesPaleta, type AccionPaleta } from "./paleta";
 
 interface Datos {
@@ -9,7 +9,7 @@ interface Datos {
   formato: string | null;
   plantilla: string | null;
   plantillas: { slug: string; nombre: string }[];
-  /** Ruta del último render si pasó el QC (para descargarlo). */
+  /** Ruta del último video si pasó la revisión (para descargarlo). */
   renderAprobado: string | null;
   hayMusica: boolean;
   dudosas: number;
@@ -39,10 +39,10 @@ function revisarDudosas() {
 export function useAccionesProyecto(d: Datos | null) {
   const grupo = "Este proyecto";
   const acciones: AccionPaleta[] = !d || !d.formato ? [] : [
-    { id: "render", grupo, titulo: "Renderizar el video", palabras: "render exportar generar terminar control calidad qc", detalle: "No usa la GPU para generar: compila, renderiza y pasa el control de calidad.", deshabilitada: d.ocupado, hacer: d.renderizar },
+    { id: "render", grupo, titulo: "Crear el video", palabras: "render renderizar exportar generar terminar control calidad qc revision", detalle: "No usa la tarjeta de video: arma el video y lo revisa.", deshabilitada: d.ocupado, hacer: d.renderizar },
     ...(d.renderAprobado ? [{ id: "descargar", grupo, titulo: "Descargar el video (MP4)", palabras: "bajar guardar archivo mp4", hacer: () => { window.location.href = archivo(`${d.slug}/${d.renderAprobado}`, true); } }] : []),
     ...(d.dudosas > 0 ? [{ id: "dudosas", grupo, titulo: `Revisar palabras dudosas (${d.dudosas})`, palabras: "confianza tiempos escuchar verificar subtitulos", detalle: "Escucha cada una y confirma que suena bien o recórtala.", hacer: revisarDudosas }] : []),
-    { id: "silencios", grupo, titulo: "Acortar silencios largos", palabras: "pausas quitar silencio ritmo", detalle: "Las pausas de más de 0,6 s quedan en 0,25 s.", deshabilitada: d.ocupado, hacer: () => d.editar({ tipo: "quitarSilencios" }) },
+    { id: "silencios", grupo, titulo: "Acortar silencios largos", palabras: "pausas quitar silencio ritmo", detalle: `Las pausas de más de ${numero(0.6, 1)} s quedan en ${numero(0.25, 2)} s.`, deshabilitada: d.ocupado, hacer: () => d.editar({ tipo: "quitarSilencios" }) },
     { id: "muletillas", grupo, titulo: "Quitar muletillas (eh, em, mmm…)", palabras: "muletillas relleno eh este", deshabilitada: d.ocupado, hacer: () => d.editar({ tipo: "quitarMuletillas" }) },
     { id: "recortes", grupo, titulo: "Deshacer todos los recortes", palabras: "restaurar recuperar volver palabras", confirmar: "¿Deshacer todos los recortes del proyecto?", deshabilitada: d.ocupado, hacer: () => d.editar({ tipo: "quitarRecortes" }) },
     ...Object.entries(FORMATOS).filter(([f]) => f !== d.formato).map(([f, x]) => ({
@@ -50,11 +50,11 @@ export function useAccionesProyecto(d: Datos | null) {
       hacer: () => d.editar({ tipo: "cambiarFormato", formato: f }),
     })),
     ...d.plantillas.filter((x) => x.slug !== d.plantilla).map((x) => ({
-      id: `plantilla:${x.slug}`, grupo, titulo: `Usar la plantilla «${x.nombre}»`, palabras: "plantilla estilo diseño", deshabilitada: d.ocupado,
+      id: `plantilla:${x.slug}`, grupo, titulo: `Usar el estilo del canal «${x.nombre}»`, palabras: "plantilla estilo canal diseño", deshabilitada: d.ocupado,
       hacer: () => d.editar({ tipo: "cambiarPlantilla", plantilla: x.slug }),
     })),
     ...(d.hayMusica ? [{ id: "ritmo", grupo, titulo: "Alinear los cortes al ritmo de la música", palabras: "musica pulsos beat ritmo", deshabilitada: d.ocupado, hacer: d.alinearMusica }] : []),
-    { id: "voz", grupo, titulo: "Regenerar la voz de todo el guion", palabras: "voz audio narracion locucion tts", confirmar: "¿Regenerar la voz de todo el guion? Se realinean los subtítulos y se vuelve a renderizar. No usa la GPU.", deshabilitada: d.ocupado, hacer: () => d.regenerarVoz(null) },
+    { id: "voz", grupo, titulo: "Regenerar la voz de todo el guion", palabras: "voz audio narracion locucion tts", confirmar: "¿Regenerar la voz de todo el guion? Se realinean los subtítulos y se vuelve a crear el video. Con una voz diseñada espera su turno en la tarjeta de video.", deshabilitada: d.ocupado, hacer: () => d.regenerarVoz(null) },
     ...(d.versionAnterior !== null ? [{ id: "deshacer", grupo, titulo: `Volver a la versión anterior (v${d.versionAnterior})`, palabras: "deshacer atras historial undo", confirmar: `¿Volver a la versión ${d.versionAnterior}? Se guarda como versión nueva: no se pierde nada.`, deshabilitada: d.ocupado, hacer: () => d.volverA(d.versionAnterior!) }] : []),
   ];
   useAccionesPaleta(`proyecto:${d?.id ?? ""}`, acciones);

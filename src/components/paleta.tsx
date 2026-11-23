@@ -168,7 +168,7 @@ export function Paleta() {
         {abierta && (
           <div className="flex max-h-[70vh] flex-col">
             <input autoFocus className="w-full border-b border-borde bg-transparent px-4 py-3 text-base outline-none"
-              placeholder="¿Qué quieres hacer? Por ejemplo: quitar silencios, 16:9, renderizar"
+              placeholder="¿Qué quieres hacer? Por ejemplo: quitar silencios, 16:9, crear el video"
               value={consulta} onKeyDown={teclas}
               onChange={(e) => { setConsulta(e.target.value); setActiva(0); }}
               role="combobox" aria-expanded aria-controls={idLista} aria-autocomplete="list"

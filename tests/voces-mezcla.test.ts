@@ -27,3 +27,22 @@ describe("Aviso de voces mezcladas para la revisión final (UX-12)", () => {
     expect(avisoMezclaVoces(escenas(["ef_dora", "em_alex"]), null)).toBe("El video mezcla dos voces: ef_dora y em_alex (escena 2).");
   });
 });
+
+describe("la revisión final del editor muestra el aviso de voces mezcladas (UX-12)", () => {
+  it("con dos voces lo dice sin bloquear; con una sola voz no muestra nada", async () => {
+    const { createElement } = await import("react");
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { AvisoVocesMezcladas } = await import("@/components/editor-proyecto");
+    const html = renderToStaticMarkup(createElement(AvisoVocesMezcladas, { escenas: escenas(["ef_dora", "ef_dora", "em_alex"]), voces }));
+    expect(html).toContain("El video mezcla dos voces: Dora y Álex (escena 3).");
+    expect(html).toContain("Para mirar");
+    expect(renderToStaticMarkup(createElement(AvisoVocesMezcladas, { escenas: escenas(["ef_dora", "ef_dora"]), voces }))).toBe("");
+  });
+
+  it("el aviso va dentro de «¿Está listo para publicar?»", async () => {
+    const fs = await import("node:fs");
+    const src = fs.readFileSync("src/components/editor-proyecto.tsx", "utf8");
+    const listo = src.slice(src.indexOf('id="listo"'), src.indexOf("<InformeQc r={render}"));
+    expect(listo).toContain("<AvisoVocesMezcladas escenas={escenas} voces={v.voces ?? null} />");
+  });
+});

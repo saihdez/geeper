@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { Aviso, Estado, archivo, postJson, useSondeo } from "./comun";
+import { AVISO_DESPERTANDO, Aviso, Estado, archivo, fecha, postJson, useSondeo } from "./comun";
 import { textoVpn, type CuentaInfo, type DatosCuentas, type RedInfo } from "./cuentas";
 import { nombreForma } from "@/lib/glosario";
 import { arreglar, bloquea, LIMITES, revisarTexto, type Problema, type TextoPublicacion } from "@/lib/redes/revision-texto";
@@ -29,7 +29,6 @@ interface PortadaV { archivo: string; titulo: string; creada: string }
 const PRIVACIDAD: Record<string, string> = { publico: "Público", no_listado: "No listado", privado: "Privado", borrador: "Borrador" };
 const NOMBRE_RED: Record<string, string> = { youtube: "YouTube", tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
 
-const fecha = (s: string) => new Date(s).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" });
 /** «Público» para la red: Instagram no tiene privado, se publica al terminar. */
 const esPublico = (red: string, privacidad: string) => privacidad === "publico" || red === "instagram";
 /** Cada gravedad con palabra e ícono, no sólo color. */
@@ -132,9 +131,11 @@ function SugerirTexto({ proyectoId, red, v, cambiar }: { proyectoId: string; red
     <div className="space-y-1 sm:col-span-2">
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" className="boton" disabled={pensando} onClick={() => void sugerir()}>
-          {pensando ? "Pensando (hasta 1 min)…" : sugerido ? "↻ Sugerir otra vez" : "✨ Sugerir título, descripción y hashtags"}
+          {pensando ? "Pensando…" : sugerido ? "↻ Sugerir otra vez" : "✨ Sugerir título, descripción y hashtags"}
         </button>
-        <span className="text-xs text-tenue">Con la IA de esta PC, a partir de lo que dice el video. Reemplaza lo que esté escrito abajo.</span>
+        {pensando
+          ? <span className="text-xs text-tenue" role="status">{AVISO_DESPERTANDO}</span>
+          : <span className="text-xs text-tenue">Con la IA de esta PC, a partir de lo que dice el video. Reemplaza lo que esté escrito abajo.</span>}
       </div>
       {sugerido && !error && <p className="text-xs text-amber-300">Léelo y corrige lo que haga falta antes de publicar: la IA puede equivocarse.</p>}
       {error && <Aviso tipo="alerta">{error}</Aviso>}
