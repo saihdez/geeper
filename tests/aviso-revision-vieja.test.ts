@@ -36,7 +36,7 @@ describe("montado en el editor (UX-16)", () => {
   const editor = fs.readFileSync(path.join(process.cwd(), "src", "components", "editor-proyecto.tsx"), "utf8");
 
   it("el aviso va arriba del panel de revisión, antes del informe", () => {
-    const panel = editor.slice(editor.indexOf("¿Está listo para publicar?</h2>"));
+    const panel = editor.slice(editor.indexOf("¿Está listo para publicar?</h3>"));
     expect(panel.indexOf("<AvisoRevisionVieja")).toBeGreaterThan(-1);
     expect(panel.indexOf("<AvisoRevisionVieja")).toBeLessThan(panel.indexOf("<InformeQc"));
     expect(panel).toMatch(/<AvisoRevisionVieja versionRevisada=\{render\.versionNumero\}[^]*?alCrear=\{\(\) => void renderizar\(\)\}/);

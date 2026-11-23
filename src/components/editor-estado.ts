@@ -220,3 +220,26 @@ export function escenaDeEdicion(ed: object): string | null {
   const e = ed as { tipo?: unknown; escena?: unknown };
   return typeof e.escena === "string" && e.escena && e.tipo !== "quitarEscena" ? e.escena : null;
 }
+
+/** UX-08: los 4 pasos del editor, en el orden en que se usan. El índice fijo de arriba salta a cada uno. */
+export const PASOS_EDITOR = [
+  { id: "paso-1", titulo: "Mira tu video" },
+  { id: "paso-2", titulo: "Corrige lo que se dice y se ve" },
+  { id: "paso-3", titulo: "Voz y estilo" },
+  { id: "paso-4", titulo: "Crea, descarga y publica" },
+] as const;
+
+/**
+ * UX-08: la línea fija «Siguiente paso: …» del editor. `ir` es el ancla a la que lleva.
+ * - creando: hay un video creándose; fallo: el último intento falló (el aviso con «Volver a intentar» está arriba).
+ * - alDia: el último video tiene los últimos cambios; qc: el resultado de su revisión.
+ */
+export function siguientePaso(a: { creando: boolean; fallo: boolean; hayVideo: boolean; alDia: boolean; qc: "listo" | "con-avisos" | "falta" | null; aprobado: boolean }): { texto: string; ir: string } {
+  if (a.creando) return { texto: "Se está creando tu video. Mientras tanto puedes seguir corrigiendo.", ir: "#paso-2" };
+  if (a.fallo) return { texto: "No se pudo crear el video. Arriba puedes volver a intentarlo.", ir: "#arriba" };
+  if (!a.hayVideo) return { texto: "Corrige lo que haga falta y después crea el video con el botón de arriba.", ir: "#paso-2" };
+  if (!a.alDia) return { texto: "Tus cambios todavía no están en el video: créalo otra vez con el botón de arriba.", ir: "#arriba" };
+  if (a.qc && (a.qc === "falta" || !a.aprobado)) return { texto: "Arregla lo que marca «¿Está listo para publicar?».", ir: "#listo" };
+  if (!a.aprobado) return { texto: "El video no pasó la revisión: créalo otra vez con el botón de arriba.", ir: "#arriba" };
+  return { texto: "Tu video está listo: descárgalo o publícalo.", ir: "#paso-4" };
+}

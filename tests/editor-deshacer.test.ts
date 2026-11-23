@@ -40,7 +40,8 @@ describe("deshacer (UX-38)", () => {
 
   it("el botón está arriba, pregunta, y «Volver a esta» también pregunta", () => {
     expect(editor).toContain("↶ Deshacer");
-    expect(editor).toContain('href="#historial">Historial</a>');
+    // UX-08: el historial va plegado; el botón de arriba lo abre.
+    expect(editor).toMatch(/href="#historial" onClick=\{\(\) => setHistorialAbierto\(true\)\}>Historial<\/a>/);
     expect(editor).toContain('id="historial"');
     expect(editor).toContain("onClick={() => volverA(x.numero,");
     expect(editor).toMatch(/if \(confirm\(pregunta\)\)/);
