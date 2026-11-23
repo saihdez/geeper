@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { json, manejar } from "@/lib/http";
+import { ESCRITORIO } from "@/lib/plataforma";
 
 export const dynamic = "force-dynamic";
 
@@ -26,5 +27,5 @@ async function listar(req: Request) {
   // `ahora` sólo sirve para la duración de lo que empezó y no terminó: si no hay nada así va fijo, para
   // que la respuesta sea idéntica mientras nada cambie y la pantalla no se repinte (useSondeo compara).
   const enCurso = trabajos.some((t) => t.iniciado && !t.terminado);
-  return json({ trabajos, workerVivo: !!latido && ahora - new Date(latido.valor).getTime() < 60_000, ahora: enCurso ? ahora : 0 });
+  return json({ trabajos, workerVivo: !!latido && ahora - new Date(latido.valor).getTime() < 60_000, ahora: enCurso ? ahora : 0, escritorio: ESCRITORIO });
 }

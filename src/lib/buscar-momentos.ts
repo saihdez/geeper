@@ -157,6 +157,8 @@ export interface FuenteListada {
   idioma: string | null;
   /** Segundos revisados (ver `revisadoDe`). */
   revisado: number;
+  /** Con qué opciones se buscó, para volver a pedir lo mismo (UX-24). */
+  opciones: OpcionesMomentos | null;
   creado: string | null;
 }
 
@@ -172,7 +174,7 @@ export async function listarFuentes(): Promise<FuenteListada[]> {
       const rc = path.join(base, id, "candidatos.json");
       const r = (await existe(rc)) ? (JSON.parse(await fs.readFile(rc, "utf8")) as ResultadoMomentos) : null;
       const t = (await fs.stat(r ? rc : path.join(base, id, "info.json"))).mtimeMs;
-      out.push({ id, info, candidatos: r?.candidatos ?? null, idioma: r?.idioma ?? null, revisado: revisadoDe(info.duracion, r?.revisado), creado: r?.creado ?? null, t });
+      out.push({ id, info, candidatos: r?.candidatos ?? null, idioma: r?.idioma ?? null, revisado: revisadoDe(info.duracion, r?.revisado), opciones: r?.opciones ?? null, creado: r?.creado ?? null, t });
     } catch {
       /* fuente a medias: se ignora */
     }

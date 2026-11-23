@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { etapaSimple, explicarError, nombreTipo } from "@/lib/textos";
-import { Aviso, Barra, Estado, haceCuanto, postJson, segundos, useSondeo } from "./comun";
+import { Aviso, Barra, Estado, haceCuanto, MotorApagado, postJson, segundos, useSondeo } from "./comun";
 
 interface Trabajo {
   id: string;
@@ -48,13 +48,20 @@ export function agruparTrabajos<T extends Pick<Trabajo, "estado">>(trabajos: T[]
   ];
 }
 
+/** ¿La caja está (casi) al final? Si la persona subió para leer, no se la baja de golpe (UX-41). */
+export function cercaDelFinal(el: Pick<HTMLElement, "scrollHeight" | "scrollTop" | "clientHeight">, margen = 40): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight < margen;
+}
+
 function Log({ id, vivo }: { id: string; vivo: boolean }) {
   const [texto, setTexto] = useState("Cargando…");
   const caja = useRef<HTMLPreElement>(null);
-  // Lo último que pasó está al final: se abre por ahí (UX-41).
+  // Se abre por el final (lo último que pasó) y lo sigue mientras la persona no suba a leer (UX-41).
+  // Se mide al desplazarse, antes de que llegue texto nuevo: después la caja ya creció.
+  const pegado = useRef(true);
   useEffect(() => {
     const el = caja.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el && pegado.current) el.scrollTop = el.scrollHeight;
   }, [texto]);
   useEffect(() => {
     let activo = true;
@@ -67,7 +74,7 @@ function Log({ id, vivo }: { id: string; vivo: boolean }) {
       if (i) clearInterval(i);
     };
   }, [id, vivo]);
-  return <pre ref={caja} className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-all rounded bg-black/60 p-3 text-xs leading-relaxed text-slate-300">{texto}</pre>;
+  return <pre ref={caja} onScroll={(e) => { pegado.current = cercaDelFinal(e.currentTarget); }} className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-all rounded bg-black/60 p-3 text-xs leading-relaxed text-slate-300">{texto}</pre>;
 }
 
 /** UX-14: el error en palabras simples; el texto tal cual, plegado, para quien dé soporte. */
@@ -87,7 +94,7 @@ export function ErrorTrabajo({ error }: { error: string }) {
 }
 
 export function ListaTrabajos({ proyectoId }: { proyectoId?: string }) {
-  const { datos, error, recargar } = useSondeo<{ trabajos: Trabajo[]; workerVivo: boolean; ahora: number }>(
+  const { datos, error, recargar } = useSondeo<{ trabajos: Trabajo[]; workerVivo: boolean; escritorio?: boolean; ahora: number }>(
     `/api/trabajos${proyectoId ? `?proyecto=${proyectoId}` : ""}`,
     2000,
   );
@@ -149,12 +156,7 @@ export function ListaTrabajos({ proyectoId }: { proyectoId?: string }) {
 
   return (
     <div className="space-y-3">
-      {datos && !workerVivo && (
-        <Aviso tipo="alerta">
-          <p className="font-medium">El motor de Geeper está apagado, así que nada avanza.</p>
-          <p className="mt-1">Cierra Geeper y ábrelo otra vez con <code>pnpm run dev:up</code> (enciende la web y el motor juntos).</p>
-        </Aviso>
-      )}
+      {datos && !workerVivo && <MotorApagado escritorio={datos.escritorio} />}
       {error && <Aviso tipo="error">{error}</Aviso>}
       {fallo && <Aviso tipo="error">{fallo}</Aviso>}
       {datos?.trabajos.length === 0 && <p className="text-sm text-tenue">Todavía no hay nada: aquí verás cada cosa que Geeper haga por ti.</p>}

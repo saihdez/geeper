@@ -53,3 +53,21 @@ describe("fallos al abrir un enlace (UX-03)", () => {
     expect(s).not.toContain("No pude analizar ese video: {fallo.error}");
   });
 });
+
+describe("«Volver a intentar» con un archivo subido en Windows (UX-03)", () => {
+  it("acepta C:\\… y rechaza lo que no es enlace ni ruta", async () => {
+    const { srcAceptable } = await import("@/lib/fuentes");
+    expect(srcAceptable("C:\\Users\\a\\geeper-data\\_subidos\\x.mp4", path.win32)).toBe(true);
+    expect(srcAceptable("/home/a/geeper-data/_subidos/x.mp4", path.posix)).toBe(true);
+    expect(srcAceptable("~/videos/x.mp4", path.posix)).toBe(true);
+    expect(srcAceptable("https://youtu.be/abc")).toBe(true);
+    expect(srcAceptable("videos/x.mp4", path.win32)).toBe(false);
+    expect(srcAceptable("youtube.com/watch?v=abc", path.posix)).toBe(false);
+  });
+
+  it("sólo un programa que no arranca cuenta como «falta la herramienta»", async () => {
+    const { explicarFalloYtdlp, FALLO_ENLACE } = await import("@/lib/fuentes");
+    expect(explicarFalloYtdlp("spawn C:\\Program Files\\Geeper\\python.exe ENOENT")).toMatch(/le falta la herramienta/);
+    expect(explicarFalloYtdlp("ENOENT: no such file or directory, rename '/x/.fuente.mp4'")).toBe(FALLO_ENLACE);
+  });
+});

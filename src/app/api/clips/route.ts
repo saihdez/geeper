@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { Formato } from "@/lib/esquema";
 import { leerFuente } from "@/lib/fuentes";
 import { listarFuentes } from "@/lib/buscar-momentos";
+import { ESCRITORIO } from "@/lib/plataforma";
 import { json, manejar } from "@/lib/http";
 import { ENCUADRES } from "@/lib/importador-clip";
 import { crearClip } from "@/lib/servicios";
@@ -21,7 +22,7 @@ export async function GET() {
   });
   const latido = await ultimoLatidoWorker();
   const workerVivo = !!latido && Date.now() - latido.getTime() < 60_000;
-  return json({ fuentes: await listarFuentes(), trabajos, workerVivo });
+  return json({ fuentes: await listarFuentes(), trabajos, workerVivo, escritorio: ESCRITORIO });
 }
 
 const Pedido = z.object({
