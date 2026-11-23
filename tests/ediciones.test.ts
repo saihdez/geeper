@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { compilar } from "@/lib/compilador";
-import { aplicarEdicion } from "@/lib/ediciones";
+import { aplicarEdicion, Edicion } from "@/lib/ediciones";
 import { pista, validarProyecto } from "@/lib/esquema";
 import { escenasEnLinea, todosLosGrupos } from "@/lib/linea";
 import { PLANTILLAS_INICIALES } from "@/lib/plantillas";
@@ -33,6 +33,13 @@ describe("ediciones sin GPU", () => {
     expect(pista(p, "voz").clips.map((c) => c.escena)).toEqual(["e03", "e01", "e02"]);
     expect(pista(p, "visual").clips.map((c) => c.escena)).toEqual(["e03", "e01", "e02"]);
     expect(todosLosGrupos(p)[0]!.texto.startsWith("Escena 3")).toBe(true);
+  });
+
+  it("UX-02: un subtítulo no puede quedar vacío", () => {
+    const r = Edicion.safeParse({ tipo: "corregirSubtitulo", escena: "e02", desde: 0, hasta: 2, texto: "   " });
+    expect(r.success).toBe(false);
+    expect(r.error?.issues[0]?.message).toBe("Un subtítulo no puede quedar vacío. Para quitar la palabra, recórtala arriba.");
+    expect(Edicion.safeParse({ tipo: "corregirSubtitulo", escena: "e02", desde: 0, hasta: 2, texto: "hola" }).success).toBe(true);
   });
 
   it("corregir un subtítulo sólo toca lo mostrado", () => {

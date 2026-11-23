@@ -26,7 +26,7 @@ const Id = z.string().regex(/^[a-z0-9-]+$/);
 
 export const Edicion = z.discriminatedUnion("tipo", [
   // `revisada`: la persona escuchó el tramo y escribió lo que se oye (revisión de dudosas en clips): deja de ser dudosa.
-  z.object({ tipo: z.literal("corregirSubtitulo"), escena: z.string(), desde: z.number().int(), hasta: z.number().int(), texto: z.string(), revisada: z.boolean().optional() }),
+  z.object({ tipo: z.literal("corregirSubtitulo"), escena: z.string(), desde: z.number().int(), hasta: z.number().int(), texto: z.string().refine((t) => t.trim().length > 0, "Un subtítulo no puede quedar vacío. Para quitar la palabra, recórtala arriba."), revisada: z.boolean().optional() }),
   z.object({ tipo: z.literal("quitarCorreccion"), escena: z.string(), desde: z.number().int() }),
   z.object({ tipo: z.literal("quitarEscena"), escena: z.string() }),
   z.object({ tipo: z.literal("moverEscena"), escena: z.string(), a: z.number().int().min(0) }),
