@@ -402,8 +402,10 @@ export async function generarPresentador(ctx: ContextoPresentador, proyectoId: s
  * devuelve sus índices (las que fallan dejan su escena como estaba). Como `generarPresentador`, se guarda
  * sobre la versión de ahora (SEG-05); una toma cuya escena se quitó mientras tanto no se pone.
  */
-export async function generarPresentadores(ctx: ContextoPresentador, proyectoId: string, p: Proyecto, ops: OpcionesPresentador[], nota: string) {
-  const guardada = await leerGuardado(proyectoId);
+export async function generarPresentadores(ctx: ContextoPresentador, proyectoId: string, p: Proyecto, ops: OpcionesPresentador[], nota: string, guardadaAlLeer?: Proyecto | null) {
+  // SEG-05: lo guardado cuando se leyó `p`. Quien lee `p` mucho antes (el protagonista compone escenas
+  // minutos antes de llegar aquí) lo pasa; si no, una edición hecha en ese rato se perdería sin aviso.
+  const guardada = guardadaAlLeer === undefined ? await leerGuardado(proyectoId) : guardadaAlLeer;
   const tomas: TomaPreparada[] = [];
   for (const op of ops) tomas.push(await prepararToma(ctx, p, op));
   const corrida = dirCorrida(ctx.dir);
@@ -418,9 +420,15 @@ export async function generarPresentadores(ctx: ContextoPresentador, proyectoId:
       ctx.log(`Toma ${i + 1}: Wan2GP no la entregó; esa escena queda como estaba.`);
       continue;
     }
-    const r = await armarToma(ctx, nuevo, tomas[i]!, v, Math.round(segundos / tomas.length));
-    nuevo = r.nuevo;
-    listas.push({ i, plan: tomas[i]!.plan, asset: r.conCara });
+    try {
+      const r = await armarToma(ctx, nuevo, tomas[i]!, v, Math.round(segundos / tomas.length));
+      nuevo = r.nuevo;
+      listas.push({ i, plan: tomas[i]!.plan, asset: r.conCara });
+    } catch (e) {
+      // Una toma que no se puede armar no tira las demás (las que fallan dejan su escena como estaba).
+      if (ctx.signal?.aborted) throw e;
+      ctx.log(`Toma ${i + 1}: no se pudo armar (${e instanceof Error ? e.message : String(e)}); esa escena queda como estaba.`);
+    }
   }
   if (!listas.length) throw new Error("Wan2GP no entregó ninguna toma.");
   let final = p;

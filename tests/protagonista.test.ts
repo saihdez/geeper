@@ -81,3 +81,15 @@ describe("Wan2GP en lote: cada video por su semilla", () => {
     expect(rutasPorSemilla("", [202, 203], out)).toEqual([path.join(out, "2026-11-23-01h00m00s_seed202_x.mp4"), null]);
   });
 });
+
+describe("el protagonista no pisa lo que se edita mientras compone las escenas (SEG-05)", () => {
+  it("lee lo guardado junto con el proyecto y se lo pasa a generarPresentadores", () => {
+    const s = fs.readFileSync(path.join(process.cwd(), "src", "lib", "protagonista.ts"), "utf8");
+    expect(s).toMatch(/let \{ p \} = await versionDeProyecto\(proyectoId\);\s*\/\/[^\n]*\n\s*let guardada = await leerGuardado\(proyectoId\);/);
+    expect(s).toContain(", guardada);");
+    const pres = fs.readFileSync(path.join(process.cwd(), "src", "lib", "presentador.ts"), "utf8");
+    expect(pres).toContain("guardadaAlLeer === undefined ? await leerGuardado(proyectoId) : guardadaAlLeer");
+    // Una toma que no se arma no tira las demás.
+    expect(pres).toMatch(/try \{\s*const r = await armarToma\(/);
+  });
+});
