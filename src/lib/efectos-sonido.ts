@@ -152,11 +152,6 @@ export function medidasMoss(stdout: string): MedidasMoss {
   return m;
 }
 
-/**
- * Genera (o reutiliza) varios efectos de la biblioteca con **una sola carga** del modelo (GPU-05): lo que ya
- * está no usa la tarjeta, y lo que falta va todo junto a un proceso de MOSS. Si alguno sale y otro no, se
- * guardan los que salieron y los demás quedan en `fallidos`; si no sale ninguno, lanza el error.
- */
 /** Las rutas que MOSS confirmó en stdout (`{"salida": …}`, después de `sf.write`) (función pura). */
 export function salidasConfirmadas(stdout: string): Set<string> {
   const hechas = new Set<string>();
@@ -172,6 +167,11 @@ export function salidasConfirmadas(stdout: string): Set<string> {
   return hechas;
 }
 
+/**
+ * Genera (o reutiliza) varios efectos de la biblioteca con **una sola carga** del modelo (GPU-05): lo que ya
+ * está no usa la tarjeta, y lo que falta va todo junto a un proceso de MOSS. Si alguno sale y otro no, se
+ * guardan los que salieron y los demás quedan en `fallidos`; si no sale ninguno, lanza el error.
+ */
 export async function generarEfectos(
   ctx: Contexto & { signal?: AbortSignal },
   lista: readonly PedidoEfecto[],
