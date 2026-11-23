@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Aviso, Barra, Estado, archivo, pedir, postJson, segundos, useSondeo } from "./comun";
+import { Aviso, Barra, Estado, archivo, haceCuanto, pedir, postJson, segundos, useSondeo } from "./comun";
 import { ACCEPT_IMAGEN, esVector } from "@/lib/formatos-vector";
 import { explicarError } from "@/lib/textos";
 import { avisoSubtitulosRapidos, explicarRegla, LIMITES_SUBTITULOS, porQueFalla, resumirQc, type FraseQc, type SubtitulosRapidos } from "@/lib/qc-explicado";
@@ -19,7 +19,7 @@ import { SelectorEncuadre, type EncuadreV } from "./selector-encuadre";
 import { PanelOtroEditor } from "./panel-otro-editor";
 import { useAccionesProyecto } from "./acciones-proyecto";
 import { FranjaAviso, type MensajeEditor } from "./franja-aviso";
-import { avisoGuardado, falloReciente, textoFalloCreacion, renderFallido, avisoRitmo, correccionesVacias, enLista, haceCuanto, mensajeSinCambios, opcionesRitmo, versionParaDeshacer, errorSubtitulo, escenasConOtraVoz, estaActivo, estadoCreacion, mismoContenido, pasoRender, preguntaVozEscena, renderEnCurso, verTrabajos, TEXTO_RITMO_GUARDADO, type TrabajoV, type VocesV } from "./editor-estado";
+import { avisoGuardado, falloReciente, textoFalloCreacion, renderFallido, avisoRitmo, correccionesVacias, enLista, mensajeSinCambios, opcionesRitmo, versionParaDeshacer, errorSubtitulo, escenasConOtraVoz, estaActivo, estadoCreacion, mismoContenido, pasoRender, preguntaVozEscena, renderEnCurso, verTrabajos, TEXTO_RITMO_GUARDADO, type TrabajoV, type VocesV } from "./editor-estado";
 import { Plegable } from "./plegable";
 import { EdicionPorTexto, EfectosEscena, PanelAvanzado, PanelEstilo, type EfectosV, type EstiloV, type ExtrasV, type PalabraV } from "./edicion-avanzada";
 

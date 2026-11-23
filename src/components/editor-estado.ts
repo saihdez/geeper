@@ -211,14 +211,3 @@ export function versionParaDeshacer(versiones: VersionV[], actual: number): Vers
   const antes = versiones.filter((x) => x.numero < cur).sort((a, b) => b.numero - a.numero);
   return antes.find((x) => !hoy?.hash || !x.hash || x.hash !== hoy.hash) ?? null;
 }
-
-/** UX-38: «hace un momento», «hace 5 min», «hace 2 h», «ayer» o la fecha. */
-export function haceCuanto(fecha: string | Date, ahora: number = Date.now()): string {
-  const t = new Date(fecha).getTime();
-  const s = Math.max(0, (ahora - t) / 1000);
-  if (s < 60) return "hace un momento";
-  if (s < 3600) return `hace ${Math.floor(s / 60)} min`;
-  if (s < 86_400) return `hace ${Math.floor(s / 3600)} h`;
-  if (s < 2 * 86_400) return "ayer";
-  return new Date(t).toLocaleDateString("es-MX", { day: "numeric", month: "short" });
-}
