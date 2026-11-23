@@ -4,7 +4,7 @@ import { Aviso, Barra, archivo, pedir, postJson, useSondeo } from "./comun";
 import { textoEspera, useMotorVivo } from "./motor";
 import { avisoDescarga, coincideBusqueda, entradasSinArchivo, iconoDeTipo, LIGERA, textoFaltaArchivo, textoGb, tipoMiniatura, tuArchivo } from "@/lib/workflows-texto";
 
-interface WfV { id: string; titulo: string; descripcion: string; categoria: string; tipo: string; etiquetas: string[]; modelos: string[]; tamano: number; local: boolean; bloqueo: string | null; aviso: string | null; comunidad: boolean; entradas: number; uso: number; fecha: string | null; miniaturas: string[] }
+interface WfV { id: string; titulo: string; original?: string | null; descripcion: string; categoria: string; tipo: string; etiquetas: string[]; modelos: string[]; tamano: number; local: boolean; bloqueo: string | null; aviso: string | null; comunidad: boolean; entradas: number; uso: number; fecha: string | null; miniaturas: string[] }
 interface CorridaV { id: string; workflow: string; titulo: string; creada: string; estado: "preparada" | "hecha" | "fallida"; salidas: { archivo: string; tipo: string }[]; segundos?: number; error?: string; trabajo: string | null; cancelada?: boolean }
 interface TrabajoV { id: string; estado: string; etapa: string; progreso: number; corrida: string | null; workflow: string | null }
 interface Datos { comfy: { listo: boolean; falta: string | null; instalando: boolean; disponible: boolean; aMedias?: boolean; detalle?: string }; workflows: WfV[]; corridas: CorridaV[]; trabajos: TrabajoV[] }
@@ -108,6 +108,7 @@ export function PaginaWorkflows() {
                     </div>
                     <div className="space-y-1 p-2">
                       <p className="line-clamp-2 text-sm font-medium">{w.titulo}</p>
+                      {w.original && <p className="line-clamp-1 text-[11px] text-tenue" lang="en">{w.original}</p>}
                       <p className="text-[11px] text-tenue">
                         {w.local ? (w.bloqueo ? "Código de la comunidad no disponible" : w.aviso ? "Experimental" : w.comunidad ? `${w.categoria} · usa código de la comunidad` : `${w.categoria}${w.tamano ? ` · baja ${gb(w.tamano)}` : ""}`) : "Nube de pago · bloqueado"}
                       </p>
@@ -286,6 +287,7 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="text-lg font-semibold">{w.titulo}</h2>
+          {w.original && <p className="text-xs text-tenue">Nombre original: <span lang="en">{w.original}</span></p>}
           <p className="text-xs text-tenue">{w.categoria}{w.modelos.length ? ` · ${w.modelos.join(", ")}` : ""}</p>
         </div>
         <button className="boton" onClick={cerrar}>Cerrar</button>

@@ -21,9 +21,10 @@ import type { DatosPlantilla } from "./plantillas";
 import { logoPermitido } from "./plantillas-rutas";
 import { lineas, lineasDePalabras } from "./subtitulos";
 import { textoSobre } from "./colores-marca";
+import { fuentesParaProyecto } from "./fuentes-letra";
 import { gsapParaProyecto } from "./gsap-local";
 
-export const VERSION_COMPILADOR = "compilador-hf-v3";
+export const VERSION_COMPILADOR = "compilador-hf-v4";
 
 export interface CajaRevisada {
   nombre: string;
@@ -449,6 +450,9 @@ export function compilar(
   const t = plantilla.tipografia;
   const fuenteTitulos = `"${t.titulos}", "${t.texto}", sans-serif`;
   const fuenteTexto = `"${t.texto}", sans-serif`;
+  // Letras de public/fuentes, sin internet (REN-10): con su @font-face, Hyperframes no las baja de Google.
+  const letras = fuentesParaProyecto([t.titulos, t.texto]);
+  Object.assign(archivos, letras.archivos);
   const html = `<!doctype html>
 <html lang="es" data-resolution="${vertical ? "portrait" : W === H ? "square" : "landscape"}">
   <head>
@@ -457,6 +461,7 @@ export function compilar(
     <!-- Generado por Geeper (${VERSION_COMPILADOR}) desde geeper.json: no editar a mano. -->
     <script src="${gsap.src}"></script>
     <style>
+${letras.css}
       :root {
         --tinta: ${c.tinta};
         --activa: ${c.activa};

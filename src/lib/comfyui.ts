@@ -17,7 +17,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { argsAtencionComfyui, atencionInstalada, elegirAtencion } from "./atencion";
 import { comandoGpuSolo } from "./gpu-solo";
-import { bajarHub, dirHub, HUB_COMMIT, resolverArchivo, unirHub } from "./hub-comfy";
+import { bajarHub, dirHub, HUB_COMMIT, resolverArchivo, traducirReceta, unirHub } from "./hub-comfy";
 import { pythonDeVenv } from "./plataforma";
 import { correr, matarArbol, patronComando } from "./proceso";
 import { anotarProceso } from "./procesos-largos";
@@ -102,6 +102,8 @@ export interface Workflow {
   miniaturas: string[];
   fecha: string | null;
   uso: number;
+  /** Título en inglés cuando `titulo` está traducido (UX-36); null si no se tradujo. */
+  original?: string | null;
 }
 
 /** Nombres de categoría en español (las que no están, quedan como vienen). */
@@ -196,7 +198,8 @@ export async function leerCatalogo(dir = COMFYUI_DIR, python = COMFYUI_PYTHON): 
     }
     await fs.writeFile(cache, JSON.stringify({ clave: `${dir}:${await fs.readFile(marca, "utf8").catch(() => "?")}:${HUB_COMMIT}:${existsSync(hub)}:v${FORMATO_CATALOGO}`, ...datos }));
   }
-  g.__catalogoComfy = { clave, workflows: normalizarCatalogo(datos.indice, datos.archivos), archivos: datos.archivos };
+  // Título y descripción en español (UX-36, hub-comfy.ts); el original queda en `original`.
+  g.__catalogoComfy = { clave, workflows: normalizarCatalogo(datos.indice, datos.archivos).map((w) => traducirReceta(w)), archivos: datos.archivos };
   return g.__catalogoComfy;
 }
 

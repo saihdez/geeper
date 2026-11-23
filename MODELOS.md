@@ -48,7 +48,7 @@ guarda su licencia en `geeper.json` y en la tabla `Asset`; el QC avisa (sin bloq
 | Material | Licencia | Nota |
 |---|---|---|
 | Música de `MoneyPrinterTurbo/resource/songs` | **Desconocida** | El README de MPT dice que viene de videos de YouTube («si infringe, bórrala»). La plantilla «GTA VI Shorts» la usa para no cambiar el canal; el QC avisa en cada render. Ver `docs/DECISIONES.md`. |
-| Tipografías Archivo Black, Montserrat, Inter | SIL Open Font License | Las resuelve Hyperframes |
+| Tipografías del editor de plantillas: Archivo Black, Anton, Bebas Neue, Oswald, Montserrat, Inter, Poppins, Outfit, Rubik, Barlow, DM Sans, Work Sans, Space Grotesk, Nunito, Lato, Roboto, Raleway, Playfair Display, Merriweather | SIL Open Font License 1.1 (las 19: comprobado en `ofl/<familia>/METADATA.pb` de [google/fonts](https://github.com/google/fonts), 2026-11-23) | Vienen dentro de Geeper en `public/fuentes/<familia>/` (woff2 de fonts.gstatic.com, subconjuntos latin y latin-ext; 3,7 MB), cada carpeta con su `OFL.txt`. El render y «En vivo» las usan sin internet (`src/lib/fuentes-letra.ts`, REN-10). Una familia que no esté ahí la sigue bajando Hyperframes de Google Fonts. La OFL permite usarlas y redistribuirlas, también en productos comerciales, siempre que viajen con su licencia y no se vendan solas |
 | Clips subidos por la persona | «propia» | La persona responde por ellos |
 
 **Nada de material de Rockstar** (logos, personajes, capturas, música) en ninguna plantilla.

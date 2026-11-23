@@ -1,4 +1,5 @@
 /** Cliente de la API HTTP de MoneyPrinterTurbo (127.0.0.1:8080). */
+import { randomUUID } from "node:crypto";
 import { encenderIaMpt } from "./ia-mpt";
 import { correr } from "./proceso";
 import { MPT_API, MPT_CONTENEDOR, MPT_TAREAS } from "./rutas";
@@ -57,6 +58,10 @@ export function cuerpoVideo(tema: string, formato: Formato, mpt: DatosPlantilla[
 export async function crearVideo(cuerpo: ReturnType<typeof cuerpoVideo>, log?: (l: string) => void): Promise<string> {
   const ia = await encenderIaMpt({ log });
   if (ia.encendidos.length) log?.(`IA de MPT encendida de nuevo: ${ia.encendidos.join(", ")}`);
+  if (soloMateriales()) {
+    if (await cliConMateriales()) return arrancarCli(cuerpo, log);
+    log?.("GEEPER_MPT_SOLO_MATERIALES=1, pero el MPT que corre no trae «cli.py --stop-at materials»: se pide el video completo por la API");
+  }
   const r = await pedir("/videos", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(cuerpo) });
   const id = (r.json as { data?: { task_id?: string } } | null)?.data?.task_id;
   if (r.status !== 200 || !id) throw new Error(`MPT rechazó el pedido (${r.status}): ${JSON.stringify(r.json).slice(0, 500)}`);
@@ -106,13 +111,112 @@ export async function materialesListos(taskId: string): Promise<boolean> {
   return r.codigo === 0;
 }
 
+/**
+ * TER-06 completo, apagado por defecto: con GEEPER_MPT_SOLO_MATERIALES=1 la tarea se pide con
+ * `cli.py --stop-at materials` por `docker exec` dentro del contenedor de la API, y MPT se detiene al tener
+ * el guion, la voz y los clips: no arma su video final (57–101 s con la tarjeta). La API no tiene ese
+ * punto de parada (sólo /videos, /subtitle y /audio). La tarea queda en la misma carpeta
+ * (storage/tasks/<id>), así que la importación no cambia.
+ */
+export const soloMateriales = (env: Record<string, string | undefined> = process.env) => env.GEEPER_MPT_SOLO_MATERIALES === "1";
+
+/** Dónde escribe cli.py lo que va haciendo, dentro del contenedor (fuera de las carpetas de MPT). */
+export const logCli = (taskId: string) => `/tmp/geeper-mpt-${taskId}.log`;
+
+/** Los argumentos de cli.py para el mismo pedido que cuerpoVideo manda a la API (función pura). */
+export function argsCli(taskId: string, c: ReturnType<typeof cuerpoVideo>): string[] {
+  const a = ["--task-id", taskId, "--stop-at", "materials", "--video-subject", c.video_subject];
+  if (c.video_script) a.push("--video-script", c.video_script);
+  a.push(
+    "--video-language", c.video_language,
+    "--voice-name", c.voice_name,
+    "--voice-rate", String(c.voice_rate),
+    "--video-source", c.video_source,
+    "--video-aspect", c.video_aspect,
+    "--video-clip-duration", String(c.video_clip_duration),
+    "--video-count", String(c.video_count),
+    "--paragraph-number", String(c.paragraph_number),
+    "--n-threads", String(c.n_threads),
+    "--bgm-type", c.bgm_type || "none",
+    c.subtitle_enabled ? "--subtitle-enabled" : "--no-subtitle-enabled",
+  );
+  if (c.video_script_prompt) a.push("--video-script-prompt", c.video_script_prompt);
+  return a;
+}
+
+/** El MPT que corre trae cli.py con la parada en «materials» (se lee su --help, que no carga nada más). */
+async function cliConMateriales(): Promise<boolean> {
+  const r = await correr("docker", ["exec", MPT_CONTENEDOR, "python", "cli.py", "--help"], { permitirFallo: true, signal: null, timeout: 60_000 });
+  return r.codigo === 0 && /--stop-at/.test(r.stdout) && /\bmaterials\b/.test(r.stdout);
+}
+
+/**
+ * Lo que se sabe de una tarea de cli.py a partir de `estadoCli` (función pura): null si no es una tarea
+ * de cli.py (no hay log); si su proceso sigue, un avance aproximado (por los archivos que ya escribió);
+ * si terminó, las últimas líneas de su log.
+ */
+export function leerEstadoCli(codigo: number, stdout: string): { corriendo: true; progreso: number } | { corriendo: false; log: string } | null {
+  if (codigo !== 0) return null;
+  const [primera = "", ...resto] = stdout.split("\n");
+  const m = /^corriendo (\d+)$/.exec(primera.trim());
+  if (m) return { corriendo: true, progreso: Number(m[1]) };
+  return { corriendo: false, log: resto.join("\n").trim() };
+}
+
+/** Script de sh para `estadoCli`: $1 = id de la tarea, $2 = su log. */
+const SH_ESTADO_CLI = [
+  'id="$1"; log="$2"; [ -f "$log" ] || exit 3',
+  'for p in /proc/[0-9]*; do',
+  '  [ "$p" = "/proc/$$" ] && continue',
+  '  case "$(tr "\\000" " " 2>/dev/null < "$p/cmdline")" in',
+  '    *"cli.py --task-id $id "*) d="storage/tasks/$id"; n=5; [ -s "$d/script.json" ] && n=20; [ -s "$d/audio.mp3" ] && n=40; echo "corriendo $n"; exit 0;;',
+  "  esac",
+  "done",
+  'echo terminada; tail -n 15 "$log"',
+].join("\n");
+
+export async function estadoCli(taskId: string) {
+  const r = await correr("docker", ["exec", "-w", "/MoneyPrinterTurbo", MPT_CONTENEDOR, "sh", "-c", SH_ESTADO_CLI, "sh", taskId, logCli(taskId)], { permitirFallo: true, signal: null });
+  return leerEstadoCli(r.codigo, r.stdout);
+}
+
+/**
+ * Lanza cli.py dentro del contenedor (`docker exec -d`: sigue aunque el worker se reinicie) y espera a ver
+ * su proceso o su log, para que la primera consulta no la tome por perdida.
+ */
+export async function arrancarCli(
+  cuerpo: ReturnType<typeof cuerpoVideo>,
+  log?: (l: string) => void,
+  op: { intentos?: number; pasoMs?: number } = {},
+): Promise<string> {
+  const taskId = randomUUID();
+  await correr(
+    "docker",
+    ["exec", "-d", "-w", "/MoneyPrinterTurbo", MPT_CONTENEDOR, "sh", "-c", 'log="$1"; shift; exec python cli.py "$@" >"$log" 2>&1', "sh", logCli(taskId), ...argsCli(taskId, cuerpo)],
+    { signal: null },
+  );
+  for (let i = 0; i < (op.intentos ?? 30); i++) {
+    const e = await estadoCli(taskId);
+    if (e?.corriendo || (e && e.log)) {
+      log?.(`MPT (cli.py --stop-at materials) empezó la tarea ${taskId}: no armará su video final`);
+      return taskId;
+    }
+    await new Promise((ok) => setTimeout(ok, op.pasoMs ?? 500));
+  }
+  throw new Error("MPT no arrancó cli.py dentro de su contenedor. Revisa que Docker Desktop y MPT estén funcionando y vuelve a intentar.");
+}
+
 export async function estadoTarea(taskId: string): Promise<EstadoMpt> {
   const r = await pedir(`/tasks/${taskId}`);
   if (r.status === 404) {
+    // Una tarea de cli.py (TER-06) no está en la memoria de la API: se mira su proceso. Mientras corre,
+    // script.json puede listar sólo los clips bajados hasta ahora; por eso no se miran antes los archivos.
+    const cli = await estadoCli(taskId);
+    if (cli?.corriendo) return { estado: "procesando", progreso: cli.progreso };
     // La API de MPT guarda el estado en memoria: si se reinició, mira si quedó en disco lo que Geeper usa.
-    return (await tieneFinal(taskId)) || (await materialesListos(taskId))
-      ? { estado: "completa", progreso: 100 }
-      : { estado: "perdida", progreso: 0, detalle: "MPT no conoce la tarea" };
+    if ((await tieneFinal(taskId)) || (await materialesListos(taskId))) return { estado: "completa", progreso: 100 };
+    if (cli) return { estado: "fallida", progreso: 0, detalle: `cli.py de MPT terminó sin dejar los materiales. ${cli.log}`.slice(0, 800) };
+    return { estado: "perdida", progreso: 0, detalle: "MPT no conoce la tarea" };
   }
   const d = (r.json as { data?: { state?: number; progress?: number; videos?: string[] } } | null)?.data ?? {};
   const progreso = Number(d.progress ?? 0);

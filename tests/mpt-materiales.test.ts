@@ -52,12 +52,13 @@ describe("materialesListos (TER-06)", () => {
 describe("estadoTarea con MPT reiniciado (TER-06)", () => {
   it("si MPT ya no conoce la tarea pero el guion, la voz y los clips están en disco, la da por lista", async () => {
     vi.stubGlobal("fetch", async () => new Response("{}", { status: 404 }));
-    m.respuestas = [{ codigo: 1, stdout: "" }, { codigo: 0, stdout: guion }, { codigo: 0, stdout: "" }];
+    // La primera respuesta: no es una tarea de cli.py (no tiene log).
+    m.respuestas = [{ codigo: 3, stdout: "" }, { codigo: 1, stdout: "" }, { codigo: 0, stdout: guion }, { codigo: 0, stdout: "" }];
     expect((await estadoTarea("t1")).estado).toBe("completa");
   });
   it("sin final-1.mp4 ni materiales, perdida", async () => {
     vi.stubGlobal("fetch", async () => new Response("{}", { status: 404 }));
-    m.respuestas = [{ codigo: 1, stdout: "" }, { codigo: 1, stdout: "" }];
+    m.respuestas = [{ codigo: 3, stdout: "" }, { codigo: 1, stdout: "" }, { codigo: 1, stdout: "" }];
     expect((await estadoTarea("t1")).estado).toBe("perdida");
   });
 });
