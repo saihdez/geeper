@@ -7,11 +7,27 @@ import { tipoMiniatura } from "@/lib/workflows-texto";
 
 export const dynamic = "force-dynamic";
 
+/** Ya se probó leer el catálogo de una ComfyUI «a medias» y falló: no se vuelve a correr Python en cada sondeo. */
+const g = globalThis as { __comfyAMediasProbada?: string };
+
 /** El catálogo (liviano, para buscar y filtrar en la página), las últimas corridas y lo que está en curso. */
 export async function GET() {
   return manejar(async () => {
-    const e = revisarComfyui();
-    const comfy = { listo: !e.falta && !e.corriendo, falta: e.falta, instalando: e.corriendo, disponible: e.disponible, aMedias: e.falta === A_MEDIAS };
+    let e = revisarComfyui();
+    let detalle: string | undefined;
+    // Una ComfyUI completa sin la marca del final (carpeta propia con GEEPER_COMFYUI o la caché borrada):
+    // leer el catálogo es lo que escribe la marca. Se prueba una vez por proceso antes de dar la
+    // instalación por «a medias»; si falla, se ofrece reparar como antes (UX-06).
+    if (e.falta === A_MEDIAS && !e.corriendo && g.__comfyAMediasProbada === undefined) {
+      try {
+        await leerCatalogo();
+        e = { ...e, falta: null };
+      } catch (x) {
+        detalle = x instanceof Error ? x.message : String(x);
+        g.__comfyAMediasProbada = detalle;
+      }
+    } else if (e.falta === A_MEDIAS) detalle = g.__comfyAMediasProbada;
+    const comfy = { listo: !e.falta && !e.corriendo, falta: e.falta, instalando: e.corriendo, disponible: e.disponible, aMedias: e.falta === A_MEDIAS, ...(detalle ? { detalle } : {}) };
     if (!comfy.listo) return json({ comfy, workflows: [], corridas: [], trabajos: [] });
     let workflows: Awaited<ReturnType<typeof leerCatalogo>>["workflows"];
     try {

@@ -24,12 +24,32 @@ describe("instalación de ComfyUI a medias (UX-06)", () => {
     expect(faltaComfyui(dir, python)).toBeNull();
   });
 
-  it("GET /api/workflows: a medias sale el instalador con «Reparar»", async () => {
+  it("GET /api/workflows: a medias y sin catálogo legible sale el instalador con «Reparar»; se prueba una sola vez", async () => {
     const { A_MEDIAS } = await import("@/lib/comfyui");
     falta = A_MEDIAS;
+    let lecturas = 0;
+    catalogo = async () => {
+      lecturas++;
+      throw new Error("No pude leer el catálogo de workflows: ModuleNotFoundError");
+    };
+    delete (globalThis as { __comfyAMediasProbada?: string }).__comfyAMediasProbada;
+    const { GET } = await import("@/app/api/workflows/route");
+    const { comfy } = (await (await GET()).json()) as { comfy: { listo: boolean; aMedias: boolean; detalle: string } };
+    expect(comfy).toMatchObject({ listo: false, aMedias: true });
+    expect(comfy.detalle).toMatch(/catálogo/);
+    // El sondeo (cada 4 s) no vuelve a correr Python.
+    await GET();
+    expect(lecturas).toBe(1);
+  });
+
+  it("GET /api/workflows: a medias pero el catálogo se lee bien → lista (ComfyUI propia sin la marca)", async () => {
+    const { A_MEDIAS } = await import("@/lib/comfyui");
+    falta = A_MEDIAS;
+    catalogo = async () => ({ workflows: [], archivos: {} });
+    delete (globalThis as { __comfyAMediasProbada?: string }).__comfyAMediasProbada;
     const { GET } = await import("@/app/api/workflows/route");
     const { comfy } = (await (await GET()).json()) as { comfy: { listo: boolean; aMedias: boolean } };
-    expect(comfy).toMatchObject({ listo: false, aMedias: true });
+    expect(comfy).toMatchObject({ listo: true, aMedias: false });
   });
 
   it("GET /api/workflows: si el catálogo no se puede leer, también ofrece reparar (no un error)", async () => {
