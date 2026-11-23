@@ -124,11 +124,11 @@ export function FormNuevo() {
         <summary className="cursor-pointer text-sm">Más opciones</summary>
         <p className="mt-3 text-sm font-medium">Usar un video que ya hice con MoneyPrinterTurbo</p>
         <p className="text-xs text-tenue">No usa la tarjeta de video: Geeper toma ese video y lo deja listo para editar.</p>
-        <label className="etiqueta mt-2" htmlFor="mpt">Código del video (36 letras y números)</label>
+        <label className="etiqueta mt-2" htmlFor="mpt">Código del video (como el de ejemplo, con guiones)</label>
         <input id="mpt" className="campo font-mono" value={mptTaskId} onChange={(e) => setMpt(e.target.value)} placeholder="c721927b-353e-4dce-9bbb-8ce7d33ed5f2"
           aria-invalid={codigoMal || undefined} aria-describedby="mpt-ayuda" autoComplete="off" spellCheck={false} />
         <p id="mpt-ayuda" className={`mt-1 text-xs ${codigoMal ? "text-red-400" : "text-tenue"}`}>
-          {codigoMal ? "Ese código no está completo: son 36 letras y números separados por guiones, como el de ejemplo. " : ""}
+          {codigoMal ? "Ese código no está completo: son 32 letras y números en 5 partes separadas por guiones, como el de ejemplo. " : ""}
           Lo ves en MoneyPrinterTurbo al terminar un video, y es el nombre de su carpeta dentro de storage/tasks. El nombre del proyecto sale de la primera línea de «Tema».
         </p>
         <label className="mt-2 flex items-center gap-2 text-sm">

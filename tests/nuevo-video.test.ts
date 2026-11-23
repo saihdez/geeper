@@ -139,7 +139,8 @@ describe("usar un video de MoneyPrinterTurbo (UX-39)", () => {
     const html = pintar();
     const mas = html.match(/<details[^>]*><summary[^>]*>Más opciones<\/summary>([\s\S]*?)<\/details>/)?.[1] ?? "";
     expect(mas).toContain("Usar un video que ya hice con MoneyPrinterTurbo");
-    expect(mas).toContain("Código del video (36 letras y números)");
+    expect(mas).toContain("Código del video (como el de ejemplo, con guiones)");
+    expect(mas).not.toContain("36 letras");
     expect(mas).toContain("storage/tasks");
     expect(html).not.toMatch(/task_id|\bMPT\b|Kokoro|\bQC\b/);
   });
