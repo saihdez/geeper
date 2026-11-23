@@ -11,6 +11,7 @@
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { exigirEspacio, type OpcionesEspacio } from "./espacio";
 import { entornoUv } from "./estudio";
 import { bajar, carpetaRaiz } from "./instalar-craft";
 import { SISTEMA } from "./plataforma";
@@ -143,6 +144,13 @@ export interface ConfigInstaladorPython {
   probar: (dir: string, python: string, log: Registro) => Promise<void>;
   /** Última línea del registro cuando todo salió bien. */
   listo: string;
+  /**
+   * Lo que ocupa la instalación (venv, PyTorch y dependencias), para mirar el disco antes de empezar
+   * (DSC-05). `para`, en palabras simples: «instalar los workflows».
+   */
+  espacio?: { bytes: number; para: string };
+  /** Para las pruebas: cómo se mira el disco. */
+  opcionesEspacio?: OpcionesEspacio;
   /** Para las pruebas: otro uv y otro entorno. */
   uv?: string;
   entorno?: () => Record<string, string>;
@@ -200,6 +208,8 @@ export function crearInstaladorPython<E extends EstadoPython>(c: ConfigInstalado
       try {
         const log: Registro = (l) => anotar(l);
         poner("codigo", "trabajando");
+        // Antes de bajar nada (DSC-05): si no cabe con la reserva, se dice y no se empieza.
+        if (c.espacio) await exigirEspacio(dir, c.espacio.bytes, c.espacio.para, c.opcionesEspacio);
         await c.bajarCodigo(dir, log);
         poner("codigo", "listo");
         const comprobar = c.comprobar(dir, python);

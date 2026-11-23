@@ -60,6 +60,7 @@ const SIN_MAC = "Los workflows locales necesitan una tarjeta de video NVIDIA: en
 
 const instalador = crearInstaladorPython<EstadoComfyui>({
   clave: "__comfyui",
+  espacio: { bytes: 15e9, para: "instalar los workflows (ComfyUI)" },
   pasos: PASOS,
   sinMac: SIN_MAC,
   falta: faltaComfyui,

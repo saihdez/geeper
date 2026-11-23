@@ -14,7 +14,7 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { describirAsset, guardarProyecto, registrarAssetsEnDb } from "./almacen";
+import { describirAsset, guardarEncima, leerGuardado, registrarAssetsEnDb } from "./almacen";
 import { jsonEstable, sha256Archivo, sha256Texto } from "./archivos";
 import { leerAvatar, rutaRetrato, type Avatar } from "./avatares";
 import { conFocos } from "./caras";
@@ -263,6 +263,19 @@ export function aplicarPresentador(original: Proyecto, plan: PlanPresentador, as
   return validarProyecto(p);
 }
 
+/**
+ * aplicarPresentador sobre la versión que hay al terminar (SEG-05). Si mientras tanto se quitó alguna de
+ * las escenas del presentador, no se aplica (y no se guarda nada) con un mensaje claro.
+ */
+export function ponerPresentadorEncima(base: Proyecto, plan: PlanPresentador, asset: Proyecto["assets"][string]): Proyecto {
+  if (plan.modo === "pantalla") {
+    const hay = new Set(escenasEnLinea(base).map((e) => e.escena.id));
+    const falta = plan.escenas.find((e) => !hay.has(e.id));
+    if (falta) throw new Error(`La escena ${falta.numero} se quitó mientras se creaba el presentador: no lo puse. Vuelve a crearlo.`);
+  }
+  return aplicarPresentador(base, plan, asset);
+}
+
 /** ¿Hay un presentador en el proyecto y sigue al día con la voz? (para el panel). */
 export function estadoPresentador(p: Proyecto): { burbuja: boolean; escenas: string[]; viejo: boolean; avatar: string | null } {
   const todas = escenasEnLinea(p);
@@ -307,6 +320,8 @@ export async function probarPresentador(dir: string, p: Proyecto, op: OpcionesPr
 
 /** Genera el presentador (usa toda la GPU) y lo guarda en una versión nueva del proyecto. */
 export async function generarPresentador(ctx: ContextoPresentador, proyectoId: string, p: Proyecto, op: OpcionesPresentador) {
+  // Lo guardado al empezar: al terminar se compara para saber si alguien editó mientras tanto (SEG-05).
+  const guardada = await leerGuardado(proyectoId);
   const avatar: Avatar = await leerAvatar(op.avatar);
   const plan = planearPresentador(p, op);
   const corrida = dirCorrida(ctx.dir);
@@ -338,11 +353,13 @@ export async function generarPresentador(ctx: ContextoPresentador, proyectoId: s
   });
   // Video más corto que la voz (InfiniteTalk corta en el último cuadro entero): no debería pasar, pero se avisa.
   if (asset.duracion !== undefined && asset.duracion + 0.2 < plan.segundos) ctx.log(`Aviso: el video dura ${asset.duracion.toFixed(2)} s y la voz ${plan.segundos.toFixed(2)} s`);
-  let nuevo = aplicarPresentador(p, plan, asset);
-  // La cara del avatar, para encuadrar (la burbuja y el 9:16) sobre ella.
-  nuevo = (await conFocos(ctx, nuevo, { ids: [id], signal: ctx.signal })).p;
+  // La cara del avatar, para encuadrar (la burbuja y el 9:16) sobre ella. Se calcula sobre la copia y se
+  // copia al asset: así no depende de la versión sobre la que termine guardándose.
+  const conCara = (await conFocos(ctx, aplicarPresentador(p, plan, asset), { ids: [id], signal: ctx.signal })).p.assets[id] ?? asset;
   const nota = plan.modo === "burbuja" ? `Presentador «${avatar.nombre}» en burbuja` : `Presentador «${avatar.nombre}» en ${plan.escenas.length === 1 ? `la escena ${plan.escenas[0]!.numero}` : `${plan.escenas.length} escenas`}`;
-  const version = await guardarProyecto(proyectoId, nuevo, nota);
-  await registrarAssetsEnDb(proyectoId, nuevo);
+  // Sobre la versión de AHORA (SEG-05): lo editado mientras se generaba (minutos) no se pierde.
+  let final = p;
+  const version = await guardarEncima(proyectoId, nota, (base) => (final = ponerPresentadorEncima(base, plan, conCara)), { guardada, copia: p });
+  await registrarAssetsEnDb(proyectoId, final);
   return { version, asset: id, ruta, segundos, modo: plan.modo };
 }

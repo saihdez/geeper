@@ -59,6 +59,8 @@ describe("publicar con la base ocupada por otro proceso (SEG-04)", () => {
     const fuera = new Database(process.env.GEEPER_DB!, { readonly: true });
     expect(fuera.prepare(`SELECT COUNT(*) AS n FROM "Trabajo" WHERE "tipo" = 'publicar.subir'`).get()).toEqual({ n: 1 });
     expect(fuera.prepare(`SELECT COUNT(*) AS n FROM "Publicacion" WHERE "cuentaId" = 'c1'`).get()).toEqual({ n: 1 });
+    // WRK-09: el trabajo guarda el mismo tope de intentos que el resto de la cola.
+    expect(fuera.prepare(`SELECT "maxIntentos" AS m FROM "Trabajo" WHERE "tipo" = 'publicar.subir'`).get()).toEqual({ m: 2 });
     fuera.close();
   }, 30_000);
 

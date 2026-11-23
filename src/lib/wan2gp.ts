@@ -18,6 +18,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { argsAtencionWan2gp, atencionInstalada, elegirAtencion } from "./atencion";
+import { exigirEspacio, type OpcionesEspacio } from "./espacio";
 import type { Formato } from "./esquema";
 import { tomarGpu } from "./gpu";
 import { comandoGpuSolo } from "./gpu-solo";
@@ -474,6 +475,21 @@ export interface OpcionesGenerar {
  * primera vez de cada modelo (Wan2GP baja los pesos a `ckpts/` sin decir nada; el avance sale del
  * tamaño de esa carpeta).
  */
+/** Lo que baja Wan2GP la primera vez que usa un modelo (los más grandes, unos 30 GB con su codificador). */
+export const BYTES_MODELO_WAN = 30e9;
+/** Lo que ocupa una generación ya con el modelo en el disco (cuadros, video y copia al proyecto). */
+export const BYTES_GENERACION_WAN = 2e9;
+
+/**
+ * Antes de correr Wan2GP (DSC-05): si el modelo todavía no tiene sus pesos, Wan2GP los baja (decenas de
+ * GB, sin avisar); si no caben con la reserva, se dice en palabras simples y no se empieza.
+ */
+export async function revisarEspacioWan2gp(i: InstalacionWan2gp, modelType: string, dirCorrida: string, o?: OpcionesEspacio) {
+  const estado = modelType ? estadoModelos(i, [{ id: modelType, modelType } as ModeloPlano])[modelType] : undefined;
+  if (estado === "sin-pesos") return exigirEspacio(path.join(i.dir, "ckpts"), BYTES_MODELO_WAN, "bajar el modelo que anima los videos (la primera vez)", o);
+  return exigirEspacio(dirCorrida, BYTES_GENERACION_WAN, "crear este video con IA", o);
+}
+
 export async function generarPlano(op: OpcionesGenerar): Promise<string> {
   return (await correrWan2gp(op, "video"))[0]!;
 }
@@ -491,6 +507,7 @@ async function correrWan2gp(op: OpcionesGenerar, tipo: "video" | "imagen"): Prom
   const inicio = Date.now();
   const falta = faltaEnInstalacion(i);
   if (falta) throw new Error(falta);
+  await revisarEspacioWan2gp(i, String(ajustes.model_type ?? ""), dirCorrida);
   await aplicarParchesWan2gp(i.dir, op.log);
   const out = path.join(dirCorrida, "out");
   await fs.mkdir(out, { recursive: true });

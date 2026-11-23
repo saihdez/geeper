@@ -7,6 +7,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { sha256Archivo } from "./archivos";
 import { db } from "./db";
+import { exigirEspacio, type OpcionesEspacio } from "./espacio";
 import { compilar, escribirProyectoHf, VERSION_COMPILADOR } from "./compilador";
 import { conColor, prepararColor } from "./looks";
 import { prepararFondos } from "./fondos";
@@ -32,6 +33,14 @@ import { SISTEMA } from "./plataforma";
 import { origenClip, reglaClip } from "./clips";
 
 const ENV_HF = { HYPERFRAMES_NO_TELEMETRY: "1", DO_NOT_TRACK: "1" };
+
+/** Lo que puede ocupar el máster MOV en calidad alta (aprox. 40 MB por segundo, mínimo 2,1 GB). */
+export const bytesMaster = (segundos: number) => Math.max(2.1e9, Math.ceil(segundos * 40e6));
+
+/** Antes del máster (DSC-05): si no cabe con la reserva, se dice en palabras simples y no se empieza. */
+export async function exigirEspacioMaster(dir: string, segundos: number, o?: OpcionesEspacio) {
+  return exigirEspacio(dir, bytesMaster(segundos), "crear el video de archivo en calidad alta", o);
+}
 
 /** Cortes en pulso según los marcadores de pulso (ya en tiempo de la línea final); null sin pulsos. */
 export function ritmoDe(p: Proyecto): Ritmo | null {
@@ -165,6 +174,7 @@ export async function renderEntregar(
       [master],
       async ([tmp]) => {
         // Sin GPU: el máster nunca compite con una generación ni la espera.
+        await exigirEspacioMaster(path.dirname(tmp!), comp.total);
         const salida = `${tmp!}.mov`;
         const b = banderasRender(false, SISTEMA);
         await correrHf(["render", "--output", salida, "--format", "mov", "--quality", "high", "--fps", String(p.fps), "--quiet", ...b.args], {

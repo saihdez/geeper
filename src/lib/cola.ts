@@ -191,10 +191,52 @@ export class Espera extends Error {
   }
 }
 
+/** Un intento que terminó mal y se volvió a intentar (UX-41): lo que la pantalla de Trabajos puede mostrar. */
+export interface IntentoAnterior {
+  estado: string;
+  error: string | null;
+  etapa: string;
+  /** Registro del intento (relativo a ~/geeper-data). */
+  log: string | null;
+  iniciado: string | null;
+  terminado: string | null;
+}
+
+/** Cuántos intentos anteriores se guardan por trabajo (los más nuevos). */
+export const MAX_ANTERIORES = 10;
+
+/** Suma el intento que termina a la lista de anteriores (función pura). */
+export function conIntentoAnterior(
+  previos: unknown,
+  t: { estado: string; error: string | null; etapa: string; log: string | null; iniciado: Date | null; terminado: Date | null },
+): IntentoAnterior[] {
+  const lista = Array.isArray(previos) ? (previos as IntentoAnterior[]) : [];
+  const este: IntentoAnterior = {
+    estado: t.estado,
+    error: t.error ? t.error.slice(0, 2000) : null,
+    etapa: t.etapa,
+    log: t.log,
+    iniciado: t.iniciado?.toISOString() ?? null,
+    terminado: t.terminado?.toISOString() ?? null,
+  };
+  return [...lista, este].slice(-MAX_ANTERIORES);
+}
+
+/**
+ * «Volver a intentar»: el trabajo vuelve a la fila. Antes, guarda el intento que termina en `anteriores`
+ * (estado, error, etapa, registro y fechas, UX-41) para que no se pierda qué pasó la vez anterior.
+ */
 export async function relanzar(id: string) {
+  const RELANZABLES = ["fallido", "interrumpido", "cancelado"];
+  const t = await db.trabajo.findUnique({ where: { id }, select: { estado: true, error: true, etapa: true, log: true, iniciado: true, terminado: true, anteriores: true } });
+  if (!t || !RELANZABLES.includes(t.estado)) throw new Error("Sólo se relanzan trabajos fallidos, interrumpidos o cancelados");
   const r = await db.trabajo.updateMany({
-    where: { id, estado: { in: ["fallido", "interrumpido", "cancelado"] } },
-    data: { estado: "pendiente", intentos: 0, error: null, leaseUntil: null, noAntesDe: null, workerId: null, etapa: "En cola", progreso: 0 },
+    // El mismo estado que se leyó: si otro lo relanzó entre medio, no se repite el intento anterior.
+    where: { id, estado: t.estado, terminado: t.terminado },
+    data: {
+      estado: "pendiente", intentos: 0, error: null, leaseUntil: null, noAntesDe: null, workerId: null, etapa: "En cola", progreso: 0,
+      iniciado: null, terminado: null, anteriores: conIntentoAnterior(t.anteriores, t) as unknown as object,
+    },
   });
   if (r.count !== 1) throw new Error("Sólo se relanzan trabajos fallidos, interrumpidos o cancelados");
 }
