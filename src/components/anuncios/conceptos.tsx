@@ -313,7 +313,7 @@ function VideoDelConcepto({ ctx, c }: { ctx: Ctx; c: ConceptoT }) {
 }
 
 function SelectorProyecto({ valor, onCambio }: { valor: string; onCambio: (id: string) => void }) {
-  const { datos } = useSondeo<{ proyectos: ProyectoLista[] }>("/api/proyectos", 15000);
+  const { datos } = useSondeo<{ proyectos: ProyectoLista[] }>("/api/proyectos", 15000, ["proyecto", "trabajos"]);
   return (
     <select className="campo" value={valor} onChange={(e) => onCambio(e.target.value)} aria-label="Proyecto a vincular">
       <option value="">{datos ? "Elige un proyecto…" : "Cargando proyectos…"}</option>

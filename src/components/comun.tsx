@@ -1,6 +1,8 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { mensajeHttp, traer } from "@/lib/conexion";
+import type { FiltroAviso } from "@/lib/eventos-avisos";
+import { canalDeLaPagina } from "@/lib/eventos-cliente";
 import { crearSondeo, type Sondeo } from "@/lib/sondeo";
 import { ESTADOS, nombreEstado } from "@/lib/textos";
 
@@ -33,8 +35,13 @@ export function postJson<T>(url: string, cuerpo: unknown): Promise<T> {
  * Trae datos y los refresca `ms` después de cada respuesta (o lo que diga `ms(datos)`, para ir más
  * lento en reposo). No pide con la pestaña oculta, no repinta si nada cambió y descarta respuestas
  * viejas (ver lib/sondeo.ts).
+ *
+ * `avisos` (WEB-13): los cambios que le tocan («trabajos», «proyecto:<id>», «motor»…, ver
+ * lib/eventos-avisos.ts). Con ellos, mientras el canal de avisos esté abierto pide sólo cuando llega uno
+ * (y un respaldo cada minuto); si el canal se corta, vuelve a pedir cada `ms`. Sólo para datos que salen
+ * de la base: lo que se lee de otro lado (una instalación en curso) no avisa.
  */
-export function useSondeo<T>(url: string, ms: number | ((datos: T | null) => number) = 3000) {
+export function useSondeo<T>(url: string, ms: number | ((datos: T | null) => number) = 3000, avisos?: readonly FiltroAviso[]) {
   const [datos, setDatos] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const intervalo = useRef(ms);
@@ -42,9 +49,12 @@ export function useSondeo<T>(url: string, ms: number | ((datos: T | null) => num
   useEffect(() => {
     intervalo.current = ms;
   });
+  const claveAvisos = avisos?.join(" ") ?? "";
   useEffect(() => {
+    const filtros = claveAvisos ? claveAvisos.split(" ") : [];
     const s = crearSondeo<T>({
       url,
+      avisos: filtros.length ? { canal: canalDeLaPagina(), filtros } : null,
       intervalo: (d) => {
         const m = intervalo.current;
         return typeof m === "function" ? m(d) : m;
@@ -58,7 +68,7 @@ export function useSondeo<T>(url: string, ms: number | ((datos: T | null) => num
       s.detener();
       if (sondeo.current === s) sondeo.current = null;
     };
-  }, [url]);
+  }, [url, claveAvisos]);
   // Si cambia un intervalo fijo (p. ej. un panel que se abre), la próxima consulta se reprograma.
   const fijo = typeof ms === "number" ? ms : null;
   useEffect(() => {

@@ -101,6 +101,7 @@ export function ListaTrabajos({ proyectoId }: { proyectoId?: string }) {
   const { datos, error, recargar } = useSondeo<{ trabajos: Trabajo[]; workerVivo: boolean; escritorio?: boolean; ahora: number }>(
     `/api/trabajos${proyectoId ? `?proyecto=${proyectoId}` : ""}`,
     2000,
+    [proyectoId ? `trabajos:${proyectoId}` : "trabajos", "motor"],
   );
   const [abierto, setAbierto] = useState<string | null>(null);
   const [fallo, setFallo] = useState<string | null>(null);

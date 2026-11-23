@@ -380,7 +380,7 @@ function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, 
 }
 
 export function EditorProyecto({ id }: { id: string }) {
-  const { datos: v, error, recargar } = useSondeo<Vista>(`/api/proyectos/${id}`, 3000);
+  const { datos: v, error, recargar } = useSondeo<Vista>(`/api/proyectos/${id}`, 3000, [`proyecto:${id}`, `trabajos:${id}`]);
   const { datos: pl } = useSondeo<{ plantillas: { slug: string; nombre: string }[] }>("/api/plantillas", 60_000);
   const [msg, setMsg] = useState<MensajeEditor | null>(null);
   const cerrarMsg = useCallback(() => setMsg(null), []);

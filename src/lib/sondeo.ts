@@ -3,9 +3,17 @@
  * - espera la respuesta antes de programar la siguiente (cadena de setTimeout, nunca se enciman);
  * - no pide con la pestaña oculta y pide enseguida al volver a ella;
  * - no avisa si el texto de la respuesta no cambió (así la pantalla no se repinta en vano);
- * - descarta la respuesta de una petición anterior (AbortController) al recargar o al cerrarse.
+ * - descarta la respuesta de una petición anterior (AbortController) al recargar o al cerrarse;
+ * - con `avisos` (WEB-13): mientras el canal de avisos está abierto pide al llegar un aviso que le toca y,
+ *   por si alguno se pierde, cada RESPALDO_MS como mínimo; si el canal se corta, vuelve a su ritmo.
  */
 import { ErrorConexion, RECONECTANDO, errorDelCuerpo, mensajeHttp, traer } from "./conexion";
+import type { CanalAvisos } from "./eventos-cliente";
+
+/** Con el canal de avisos abierto, el sondeo de respaldo no pide más seguido que esto. */
+export const RESPALDO_MS = 60_000;
+/** Entre dos pedidos por aviso, al menos esto (el vigía del servidor avisa como mucho una vez por segundo). */
+export const ENTRE_AVISOS_MS = 1000;
 
 /** Lo mínimo de `document` que hace falta (en pruebas se pasa uno falso). */
 export interface Visibilidad {
@@ -21,6 +29,8 @@ export interface OpcionesSondeo<T> {
   alDatos: (datos: T) => void;
   alError: (mensaje: string | null) => void;
   visibilidad?: Visibilidad | null;
+  /** Avisos que le tocan a esta consulta (ver lib/eventos-avisos.ts) y el canal por donde llegan. */
+  avisos?: { canal: CanalAvisos; filtros: readonly string[] } | null;
   /** Para pruebas: trae el texto de la respuesta. */
   pedirTexto?: (url: string, signal: AbortSignal) => Promise<string>;
 }
@@ -50,6 +60,10 @@ export function crearSondeo<T>(o: OpcionesSondeo<T>): Sondeo {
   let ultimos: T | null = null;
   let conError = false;
   let detenido = false;
+  let otraVez = false; // llegó un aviso con una consulta en vuelo: pedir de nuevo al terminar
+  let ultimoInicio = -Infinity;
+  let bajaAvisos: (() => void) | null = null;
+  const avisos = o.avisos ?? null;
 
   const oculto = () => !!visibilidad?.hidden;
 
@@ -57,9 +71,26 @@ export function crearSondeo<T>(o: OpcionesSondeo<T>): Sondeo {
     if (temporizador) clearTimeout(temporizador);
     temporizador = null;
     if (detenido || oculto()) return;
-    const ms = o.intervalo(ultimos);
+    let ms = o.intervalo(ultimos);
     if (!Number.isFinite(ms)) return; // Infinity: no volver a pedir solo (sólo con recargar o al volver a la pestaña)
+    if (avisos?.canal.abierto()) ms = Math.max(ms, RESPALDO_MS);
     temporizador = setTimeout(() => void ciclo(), Math.max(250, ms));
+  }
+
+  /** Pide por un aviso, sin cortar la que está en vuelo y sin pedir más de una vez por ENTRE_AVISOS_MS. */
+  function porAviso() {
+    if (detenido || oculto()) return;
+    if (enVuelo) {
+      otraVez = true;
+      return;
+    }
+    const falta = ultimoInicio + ENTRE_AVISOS_MS - Date.now();
+    if (falta <= 0) {
+      void ciclo();
+      return;
+    }
+    if (temporizador) clearTimeout(temporizador);
+    temporizador = setTimeout(() => void ciclo(), falta);
   }
 
   async function ciclo(): Promise<void> {
@@ -67,6 +98,8 @@ export function crearSondeo<T>(o: OpcionesSondeo<T>): Sondeo {
     if (temporizador) clearTimeout(temporizador);
     temporizador = null;
     enVuelo?.abort();
+    otraVez = false;
+    ultimoInicio = Date.now();
     const c = new AbortController();
     enVuelo = c;
     try {
@@ -94,7 +127,11 @@ export function crearSondeo<T>(o: OpcionesSondeo<T>): Sondeo {
     } finally {
       if (enVuelo === c) enVuelo = null;
     }
-    if (!detenido && !c.signal.aborted) programar();
+    if (detenido || c.signal.aborted) return;
+    if (otraVez) {
+      otraVez = false;
+      porAviso();
+    } else programar();
   }
 
   const alCambiarVisibilidad = () => {
@@ -110,6 +147,8 @@ export function crearSondeo<T>(o: OpcionesSondeo<T>): Sondeo {
   return {
     iniciar() {
       visibilidad?.addEventListener("visibilitychange", alCambiarVisibilidad);
+      // Al abrirse o cortarse el canal cambia el ritmo: se reprograma la próxima consulta.
+      if (avisos) bajaAvisos = avisos.canal.escuchar(avisos.filtros, porAviso, () => { if (!enVuelo) programar(); });
       // Aunque la pestaña esté oculta se pide una vez, para no dejar la pantalla vacía al volver.
       void ciclo();
     },
@@ -120,6 +159,8 @@ export function crearSondeo<T>(o: OpcionesSondeo<T>): Sondeo {
     detener() {
       detenido = true;
       visibilidad?.removeEventListener("visibilitychange", alCambiarVisibilidad);
+      bajaAvisos?.();
+      bajaAvisos = null;
       if (temporizador) clearTimeout(temporizador);
       temporizador = null;
       enVuelo?.abort();
