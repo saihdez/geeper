@@ -6,6 +6,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { z } from "zod";
 import { encolar } from "@/lib/cola";
+import { exigirEspacio } from "@/lib/espacio";
 import { json, manejar } from "@/lib/http";
 import { dirDatos } from "@/lib/rutas";
 
@@ -34,6 +35,8 @@ export async function POST(req: Request) {
     }).parse(Object.fromEntries(u.searchParams));
     const dir = path.join(dirDatos(), "_subidos");
     await fs.mkdir(dir, { recursive: true });
+    // Antes de recibir el archivo (DSC-05): si no cabe con la reserva, se dice y no se llena el disco.
+    if (largo > 0) await exigirEspacio(dir, largo, "subir este video");
     const seguro = nombre.replace(/[^\p{L}\p{N}._ -]+/gu, "_").replace(/^\.+/, "").slice(0, 80) || `video${ext}`;
     const tmp = path.join(dir, `.subiendo-${randomBytes(4).toString("hex")}`);
     const hash = createHash("sha1");

@@ -5,7 +5,7 @@
  * `~/geeper-data/workflows/<corrida>/` → apagar ComfyUI. Lógica de ComfyUI en comfyui.ts.
  */
 import { randomBytes } from "node:crypto";
-import { createWriteStream, existsSync } from "node:fs";
+import { createWriteStream, existsSync, statSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -20,7 +20,8 @@ import { resolverArchivo } from "./hub-comfy";
 import { argsNodos, fijadoDe, infoNodos, instalarNodo } from "./nodos-comfy";
 import type { Contexto } from "./pasos";
 import { GPU_SOLO_BIN } from "./rutas";
-import { faltaEspacio } from "./workflows-texto";
+import { bytesPorBajar } from "./workflows-texto";
+import { exigirEspacio } from "./espacio";
 
 export { entradasSinArchivo, hayEjemplo, REINTENTABLES, textoFaltaArchivo, trabajoPorCorrida, tuArchivo } from "./workflows-texto";
 
@@ -140,11 +141,15 @@ export async function bajarModelo(url: string, destino: string, alAvanzar: (baja
   const r = await fetch(url, { signal, redirect: "follow" });
   if (!r.ok || !r.body) throw new Error(`No se pudo bajar ${path.basename(destino)} (${r.status}). Si es un modelo que pide aceptar términos en Hugging Face, ábrelo en el editor de ComfyUI.`);
   const total = Number(r.headers.get("content-length") ?? 0);
-  // Antes de llenar el disco (UX-36): con el tamaño a la vista, si no cabe se dice y no se baja nada.
-  const sinEspacio = faltaEspacio(path.basename(destino), total, await espacioLibre(path.dirname(destino)));
-  if (sinEspacio) {
-    await r.body.cancel().catch(() => {});
-    throw new Error(sinEspacio);
+  // Antes de llenar el disco (UX-36, DSC-05): con el tamaño a la vista, si no cabe (con la reserva y, en
+  // WSL, mirando lo libre en C:) se dice y no se baja nada.
+  if (total > 0) {
+    try {
+      await exigirEspacio(path.dirname(destino), total, `bajar ${path.basename(destino)}`);
+    } catch (e) {
+      await r.body.cancel().catch(() => {});
+      throw e;
+    }
   }
   let bajado = 0;
   let ultimo = 0;
@@ -156,8 +161,14 @@ export async function bajarModelo(url: string, destino: string, alAvanzar: (baja
       alAvanzar(bajado, total);
     }
   });
-  await pipeline(flujo, createWriteStream(parte), { signal });
-  await fs.rename(parte, destino);
+  try {
+    await pipeline(flujo, createWriteStream(parte), { signal });
+    await fs.rename(parte, destino);
+  } catch (e) {
+    // Una bajada cortada (red, disco lleno, cancelada) no deja el .part ocupando lugar (DSC-05).
+    await fs.rm(parte, { force: true }).catch(() => {});
+    throw e;
+  }
 }
 
 /** Pasos del muestreo en la salida de ComfyUI (barras de tqdm: « 12/20 [00:10<…»). */
@@ -206,7 +217,12 @@ export async function correrWorkflow(ctx: ContextoWorkflow, id: string, pedido: 
       await instalarNodo(n.id, { log: ctx.log, signal: ctx.signal });
     }
     // 1. Modelos que falten.
-    const faltan = estadoModelos(modelosDeWorkflow(grafo)).filter((m) => !m.listo);
+    const modelos = estadoModelos(modelosDeWorkflow(grafo));
+    const faltan = modelos.filter((m) => !m.listo);
+    // Antes de la primera bajada, lo que pesa toda la receta (DSC-05): no empezar algo que no va a caber.
+    const yaBajados = modelos.filter((m) => m.listo).reduce((s, m) => s + (statSync(m.ruta, { throwIfNoEntry: false })?.size ?? 0), 0);
+    const porBajar = bytesPorBajar(wf.tamano, faltan.length, yaBajados);
+    if (porBajar > 0) await exigirEspacio(path.dirname(faltan[0]!.ruta), porBajar, "bajar los modelos de esta receta");
     for (const [k, m] of faltan.entries()) {
       ctx.log(`Bajando ${m.nombre} (${m.carpeta})`);
       await bajarModelo(m.url, m.ruta, (b, t) => avanzar(`Bajando modelos (${k + 1} de ${faltan.length}): ${(b / 1024 ** 3).toFixed(1)}${t ? ` de ${(t / 1024 ** 3).toFixed(1)}` : ""} GB`, 0.02 + 0.3 * ((k + (t ? b / t : 0)) / faltan.length)), ctx.signal);

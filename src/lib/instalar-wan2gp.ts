@@ -127,6 +127,7 @@ async function probar(i: InstalacionWan2gp, log: Registro) {
 
 const instalador = crearInstaladorPython<EstadoWan2gp>({
   clave: "__wan2gp",
+  espacio: { bytes: 15e9, para: "instalar el motor que anima los videos (Wan2GP)" },
   pasos: PASOS,
   sinMac: "Wan2GP necesita una tarjeta de video NVIDIA: en macOS no se puede.",
   contarLineas: true,
