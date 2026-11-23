@@ -142,9 +142,16 @@ async function proyectosLibres() {
   return { ps, ocupados };
 }
 
-/** Lo que nombran los trabajos en la fila o corriendo (rutas, ids de fuentes y de recetas). */
-async function enUso(): Promise<string> {
-  const ts = await db.trabajo.findMany({ where: { estado: { in: ["pendiente", "corriendo"] } }, select: { payload: true } });
+/**
+ * Lo que nombran los trabajos en la fila o corriendo (rutas, ids de fuentes y de recetas). Con `recientes`,
+ * también los creados en los últimos `dias` días en cualquier estado (DSC-11): sacar un clip sólo lee
+ * fuente.mp4 y no cambia ninguna fecha del archivo, así que un video del que se sacaron clips ayer no es
+ * un video «sin usar», aunque se haya bajado hace 40 días.
+ */
+export async function enUso(recientes?: { ahora: Date; dias: number }): Promise<string> {
+  const activos = { estado: { in: ["pendiente", "corriendo"] } };
+  const where = recientes ? { OR: [activos, { creado: { gte: new Date(recientes.ahora.getTime() - recientes.dias * DIA) } }] } : activos;
+  const ts = await db.trabajo.findMany({ where, select: { payload: true } });
   return ts.map((t) => JSON.stringify(t.payload ?? null)).join("\n");
 }
 
@@ -208,11 +215,24 @@ async function archivosDe(dir: string, hondo = 4): Promise<string[]> {
   return out;
 }
 
-/** Videos de Wan2GP en build/planos/ que ya están copiados en assets/ (misma huella). */
+/**
+ * Videos de Wan2GP en build/planos/ que ya están copiados en assets/ (misma huella). La huella (leer todo
+ * el video) sólo se calcula si el tamaño coincide con el de algún `assets/wan-*`: Sistema mide esto en
+ * cada visita (DSC-11).
+ */
 async function planosRepetidos(dir: string): Promise<string[]> {
   const out: string[] = [];
-  const assets = new Set(await fs.readdir(path.join(dir, "assets")).catch(() => [] as string[]));
+  const nombres = await fs.readdir(path.join(dir, "assets")).catch(() => [] as string[]);
+  const assets = new Set(nombres);
+  const tamanos = new Set<number>();
+  for (const n of nombres.filter((x) => x.startsWith("wan-"))) {
+    const st = await fs.lstat(path.join(dir, "assets", n)).catch(() => null);
+    if (st?.isFile()) tamanos.add(st.size);
+  }
+  if (!tamanos.size) return out;
   for (const f of (await archivosDe(path.join(dir, "build", "planos"))).filter((x) => VIDEO_IA.test(x))) {
+    const st = await fs.lstat(f).catch(() => null);
+    if (!st || !tamanos.has(st.size)) continue;
     const h = (await sha256Archivo(f).catch(() => "")).slice(0, 12);
     if (h && assets.has(`wan-${h}${path.extname(f).toLowerCase()}`)) out.push(f);
   }
@@ -269,7 +289,7 @@ async function candidatos(ahora: Date, dias: number) {
   const usado = await enUso();
   const comfy = await comfyRepetidos(usado);
   if (comfy.length) copias.push({ proyectoId: null, archivos: comfy });
-  const fuentes = await fuentesViejas(ahora, dias, usado);
+  const fuentes = await fuentesViejas(ahora, dias, await enUso({ ahora, dias }));
   return { renders, crudos, papelera, fuentes, copias };
 }
 
@@ -357,7 +377,7 @@ export async function liberar(que: QueLiberar, confirmo: boolean, ahora = new Da
     }
   } else if (que === "fuentes") {
     // Se vuelve a mirar justo antes: un trabajo nuevo pudo pedir uno de estos videos.
-    const frescos = new Set(await fuentesViejas(ahora, dias, await enUso()));
+    const frescos = new Set(await fuentesViejas(ahora, dias, await enUso({ ahora, dias })));
     for (const r of c.fuentes) {
       if (!frescos.has(r)) continue;
       bytes += await borrar(r);
