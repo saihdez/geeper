@@ -22,6 +22,7 @@ import { FranjaAviso, type MensajeEditor } from "./franja-aviso";
 import { AvisoRevisionVieja, gruposRepartidos, NOTA_SUBTITULO_REPARTIDO } from "./aviso-revision-vieja";
 import { avisoGuardado, escenaDeEdicion, PASOS_EDITOR, siguientePaso, falloReciente, textoFalloCreacion, renderFallido, avisoRitmo, correccionesVacias, enLista, mensajeSinCambios, opcionesRitmo, versionParaDeshacer, errorSubtitulo, escenasConOtraVoz, estaActivo, estadoCreacion, mismoContenido, pasoRender, preguntaVozEscena, renderEnCurso, verTrabajos, TEXTO_RITMO_GUARDADO, type TrabajoV, type VocesV } from "./editor-estado";
 import { Plegable } from "./plegable";
+import { avisoMezclaVoces } from "@/lib/ediciones";
 import { EdicionPorTexto, EfectosEscena, PanelAvanzado, PanelEstilo, type EfectosV, type EstiloV, type ExtrasV, type PalabraV } from "./edicion-avanzada";
 
 /** Miniatura de una escena (la misma que su tarjeta). */
@@ -207,6 +208,21 @@ export function InformeQc({ r, slug, vectorizar, escenas = [] }: { r: Render; sl
           <figcaption className="mt-1 text-xs text-tenue">Hoja de contacto: {inf.fotogramas.map((f) => `${f.nota} (${f.t.toFixed(1)} s)`).join(" · ")}</figcaption>
         </figure>
       )}
+    </div>
+  );
+}
+
+/**
+ * UX-12: en la revisión final, si el video suena con más de una voz se avisa (no bloquea: puede ser a
+ * propósito). La cuenta es la de ediciones.ts, la misma que usa la vista.
+ */
+export function AvisoVocesMezcladas({ escenas, voces }: { escenas: { indice: number; voz: { voz?: string | null } }[]; voces: VocesV | null }) {
+  const aviso = avisoMezclaVoces(escenas, voces);
+  if (!aviso) return null;
+  return (
+    <div className="mb-3 rounded-lg border border-amber-900 bg-amber-950/20 p-3 text-sm" role="note">
+      <p className="font-medium">Para mirar: {aviso}</p>
+      <p className="mt-1 text-tenue">Qué hacer: si no lo hiciste a propósito, en «3. Voz y estilo» pon la misma voz en todo el video.</p>
     </div>
   );
 }
@@ -674,6 +690,7 @@ export function EditorProyecto({ id }: { id: string }) {
                 {/* UX-16: si cambió algo después de este video, la revisión es de antes (al día por contenido, UX-21). */}
                 <AvisoRevisionVieja versionRevisada={render.versionNumero} versionActual={renderAlDia ? render.versionNumero : fila.versionActual}
                   ocupado={ocupado || !!enCurso} alCrear={() => void renderizar()} />
+                <AvisoVocesMezcladas escenas={escenas} voces={v.voces ?? null} />
                 <InformeQc r={render} slug={fila.slug} escenas={escenas} vectorizar={{ hacer: vectorizarImagen, sigue: (a) => !!v && (v.escenas.some((e) => e.visual.asset === a) || !!v.extras?.libres.some((pi) => pi.clips.some((c) => c.asset === a))), ocupado }} />
               </section>
             )}
