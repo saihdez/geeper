@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
@@ -8,7 +8,8 @@ import { json, manejar } from "@/lib/http";
 import { borrarRecibidos, recibirMultipart } from "@/lib/multipart-flujo";
 import { revisarComfyui } from "@/lib/instalar-comfyui";
 import { infoNodos, permitirNodos } from "@/lib/nodos-comfy";
-import { aviso, bloqueo, dirCorrida, entradasSinArchivo, escribirCorrida, hayEjemplo, nuevaCorrida, PedidoWorkflow, textoFaltaArchivo } from "@/lib/workflows";
+import { aviso, bloqueo, dirCorrida, entradasSinArchivo, escribirCorrida, espacioLibre, hayEjemplo, nuevaCorrida, PedidoWorkflow, textoFaltaArchivo } from "@/lib/workflows";
+import { bytesPorBajar } from "@/lib/workflows-texto";
 
 export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ id: string }> };
@@ -35,12 +36,18 @@ export async function GET(_: Request, ctx: Ctx) {
     const { w, conEjemplo } = await buscar(id);
     const grafo = await leerWorkflowJson(w.id);
     const modelos = estadoModelos(modelosDeWorkflow(grafo));
+    const faltan = modelos.filter((m) => !m.listo).length;
+    // Lo que ya está en el disco se descuenta del tamaño del índice; con el espacio libre, la página
+    // pregunta antes de bajar más de 10 GB o avisa si no cabe (UX-36).
+    const yaBajados = modelos.filter((m) => m.listo).reduce((s, m) => s + (statSync(m.ruta, { throwIfNoEntry: false })?.size ?? 0), 0);
     return json({
       workflow: { ...w, bloqueo: bloqueo(w), aviso: aviso(w), miniaturas: w.miniaturas.map((m) => `/api/workflows/archivo/${encodeURIComponent(m)}`) },
       textos: textosDeWorkflow(grafo),
       notas: notasDeWorkflow(grafo),
       modelos: modelos.map((m) => ({ nombre: m.nombre, carpeta: m.carpeta, listo: m.listo })),
-      faltan: modelos.filter((m) => !m.listo).length,
+      faltan,
+      porBajar: bytesPorBajar(w.tamano, faltan, yaBajados),
+      libre: await espacioLibre(COMFYUI_DIR),
       nodos: (await infoNodos(w.complementos)).map((n) => ({
         id: n.id,
         nombre: n.fijado?.nombre ?? n.id,

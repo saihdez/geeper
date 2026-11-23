@@ -115,3 +115,34 @@ export function coincideBusqueda(w: { titulo: string; descripcion: string; etiqu
   const texto = sinTildes(`${w.titulo} ${w.descripcion} ${w.etiquetas.join(" ")} ${w.modelos.join(" ")} ${w.categoria} ${w.tipo}`).replace(/[-_]/g, " ");
   return grupos.every((g) => g.some((x) => texto.includes(x.replace(/-/g, " "))));
 }
+
+/** «32 GB» / «850 MB». */
+export const textoGb = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(b >= 1e10 ? 0 : 1)} GB` : `${Math.max(1, Math.round(b / 1e6))} MB`);
+
+/** Hasta cuánto pesa una receta «ligera»: arriba de esto se pregunta antes de bajar (UX-36). */
+export const LIGERA = 10e9;
+/** Lo que se deja libre en el disco además de los modelos. */
+export const MARGEN_DISCO = 2e9;
+
+/** Lo que falta bajar (aprox.): el tamaño del índice menos lo que ya está en el disco (función pura). */
+export function bytesPorBajar(tamano: number, faltan: number, yaBajados: number): number {
+  return faltan ? Math.max(0, tamano - yaBajados) : 0;
+}
+
+/**
+ * Qué decir antes de «Crear» por lo que hay que bajar (función pura, UX-36): `bloqueo` si no cabe en el
+ * disco, `pregunta` si baja más de 10 GB, o nada.
+ */
+export function avisoDescarga(bytes: number, libre: number | null): { bloqueo?: string; pregunta?: string } {
+  if (bytes <= 0) return {};
+  const queda = libre == null ? "" : ` En el disco quedan ${textoGb(libre)} libres.`;
+  if (libre != null && bytes + MARGEN_DISCO > libre) return { bloqueo: `No hay espacio: esta receta baja unos ${textoGb(bytes)} y en el disco quedan ${textoGb(libre)} libres. Libera espacio o elige una receta más liviana.` };
+  if (bytes > LIGERA) return { pregunta: `Esta receta baja unos ${textoGb(bytes)}. Puede tardar mucho y quizá no quepa en tu tarjeta de video.${queda} ¿Seguir?` };
+  return {};
+}
+
+/** Si al bajar un modelo de `total` bytes no queda espacio (función pura): el mensaje, o null. */
+export function faltaEspacio(nombre: string, total: number, libre: number | null): string | null {
+  if (!total || libre == null || total + MARGEN_DISCO <= libre) return null;
+  return `No hay espacio en el disco para bajar ${nombre}: pesa ${textoGb(total)} y quedan ${textoGb(libre)} libres. Libera espacio y vuelve a intentar.`;
+}

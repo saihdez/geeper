@@ -20,6 +20,7 @@ import { resolverArchivo } from "./hub-comfy";
 import { argsNodos, fijadoDe, infoNodos, instalarNodo } from "./nodos-comfy";
 import type { Contexto } from "./pasos";
 import { GPU_SOLO_BIN } from "./rutas";
+import { faltaEspacio } from "./workflows-texto";
 
 export { entradasSinArchivo, hayEjemplo, REINTENTABLES, textoFaltaArchivo, trabajoPorCorrida, tuArchivo } from "./workflows-texto";
 
@@ -120,13 +121,31 @@ export interface AvanceWorkflow {
   avance: number;
 }
 
+/** Bytes libres en el disco de `dir` (o del primer padre que exista); null si no se puede saber. */
+export async function espacioLibre(dir: string): Promise<number | null> {
+  let d = path.resolve(dir);
+  while (!existsSync(d) && path.dirname(d) !== d) d = path.dirname(d);
+  try {
+    const s = await fs.statfs(d);
+    return s.bavail * s.bsize;
+  } catch {
+    return null;
+  }
+}
+
 /** Baja un archivo a `destino` (vía .part, para no dejar uno a medias con el nombre bueno). */
-async function bajarModelo(url: string, destino: string, alAvanzar: (bajado: number, total: number) => void, signal?: AbortSignal) {
+export async function bajarModelo(url: string, destino: string, alAvanzar: (bajado: number, total: number) => void, signal?: AbortSignal) {
   await fs.mkdir(path.dirname(destino), { recursive: true });
   const parte = `${destino}.part`;
   const r = await fetch(url, { signal, redirect: "follow" });
   if (!r.ok || !r.body) throw new Error(`No se pudo bajar ${path.basename(destino)} (${r.status}). Si es un modelo que pide aceptar términos en Hugging Face, ábrelo en el editor de ComfyUI.`);
   const total = Number(r.headers.get("content-length") ?? 0);
+  // Antes de llenar el disco (UX-36): con el tamaño a la vista, si no cabe se dice y no se baja nada.
+  const sinEspacio = faltaEspacio(path.basename(destino), total, await espacioLibre(path.dirname(destino)));
+  if (sinEspacio) {
+    await r.body.cancel().catch(() => {});
+    throw new Error(sinEspacio);
+  }
   let bajado = 0;
   let ultimo = 0;
   const flujo = Readable.fromWeb(r.body as import("node:stream/web").ReadableStream<Uint8Array>);

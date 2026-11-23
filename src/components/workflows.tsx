@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Aviso, Barra, archivo, pedir, postJson, useSondeo } from "./comun";
 import { textoEspera, useMotorVivo } from "./motor";
-import { coincideBusqueda, entradasSinArchivo, iconoDeTipo, textoFaltaArchivo, tipoMiniatura, tuArchivo } from "@/lib/workflows-texto";
+import { avisoDescarga, coincideBusqueda, entradasSinArchivo, iconoDeTipo, LIGERA, textoFaltaArchivo, textoGb, tipoMiniatura, tuArchivo } from "@/lib/workflows-texto";
 
 interface WfV { id: string; titulo: string; descripcion: string; categoria: string; tipo: string; etiquetas: string[]; modelos: string[]; tamano: number; local: boolean; bloqueo: string | null; aviso: string | null; comunidad: boolean; entradas: number; uso: number; fecha: string | null; miniaturas: string[] }
 interface CorridaV { id: string; workflow: string; titulo: string; creada: string; estado: "preparada" | "hecha" | "fallida"; salidas: { archivo: string; tipo: string }[]; segundos?: number; error?: string; trabajo: string | null; cancelada?: boolean }
@@ -14,35 +14,42 @@ interface Detalle {
   notas: string[];
   modelos: { nombre: string; carpeta: string; listo: boolean }[];
   faltan: number;
+  /** Bytes que faltan bajar (aprox.) y los libres en el disco (UX-36). */
+  porBajar: number;
+  libre: number | null;
   nodos: { id: string; nombre: string; version: string | null; autor: string; repo: string; licencia: string; megas: number; motivo: string | null; instalado: boolean; permitido: boolean }[];
   entradas: { nodo: number; tipo: string; archivo: string | null; medio: string; ejemplo: string | null }[];
 }
 
-const gb = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(b >= 1e10 ? 0 : 1)} GB` : `${Math.max(1, Math.round(b / 1e6))} MB`);
+const gb = textoGb;
 const MEDIO: Record<string, string> = { image: "una imagen", video: "un video", audio: "un audio" };
 const ACEPTA: Record<string, string> = { image: ".png,.jpg,.jpeg,.webp", video: ".mp4,.mov,.webm", audio: ".wav,.mp3,.flac,.m4a,.ogg" };
-type Filtro = "local" | "todos" | "pago";
+type Filtro = "ligeras" | "local" | "todos" | "pago";
+/** Corre en esta PC y baja menos de 10 GB: con lo que se abre la galería (UX-36). */
+const esLigera = (w: { local: boolean; tamano: number }) => w.local && w.tamano < LIGERA;
+const enFiltro = (w: { local: boolean; tamano: number }, f: Filtro) => (f === "ligeras" ? esLigera(w) : f === "local" ? w.local : f === "pago" ? !w.local : true);
 
 /** Workflows: el catálogo de recetas de ComfyUI, para usar sin saber de nodos. */
 export function PaginaWorkflows() {
   const { datos, error, recargar } = useSondeo<Datos>("/api/workflows", 4000);
   const [buscar, setBuscar] = useState("");
   const [categoria, setCategoria] = useState("Todas");
-  const [filtro, setFiltro] = useState<Filtro>("local");
+  const [filtro, setFiltro] = useState<Filtro>("ligeras");
   const [cuantos, setCuantos] = useState(48);
   const [abierto, setAbierto] = useState<string | null>(null);
   const detalleRef = useRef<HTMLDivElement>(null);
 
   const lista = useMemo(() => {
     return (datos?.workflows ?? [])
-      .filter((w) => (filtro === "local" ? w.local : filtro === "pago" ? !w.local : true))
+      .filter((w) => enFiltro(w, filtro))
       .filter((w) => categoria === "Todas" || w.categoria === categoria)
       .filter((w) => coincideBusqueda(w, buscar))
-      .sort((a, b) => Number(!!a.bloqueo) - Number(!!b.bloqueo) || Number(!!a.aviso) - Number(!!b.aviso) || b.uso - a.uso);
+      // En «Ligeras», las más livianas primero; en las demás, las más usadas.
+      .sort((a, b) => Number(!!a.bloqueo) - Number(!!b.bloqueo) || Number(!!a.aviso) - Number(!!b.aviso) || (filtro === "ligeras" ? a.tamano - b.tamano : 0) || b.uso - a.uso);
   }, [datos, buscar, categoria, filtro]);
   const categorias = useMemo(() => {
     const c = new Map<string, number>();
-    for (const w of datos?.workflows ?? []) if (filtro === "todos" || (filtro === "local") === w.local) c.set(w.categoria, (c.get(w.categoria) ?? 0) + 1);
+    for (const w of datos?.workflows ?? []) if (enFiltro(w, filtro)) c.set(w.categoria, (c.get(w.categoria) ?? 0) + 1);
     return [...c.entries()].sort((a, b) => b[1] - a[1]);
   }, [datos, filtro]);
 
@@ -54,6 +61,7 @@ export function PaginaWorkflows() {
   if (!datos) return <p className="text-tenue">Cargando…</p>;
   const total = datos.workflows.length;
   const locales = datos.workflows.filter((w) => w.local).length;
+  const ligeras = datos.workflows.filter(esLigera).length;
   return (
     <div className="space-y-6">
       <header className="space-y-1">
@@ -74,12 +82,13 @@ export function PaginaWorkflows() {
             <div className="flex flex-wrap items-center gap-2">
               <input className="campo max-w-sm" type="search" placeholder="Buscar: retrato, música, quitar fondo, video…" value={buscar} onChange={(ev) => { setBuscar(ev.target.value); setCuantos(48); }} aria-label="Buscar workflows" />
               <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="Qué workflows mostrar">
-                {([["local", `Corren en tu PC (${locales})`], ["todos", `Todos (${total})`], ["pago", `De pago (${total - locales})`]] as const).map(([id, n]) => (
+                {([["ligeras", `Ligeras, menos de 10 GB (${ligeras}) · recomendado`], ["local", `Corren en tu PC (${locales})`], ["todos", `Todos (${total})`], ["pago", `De pago (${total - locales})`]] as const).map(([id, n]) => (
                   <button key={id} role="radio" aria-checked={filtro === id} className={`boton text-xs ${filtro === id ? "boton-primario" : ""}`} onClick={() => { setFiltro(id); setCategoria("Todas"); setCuantos(48); }}>{n}</button>
                 ))}
               </div>
             </div>
-            {filtro !== "local" && <p className="text-xs text-tenue">Los de pago usan servicios de la nube de Comfy que cobran por uso: aparecen para que los conozcas, pero están bloqueados porque Geeper funciona gratis.</p>}
+            {filtro === "ligeras" && <p className="text-xs text-tenue">Las que bajan poco y suelen caber en tu tarjeta de video, de la más liviana a la más pesada. Las demás están en «Corren en tu PC».</p>}
+            {(filtro === "todos" || filtro === "pago") && <p className="text-xs text-tenue">Los de pago usan servicios de la nube de Comfy que cobran por uso: aparecen para que los conozcas, pero están bloqueados porque Geeper funciona gratis.</p>}
             <div className="flex flex-wrap gap-1">
               {[["Todas", lista.length] as const, ...categorias].map(([c, n]) => (
                 <button key={c} aria-pressed={categoria === c} className={`rounded-full border px-3 py-1 text-xs ${categoria === c ? "border-cyan-500 bg-cyan-950/40 ring-2 ring-cyan-500" : "border-borde text-tenue hover:text-white"}`} onClick={() => { setCategoria(c); setCuantos(48); }}>
@@ -221,6 +230,7 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
   const [archivos, setArchivos] = useState<Record<number, File | null>>({});
   const [enviando, setEnviando] = useState(false);
   const [listo, setListo] = useState(false);
+  const [preguntado, setPreguntado] = useState(false);
   const [permiso, setPermiso] = useState(false);
 
   useEffect(() => {
@@ -243,6 +253,10 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
 
   async function crear() {
     if (!d) return;
+    // Antes de bajar más de 10 GB se pregunta, una vez (UX-36).
+    const descarga = avisoDescarga(d.porBajar, d.libre);
+    if (descarga.pregunta && !preguntado && !confirm(descarga.pregunta)) return;
+    setPreguntado(true);
     setError(null);
     setListo(false);
     setEnviando(true);
@@ -266,6 +280,7 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
   if (!d) return <p className="text-sm text-tenue">Cargando la receta…</p>;
   const w = d.workflow;
   const sinArchivo = entradasSinArchivo(d.entradas, Object.keys(archivos).filter((n) => archivos[Number(n)]), (e) => !!e.ejemplo);
+  const descarga = avisoDescarga(d.porBajar, d.libre);
   return (
     <section className="tarjeta space-y-4 p-4" aria-label={`Receta ${w.titulo}`}>
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -335,7 +350,7 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
           <div className="space-y-1 text-xs text-tenue">
             <p>
               {d.faltan
-                ? `La primera vez baja ${d.faltan} modelo${d.faltan === 1 ? "" : "s"}${w.tamano ? ` (unos ${gb(w.tamano)} en total)` : ""}; después ya no.`
+                ? `La primera vez baja ${d.faltan} modelo${d.faltan === 1 ? "" : "s"}${d.porBajar ? ` (unos ${gb(d.porBajar)})` : ""}; después ya no.${d.libre != null ? ` En el disco quedan ${gb(d.libre)} libres.` : ""}`
                 : "Los modelos ya están en esta computadora."}{" "}
               Usa la tarjeta de video: mientras trabaja se pausa la generación de videos.
             </p>
@@ -376,7 +391,8 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
             <Aviso tipo="ok">Listo: está en camino (lo ves avanzar arriba, en «Lo que estás creando»). ¿Otra versión? Cambia el texto y pulsa «Crear otra».</Aviso>
           )}
           <div className="space-y-1">
-            <button className="boton boton-primario" disabled={enviando || sinArchivo.length > 0 || (d.nodos.some((n) => !n.permitido) && !permiso)} onClick={() => void crear()}>{enviando ? "Enviando…" : listo ? "Crear otra" : "Crear"}</button>
+            {descarga.bloqueo && <Aviso tipo="alerta">{descarga.bloqueo}</Aviso>}
+            <button className="boton boton-primario" disabled={enviando || !!descarga.bloqueo || sinArchivo.length > 0 || (d.nodos.some((n) => !n.permitido) && !permiso)} onClick={() => void crear()}>{enviando ? "Enviando…" : listo ? "Crear otra" : "Crear"}</button>
             {sinArchivo.length > 0 && <p className="text-xs text-amber-300">{textoFaltaArchivo(sinArchivo.map((e) => e.medio))}</p>}
           </div>
         </>
