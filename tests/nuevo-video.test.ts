@@ -117,6 +117,8 @@ describe("el botón apagado dice qué falta (UX-31)", () => {
     expect(faltaDemo({ url: "", linkOk: false, largo: 0, plantilla: "a" })).toEqual(["el link de la página", "lo que dice la voz"]);
     expect(faltaDemo({ url: "hola", linkOk: false, largo: 10, plantilla: "" })).toEqual(["un link completo", "el estilo del canal"]);
     expect(faltaDemo({ url: "https://x.com", linkOk: true, largo: 10, plantilla: "a" })).toEqual([]);
+    // Mientras cargan los estilos no aparece «falta: el estilo del canal».
+    expect(faltaDemo({ url: "https://x.com", linkOk: true, largo: 10, plantilla: "", cargando: true })).toEqual([]);
   });
 
   it("la línea va debajo del botón y el botón la nombra", () => {
