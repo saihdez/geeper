@@ -100,9 +100,10 @@ const EQUIVALENCIAS: [string, string[]][] = [
 
 /**
  * Si una receta coincide con lo que se busca (función pura): cada palabra (o frase de la tabla) tiene que
- * estar en el título, la descripción, las etiquetas, los modelos o la categoría, en español o en inglés.
+ * estar en el título (el traducido o el original en inglés), la descripción, las etiquetas, los modelos o la
+ * categoría, en español o en inglés.
  */
-export function coincideBusqueda(w: { titulo: string; descripcion: string; etiquetas: string[]; modelos: string[]; categoria: string; tipo: string }, busqueda: string): boolean {
+export function coincideBusqueda(w: { titulo: string; descripcion: string; etiquetas: string[]; modelos: string[]; categoria: string; tipo: string; original?: string | null }, busqueda: string): boolean {
   let q = ` ${sinTildes(busqueda).replace(/\s+/g, " ").trim()} `;
   if (!q.trim()) return true;
   const grupos: string[][] = [];
@@ -112,7 +113,7 @@ export function coincideBusqueda(w: { titulo: string; descripcion: string; etiqu
     q = q.replace(` ${frase} `, " ");
   }
   for (const p of q.trim().split(" ")) if (p) grupos.push([p]);
-  const texto = sinTildes(`${w.titulo} ${w.descripcion} ${w.etiquetas.join(" ")} ${w.modelos.join(" ")} ${w.categoria} ${w.tipo}`).replace(/[-_]/g, " ");
+  const texto = sinTildes(`${w.titulo} ${w.original ?? ""} ${w.descripcion} ${w.etiquetas.join(" ")} ${w.modelos.join(" ")} ${w.categoria} ${w.tipo}`).replace(/[-_]/g, " ");
   return grupos.every((g) => g.some((x) => texto.includes(x.replace(/-/g, " "))));
 }
 

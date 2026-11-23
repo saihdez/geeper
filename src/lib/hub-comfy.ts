@@ -10,6 +10,7 @@ import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { CategoriaIndice, EntradaIndice } from "./comfyui";
+import recetasEs from "./recetas-es.json";
 
 /** Commit del repo de plantillas que corresponde a comfyui-workflow-templates 0.11.114 (bump en f77d47c). */
 export const HUB_COMMIT = "f77d47c355f9a6a0bec0e129b78b194a92d8d65b";
@@ -82,4 +83,26 @@ export async function resolverArchivo(dir: string, ruta: string): Promise<string
   const destino = path.join(dirHub(dir), repo);
   if (!existsSync(destino)) await bajarA(urlHub(repo), destino);
   return destino;
+}
+
+/** Título y descripción en español de una receta, y el título en inglés del que salió. */
+export interface RecetaEs { en: string; titulo: string; descripcion: string }
+
+/**
+ * Traducciones de las recetas del hub (UX-36), hechas una vez para el commit fijado (HUB_COMMIT) con
+ * Nemotron y revisadas; donde la traducción salió mal se usó la española del mismo repositorio
+ * (templates/index.es.json, MIT). Clave = id de la receta.
+ */
+export const RECETAS_ES: Record<string, RecetaEs> = recetasEs;
+
+/**
+ * La receta con el título y la descripción en español (función pura). `original` es el título en
+ * inglés, para mostrarlo debajo y poder buscarlo; null si no se tradujo. Una receta nueva, o una cuyo
+ * título cambió desde que se tradujo, queda como viene.
+ */
+export function traducirReceta<T extends { id: string; titulo: string; descripcion: string }>(w: T, tr: Record<string, RecetaEs> = RECETAS_ES): T & { original: string | null } {
+  const es = Object.hasOwn(tr, w.id) ? tr[w.id] : undefined;
+  if (!es || es.en.trim() !== w.titulo.trim()) return { ...w, original: null };
+  const titulo = es.titulo.trim() || w.titulo;
+  return { ...w, titulo, descripcion: es.descripcion.trim() || w.descripcion, original: titulo === w.titulo ? null : w.titulo };
 }
