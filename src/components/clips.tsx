@@ -54,7 +54,7 @@ export function PaginaClips() {
   const fuenteId = q.get("fuente");
   const momento = q.get("momento") ? Number(q.get("momento")) : null;
   const trabajoPedido = q.get("trabajo"); // el análisis que el paso 1 sigue al volver de «Revisar todo»
-  const { datos, recargar } = useSondeo<Datos>("/api/clips", 3000);
+  const { datos, recargar } = useSondeo<Datos>("/api/clips", 3000, ["trabajos", "motor"]);
   const ir = (f: string | null, m: number | null = null, trabajo: string | null = null) => {
     const p = new URLSearchParams();
     if (f) p.set("fuente", f);

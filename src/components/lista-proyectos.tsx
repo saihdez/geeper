@@ -27,7 +27,7 @@ export function nombreFormato(formato: string): string {
 const VIDEO: Record<string, string> = { renderizado: "hecho, falta mirarlo", aprobado: "aprobado", rechazado: "descartado" };
 
 export function ListaProyectos() {
-  const { datos, error } = useSondeo<{ proyectos: Fila[] }>("/api/proyectos", 3000);
+  const { datos, error } = useSondeo<{ proyectos: Fila[] }>("/api/proyectos", 3000, ["proyecto", "trabajos"]);
   // Los eliminados se quitan al instante (el sondeo los saca en la próxima vuelta).
   const [eliminados, setEliminados] = useState<string[]>([]);
   const [borrando, setBorrando] = useState<string | null>(null);

@@ -91,7 +91,7 @@ function SubirProducto({ proyectoId, producto, cambiar }: { proyectoId: string; 
  * encima de todo el video como un streamer (gameplay). Decisiones del dueño, 2026-11-21.
  */
 export function PanelAvatarVideo({ proyectoId, ocupado }: { proyectoId: string; ocupado: boolean }) {
-  const { datos, recargar } = useSondeo<Datos>(`/api/proyectos/${proyectoId}/avatar`, 5000);
+  const { datos, recargar } = useSondeo<Datos>(`/api/proyectos/${proyectoId}/avatar`, 5000, [`trabajos:${proyectoId}`, `proyecto:${proyectoId}`]);
   const [avatar, setAvatar] = useState<string | null>(null);
   const [modo, setModo] = useState<"escenas" | "streamer">("escenas");
   const [producto, setProducto] = useState<string | null>(null);
@@ -202,7 +202,7 @@ export function PanelAvatarEscena({ proyectoId, escena, numero, ocupado }: { pro
 }
 
 function FormAvatarEscena({ proyectoId, escena, numero, ocupado }: { proyectoId: string; escena: string; numero: number; ocupado: boolean }) {
-  const { datos, recargar } = useSondeo<Datos>(`/api/proyectos/${proyectoId}/avatar`, 4000);
+  const { datos, recargar } = useSondeo<Datos>(`/api/proyectos/${proyectoId}/avatar`, 4000, [`trabajos:${proyectoId}`, `proyecto:${proyectoId}`]);
   const [avatar, setAvatar] = useState<string | null>(null);
   const [tipo, setTipo] = useState<"habla" | "accion">("habla");
   const [encuadre, setEncuadre] = useState<Encuadre>("medio");

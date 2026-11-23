@@ -55,7 +55,7 @@ function guardarEnUrl(e: EstadoAsistente | null) {
 
 /** Avatares: crear (describirlo o desde una foto), elegir entre varias tomas, nombrarlo y retocarlo. */
 export function PaginaAvatares() {
-  const { datos, error, recargar } = useSondeo<Datos>("/api/avatares", 5000);
+  const { datos, error, recargar } = useSondeo<Datos>("/api/avatares", 5000, ["trabajos"]);
   const [creando, setCreando] = useState(false);
   const [inicial, setInicial] = useState<EstadoAsistente | null>(null);
   // Al llegar los datos: retomar lo que dice la URL o, si no, las opciones que se están dibujando (UX-13).
