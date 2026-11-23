@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Aviso, archivo, numero, postJson, useSondeo } from "./comun";
+import { Aviso, AvisoTarjeta, LineaFalta, archivo, faltanConGuardar, numero, postJson, useGuardeAntes, useSondeo } from "./comun";
 
 interface Datos {
   instalado: boolean;
@@ -29,6 +29,7 @@ export function PanelEfectosSonido({ proyectoId, escenas, total, ocupado, alCamb
   const [exacto, setExacto] = useState(0);
   const [enviando, setEnviando] = useState(false);
   const [msg, setMsg] = useState<{ tipo: "ok" | "error" | "info"; texto: string } | null>(null);
+  const guarde = useGuardeAntes();
 
   if (datos && !datos.instalado && !datos.biblioteca.length) return null;
   const inicio = cuando === "exacto" ? exacto : (escenas.find((e) => `escena-${e.numero}` === cuando)?.inicio ?? 0);
@@ -56,6 +57,9 @@ export function PanelEfectosSonido({ proyectoId, escenas, total, ocupado, alCamb
       className={`rounded-full border px-3 py-1 text-sm ${activo ? "border-sky-500 bg-sky-950/40" : "border-borde hover:bg-white/5"}`}>{texto}</button>
   );
   const listo = eleccion && (eleccion.tipo !== "propio" || descripcion.trim().length >= 3);
+  // Uno ya creado entra al instante; uno nuevo se crea con toda la tarjeta de video.
+  const crea = !!eleccion && eleccion.tipo !== "biblioteca";
+  const faltaGuardar = crea ? faltanConGuardar(guarde) : [];
 
   return (
     <section className="tarjeta space-y-3 p-4" aria-labelledby="titulo-efectos">
@@ -118,9 +122,14 @@ export function PanelEfectosSonido({ proyectoId, escenas, total, ocupado, alCamb
         </div>
       </div>
 
-      <button type="button" className="boton boton-primario" disabled={!listo || ocupado || enviando} onClick={() => void agregar()}>
-        {enviando ? "Agregando…" : eleccion?.tipo === "biblioteca" ? "3. Agregar al video" : "3. Crear y agregar al video"}
-      </button>
+      {crea && <AvisoTarjeta g={guarde}>Crear el sonido tarda unos 3 minutos.</AvisoTarjeta>}
+      <div className="space-y-1">
+        <button type="button" className="boton boton-primario" disabled={!listo || ocupado || enviando || faltaGuardar.length > 0}
+          aria-describedby={faltaGuardar.length ? guarde.idFalta : undefined} onClick={() => void agregar()}>
+          {enviando ? "Agregando…" : eleccion?.tipo === "biblioteca" ? "3. Agregar al video" : "3. Crear y agregar al video"}
+        </button>
+        <LineaFalta id={guarde.idFalta} faltan={faltaGuardar} />
+      </div>
       {msg && <Aviso tipo={msg.tipo}>{msg.texto}</Aviso>}
     </section>
   );

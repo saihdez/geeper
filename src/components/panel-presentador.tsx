@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AvatarV } from "./avatares";
-import { Aviso, Barra, pedir, postJson, useSondeo } from "./comun";
+import { Aviso, AvisoTarjeta, Barra, LineaFalta, faltanConGuardar, pedir, postJson, useGuardeAntes, useSondeo } from "./comun";
 import type { MotorVoz } from "./elegir-voz";
 import { useMotorVivo } from "./motor";
 import { enlaceAvatares } from "@/lib/asistente-avatar";
@@ -109,6 +109,9 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
   const [otraActitud, setOtraActitud] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const guarde = useGuardeAntes();
+  const faltaGuardar = faltanConGuardar(guarde);
+  const describe = faltaGuardar.length ? guarde.idFalta : undefined;
   // El avatar elegido; sin elegir, el que ya está en el video o el primero de la biblioteca.
   const [base, setBase] = useState<Datos | null>(null);
   const elegido = avatar ?? (base?.estado.avatar && base.avatares.some((a) => a.id === base.estado.avatar) ? base.estado.avatar : base?.avatares[0]?.id ?? null);
@@ -340,11 +343,12 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
                 {d.error && <Aviso tipo="alerta">{d.error}</Aviso>}
                 {d.plan && (
                   <div className="space-y-1 text-xs text-tenue">
-                    <p>Va a hablar {Math.round(d.plan.segundos)} s{d.plan.modo === "pantalla" ? ` en ${d.plan.escenas.length === 1 ? "la escena" : "las escenas"} ${d.plan.escenas.map((x) => x.numero).join(", ")}` : ""}. Usa la tarjeta de video y tarda unos {minutosHablar(d.plan.segundos)} minutos (la primera vez, más: baja el modelo, unos 28 GB).</p>
+                    <p>Va a hablar {Math.round(d.plan.segundos)} s{d.plan.modo === "pantalla" ? ` en ${d.plan.escenas.length === 1 ? "la escena" : "las escenas"} ${d.plan.escenas.map((x) => x.numero).join(", ")}` : ""}. Tarda unos {minutosHablar(d.plan.segundos)} minutos (la primera vez, más: baja el modelo, unos 28 GB).</p>
                     {d.plan.notas.map((n) => <p key={n}>{n}</p>)}
                     {d.plan.avisos.map((n) => <p key={n} className="text-amber-300">{n}</p>)}
                   </div>
                 )}
+                {!trabajo && <AvisoTarjeta g={guarde}>{puedeMover ? "Sólo para generarlo otra vez: moverlo no usa la tarjeta." : null}</AvisoTarjeta>}
                 {error && <Aviso tipo="error">{error}</Aviso>}
                 {trabajo ? (
                   <div className="space-y-1">
@@ -360,14 +364,19 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
                       <button className="boton boton-primario" disabled={ocupado || enviando || !cambioUbicacion} onClick={() => void mover()}>
                         {cambioUbicacion ? "Aplicar la ubicación (al instante)" : "Ya está en ese lugar"}
                       </button>
-                      <button className="boton" disabled={ocupado || enviando || !d.plan} onClick={() => void generar()}>Generar el presentador otra vez</button>
+                      <button className="boton" disabled={ocupado || enviando || !d.plan || faltaGuardar.length > 0} aria-describedby={describe} onClick={() => void generar()}>Generar el presentador otra vez</button>
                     </div>
+                    <LineaFalta id={guarde.idFalta} faltan={faltaGuardar} />
                     <p className="text-xs text-tenue">Mover, agrandar o cambiar la forma no vuelve a generar el avatar: se aplica en segundos. Generarlo otra vez sólo hace falta si cambias el avatar, cómo habla o lo que dice.</p>
                   </div>
                 ) : (
-                  <button className="boton boton-primario" disabled={ocupado || enviando || !d.plan || (modo === "pantalla" && !elegidas.length)} onClick={() => void generar()}>
-                    {d.estado.burbuja || d.estado.escenas.length ? "Generar el presentador otra vez" : "Poner el presentador"}
-                  </button>
+                  <div className="space-y-1">
+                    <button className="boton boton-primario" disabled={ocupado || enviando || !d.plan || (modo === "pantalla" && !elegidas.length) || faltaGuardar.length > 0}
+                      aria-describedby={describe} onClick={() => void generar()}>
+                      {d.estado.burbuja || d.estado.escenas.length ? "Generar el presentador otra vez" : "Poner el presentador"}
+                    </button>
+                    <LineaFalta id={guarde.idFalta} faltan={faltaGuardar} />
+                  </div>
                 )}
               </>
             )}

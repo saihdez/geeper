@@ -90,6 +90,10 @@ const SITIOS = [
   "src/components/panel-animar.tsx",
   "src/components/avatares.tsx",
   "src/components/panel-avatar.tsx",
+  "src/components/panel-presentador.tsx",
+  "src/components/panel-rehacer.tsx",
+  "src/components/panel-efectos-sonido.tsx",
+  "src/components/workflows.tsx",
 ];
 
 describe("cada acción de tarjeta usa el mismo aviso", () => {
@@ -97,7 +101,8 @@ describe("cada acción de tarjeta usa el mismo aviso", () => {
     const s = fuente(f);
     expect(s).toMatch(/useGuardeAntes\(\)/);
     expect(s).toMatch(/<AvisoTarjeta g=\{/);
-    expect(s).toMatch(/aria-describedby=\{[^}]*\.idFalta/);
+    expect(s).toMatch(/aria-describedby=\{/);
+    expect(s).toMatch(/guarde\.idFalta/);
     expect(s).toMatch(/<LineaFalta id=\{/);
   });
 

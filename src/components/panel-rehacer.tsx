@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { Aviso, Barra, postJson, useSondeo } from "./comun";
+import { Aviso, AvisoTarjeta, Barra, LineaFalta, faltanConGuardar, postJson, useGuardeAntes, useSondeo } from "./comun";
 import { textoEspera, useMotorVivo } from "./motor";
 
 interface AvatarV { id: string; nombre: string; retrato: string; estiloNombre: string }
@@ -42,9 +42,11 @@ export function PanelRehacer({ proyectoId, escena, numero, ocupado, miniatura }:
   const [error, setError] = useState<string | null>(null);
   const [enviado, setEnviado] = useState(false);
   const motorVivo = useMotorVivo();
+  const guarde = useGuardeAntes();
   const trabajo = datos?.trabajos.find((t) => t.escena === escena) ?? null;
   const plan = modo ? datos?.planes[modo] : null;
   const listo = modo === "persona" ? !!avatar : modo === "camara" ? movimiento !== null : false;
+  const faltan = faltanConGuardar(guarde, listo ? [] : [modo === "persona" ? "elegir quién aparece" : "elegir cómo se mueve la cámara"]);
 
   async function rehacer() {
     if (!modo) return;
@@ -149,16 +151,22 @@ export function PanelRehacer({ proyectoId, escena, numero, ocupado, miniatura }:
               {plan?.ok && (
                 <>
                   {plan.notas?.map((n) => <p key={n} className="text-xs text-tenue">{n}</p>)}
-                  <p className="text-xs text-tenue">
-                    Usa la tarjeta de video y tarda varios minutos{modo === "persona" ? " (más cuanto más larga sea la escena)" : ""}. La primera vez baja el modelo ({modo === "persona" ? "unos 23 GB" : "unos 3 GB"}).
-                  </p>
+                  {!enviado && (
+                    <AvisoTarjeta g={guarde}>
+                      Tarda varios minutos{modo === "persona" ? " (más cuanto más larga sea la escena)" : ""}. La primera vez baja el modelo ({modo === "persona" ? "unos 23 GB" : "unos 3 GB"}).
+                    </AvisoTarjeta>
+                  )}
                   {error && <Aviso tipo="error">{error}</Aviso>}
                   {enviado ? (
                     <Aviso tipo="ok">Listo: está en camino. Lo ves avanzar aquí mismo.</Aviso>
                   ) : (
-                    <button type="button" className="boton boton-primario" disabled={!listo || enviando || ocupado || !datos.wan2gp.listo} onClick={() => void rehacer()}>
-                      {enviando ? "Enviando…" : `3. Rehacer la escena ${numero}`}
-                    </button>
+                    <div className="space-y-1">
+                      <button type="button" className="boton boton-primario" disabled={faltan.length > 0 || enviando || ocupado || !datos.wan2gp.listo}
+                        aria-describedby={faltan.length ? guarde.idFalta : undefined} onClick={() => void rehacer()}>
+                        {enviando ? "Enviando…" : `3. Rehacer la escena ${numero}`}
+                      </button>
+                      <LineaFalta id={guarde.idFalta} faltan={faltan} />
+                    </div>
                   )}
                 </>
               )}

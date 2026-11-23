@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Aviso, Barra, archivo, pedir, postJson, useSondeo } from "./comun";
+import { Aviso, AvisoTarjeta, Barra, LineaFalta, archivo, faltanConGuardar, pedir, postJson, useGuardeAntes, useSondeo } from "./comun";
 import { textoEspera, useMotorVivo } from "./motor";
 import { avisoDescarga, coincideBusqueda, entradasSinArchivo, iconoDeTipo, LIGERA, textoFaltaArchivo, textoGb, tipoMiniatura, tuArchivo } from "@/lib/workflows-texto";
 
@@ -233,6 +233,7 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
   const [listo, setListo] = useState(false);
   const [preguntado, setPreguntado] = useState(false);
   const [permiso, setPermiso] = useState(false);
+  const guarde = useGuardeAntes();
 
   useEffect(() => {
     let vivo = true;
@@ -282,6 +283,7 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
   const w = d.workflow;
   const sinArchivo = entradasSinArchivo(d.entradas, Object.keys(archivos).filter((n) => archivos[Number(n)]), (e) => !!e.ejemplo);
   const descarga = avisoDescarga(d.porBajar, d.libre);
+  const faltaGuardar = faltanConGuardar(guarde);
   return (
     <section className="tarjeta space-y-4 p-4" aria-label={`Receta ${w.titulo}`}>
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -353,8 +355,7 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
             <p>
               {d.faltan
                 ? `La primera vez baja ${d.faltan} modelo${d.faltan === 1 ? "" : "s"}${d.porBajar ? ` (unos ${gb(d.porBajar)})` : ""}; después ya no.${d.libre != null ? ` En el disco quedan ${gb(d.libre)} libres.` : ""}`
-                : "Los modelos ya están en esta computadora."}{" "}
-              Usa la tarjeta de video: mientras trabaja se pausa la generación de videos.
+                : "Los modelos ya están en esta computadora."}
             </p>
             {d.notas.length > 0 && (
               <details><summary className="cursor-pointer">Notas del autor (en inglés)</summary>
@@ -392,10 +393,13 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
           {listo && (
             <Aviso tipo="ok">Listo: está en camino (lo ves avanzar arriba, en «Lo que estás creando»). ¿Otra versión? Cambia el texto y pulsa «Crear otra».</Aviso>
           )}
+          <AvisoTarjeta g={guarde}>Mientras trabaja se pausa la generación de videos.</AvisoTarjeta>
           <div className="space-y-1">
             {descarga.bloqueo && <Aviso tipo="alerta">{descarga.bloqueo}</Aviso>}
-            <button className="boton boton-primario" disabled={enviando || !!descarga.bloqueo || sinArchivo.length > 0 || (d.nodos.some((n) => !n.permitido) && !permiso)} onClick={() => void crear()}>{enviando ? "Enviando…" : listo ? "Crear otra" : "Crear"}</button>
+            <button className="boton boton-primario" disabled={enviando || !!descarga.bloqueo || sinArchivo.length > 0 || (d.nodos.some((n) => !n.permitido) && !permiso) || faltaGuardar.length > 0}
+              aria-describedby={faltaGuardar.length ? guarde.idFalta : undefined} onClick={() => void crear()}>{enviando ? "Enviando…" : listo ? "Crear otra" : "Crear"}</button>
             {sinArchivo.length > 0 && <p className="text-xs text-amber-300">{textoFaltaArchivo(sinArchivo.map((e) => e.medio))}</p>}
+            <LineaFalta id={guarde.idFalta} faltan={faltaGuardar} />
           </div>
         </>
       )}
