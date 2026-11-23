@@ -5,7 +5,7 @@
  */
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { Aviso, Barra, MotorApagado, archivo, numero, pedir, postJson, segundos, useSondeo } from "./comun";
+import { AVISO_DESPERTANDO, Aviso, Barra, MotorApagado, archivo, numero, pedir, postJson, segundos, useSondeo } from "./comun";
 import { SugerenciasBusqueda } from "./sugerencias-busqueda";
 import { sugerirGlosario, sumarAlGlosario } from "@/lib/glosario";
 import { etapaSimple, explicarError, ERROR_GENERICO } from "@/lib/textos";
@@ -665,8 +665,9 @@ function Paso3({ f, c, volver }: { f: Fuente; c: Candidato; volver: () => void }
         <div className="flex flex-wrap gap-2">
           <input aria-label="Gancho" className="campo grow" value={gancho} maxLength={160} onChange={(e) => setGancho(e.target.value)} placeholder="Ej.: Nadie vio venir lo que pasó aquí" />
           <button type="button" className="boton" disabled={pensando || !c.texto} onClick={() => void sugerir()} title={!c.texto ? "Este momento no tiene palabras" : undefined}>
-            {pensando ? "Pensando (hasta 1 min)…" : "✨ Sugerirme ideas"}
+            {pensando ? "Pensando…" : "✨ Sugerirme ideas"}
           </button>
+          {pensando && <span className="self-center text-xs text-tenue" role="status">{AVISO_DESPERTANDO}</span>}
         </div>
         {errorIdeas && <Aviso tipo="alerta">{errorIdeas}</Aviso>}
         {ideas && ideas.ganchos.length > 0 && (
