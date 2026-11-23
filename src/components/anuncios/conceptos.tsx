@@ -277,8 +277,8 @@ function VideoDelConcepto({ ctx, c }: { ctx: Ctx; c: ConceptoT }) {
         <>
           <p className="text-sm text-tenue">Geeper hace el video con tu guion ({u?.formato ?? "9:16"}, para {u?.nombre}). Si ya tienes uno hecho en Geeper, puedes usarlo.</p>
           <div className="flex flex-wrap gap-2">
-            <button className={`boton ${modo === "generar" ? "boton-primario" : ""}`} onClick={() => setModo(modo === "generar" ? "nada" : "generar")}>Hacer el video</button>
-            <button className={`boton ${modo === "vincular" ? "boton-primario" : ""}`} onClick={() => setModo(modo === "vincular" ? "nada" : "vincular")}>Usar uno que ya tengo</button>
+            <button type="button" aria-pressed={modo === "generar"} className="opcion" onClick={() => setModo(modo === "generar" ? "nada" : "generar")}>Hacer el video</button>
+            <button type="button" aria-pressed={modo === "vincular"} className="opcion" onClick={() => setModo(modo === "vincular" ? "nada" : "vincular")}>Usar uno que ya tengo</button>
           </div>
           {modo === "generar" && (
             <div className="space-y-2">
@@ -287,7 +287,7 @@ function VideoDelConcepto({ ctx, c }: { ctx: Ctx; c: ConceptoT }) {
               ) : (
                 <Aviso tipo="alerta">
                   <p className="font-medium">Hacer el video tarda unos 3 minutos y usa la tarjeta de video.</p>
-                  <p className="mt-1">Windows se ha reiniciado sin aviso durante generaciones: guarda tu trabajo antes. Si se corta, el trabajo queda «interrumpido» y lo relanzas desde Trabajos.</p>
+                  <p className="mt-1">Windows se ha reiniciado sin aviso durante generaciones: guarda tu trabajo antes. Si se corta, el trabajo queda «interrumpido» y lo vuelves a empezar desde Trabajos con «Volver a intentar».</p>
                   <label className="mt-2 flex items-center gap-2">
                     <input type="checkbox" checked={acepto} onChange={(e) => setAcepto(e.target.checked)} />
                     Guardé mi trabajo; puedo generar.

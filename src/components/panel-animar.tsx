@@ -160,9 +160,9 @@ function Contenido({ proyectoId, escena, numero, ocupado, animar, trabajo, base 
       <fieldset>
         <legend className="etiqueta mb-1">Cómo se mueve la cámara en el video nuevo</legend>
         <div className="flex flex-wrap gap-1.5" role="radiogroup">
-          <button type="button" role="radio" aria-checked={!mov} className={`boton py-1 ${!mov ? "boton-primario" : ""}`} onClick={() => setMov(undefined)}>Que decida la IA</button>
+          <button type="button" role="radio" aria-checked={!mov} className="opcion py-1" onClick={() => setMov(undefined)}>Que decida la IA</button>
           {MOVS.map((m) => (
-            <button key={m.id} type="button" role="radio" aria-checked={mov === m.id} className={`boton py-1 ${mov === m.id ? "boton-primario" : ""}`} onClick={() => setMov(m.id)}>
+            <button key={m.id} type="button" role="radio" aria-checked={mov === m.id} className="opcion py-1" onClick={() => setMov(m.id)}>
               <span aria-hidden="true" className="mr-1">{m.icono}</span>{NOMBRES.movimiento[m.id]}
             </button>
           ))}

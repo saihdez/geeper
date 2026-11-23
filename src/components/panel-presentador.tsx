@@ -241,7 +241,7 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
                   <div className="flex flex-wrap gap-3">
                     {d.avatares.map((a) => (
                       <button key={a.id} type="button" aria-pressed={elegido === a.id} onClick={() => setAvatar(a.id)}
-                        className={`w-24 overflow-hidden rounded-lg border text-left ${elegido === a.id ? "border-cyan-400 outline outline-2 outline-cyan-500" : "border-borde"}`}>
+                        className="opcion-tarjeta w-24 overflow-hidden rounded-lg">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={a.retrato} alt="" className="aspect-[832/1216] w-full object-cover" />
                         <span className="block truncate px-1 py-0.5 text-xs">{a.nombre}</span>
@@ -254,11 +254,11 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
                 <fieldset className="space-y-2">
                   <legend className="font-medium">2. ¿Dónde aparece?</legend>
                   <div className="grid gap-2 sm:grid-cols-2">
-                    <button type="button" aria-pressed={modo === "burbuja"} onClick={() => setModo("burbuja")} className={`tarjeta p-3 text-left ${modo === "burbuja" ? "outline outline-2 outline-cyan-500" : ""}`}>
+                    <button type="button" aria-pressed={modo === "burbuja"} onClick={() => setModo("burbuja")} className="opcion-tarjeta p-3">
                       <span className="block font-medium">En una burbuja, todo el video</span>
                       <span className="block text-xs text-tenue">Las imágenes siguen detrás y el avatar habla en una esquina.</span>
                     </button>
-                    <button type="button" aria-pressed={modo === "pantalla"} onClick={() => setModo("pantalla")} className={`tarjeta p-3 text-left ${modo === "pantalla" ? "outline outline-2 outline-cyan-500" : ""}`}>
+                    <button type="button" aria-pressed={modo === "pantalla"} onClick={() => setModo("pantalla")} className="opcion-tarjeta p-3">
                       <span className="block font-medium">A pantalla completa</span>
                       <span className="block text-xs text-tenue">El avatar reemplaza la imagen de las escenas que elijas (por ejemplo, la primera y la última).</span>
                     </button>
@@ -310,7 +310,7 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
                   <div className="flex flex-wrap gap-2">
                     {ACTITUDES.map((x) => (
                       <button key={x.nombre} type="button" aria-pressed={!otraActitud && actitud === x.prompt} onClick={() => { setActitud(x.prompt); setOtraActitud(""); }}
-                        className={`boton ${!otraActitud && actitud === x.prompt ? "boton-primario" : ""}`}>{x.nombre}</button>
+                        className="opcion">{x.nombre}</button>
                     ))}
                   </div>
                 </fieldset>

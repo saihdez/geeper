@@ -63,11 +63,37 @@ describe("lo elegido no se pinta como el botón principal (A11-08)", () => {
     expect(css).toMatch(/content: "✓"/);
   });
 
+  it("las reglas de .opcion van en @layer components, así las utilidades (flex, p-3) les ganan", () => {
+    const ini = css.indexOf("@layer components {");
+    expect(ini).toBeGreaterThan(-1);
+    let nivel = 0;
+    let fin = ini;
+    for (let i = css.indexOf("{", ini); i < css.length; i++) {
+      if (css[i] === "{") nivel++;
+      else if (css[i] === "}" && --nivel === 0) {
+        fin = i;
+        break;
+      }
+    }
+    const dentro = css.slice(ini, fin);
+    const fuera = (css.slice(0, ini) + css.slice(fin)).replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(dentro).toContain(".opcion-tarjeta { position: relative; display: block;");
+    expect(dentro).toContain(".opcion { display: inline-flex;");
+    expect(fuera).not.toMatch(/\.opcion(-tarjeta)?[\s:{,]/);
+  });
+
   it("en Nuevo, boton-primario sólo se usa en el botón de enviar", () => {
     for (const f of ["form-nuevo.tsx", "form-demo.tsx", "nuevo.tsx"]) {
       const usos = fuente(f).split("\n").filter((l) => l.includes("boton-primario"));
       expect(usos.every((l) => /<button className="boton boton-primario"/.test(l)), f).toBe(true);
       expect(fuente(f), f).not.toMatch(/\? "boton-primario"|ring-2 ring-(cyan|acento)/);
+    }
+  });
+
+  it("en Animar, Presentador y Conceptos lo elegido tampoco usa el relleno del botón principal", () => {
+    for (const f of ["panel-animar.tsx", "panel-presentador.tsx", "anuncios/conceptos.tsx"]) {
+      expect(fuente(f), f).not.toMatch(/\? "boton-primario"|outline outline-2 outline-cyan-500/);
+      expect(fuente(f), f).toMatch(/className="opcion(-tarjeta)?[ "]/);
     }
   });
 
@@ -91,11 +117,13 @@ describe("el botón apagado dice qué falta (UX-31)", () => {
     expect(faltaDemo({ url: "", linkOk: false, largo: 0, plantilla: "a" })).toEqual(["el link de la página", "lo que dice la voz"]);
     expect(faltaDemo({ url: "hola", linkOk: false, largo: 10, plantilla: "" })).toEqual(["un link completo", "el estilo del canal"]);
     expect(faltaDemo({ url: "https://x.com", linkOk: true, largo: 10, plantilla: "a" })).toEqual([]);
+    // Mientras cargan los estilos no aparece «falta: el estilo del canal».
+    expect(faltaDemo({ url: "https://x.com", linkOk: true, largo: 10, plantilla: "", cargando: true })).toEqual([]);
   });
 
   it("la línea va debajo del botón y el botón la nombra", () => {
     const html = pintar();
-    expect(html).toMatch(/aria-describedby="nuevo-falta"[^>]*>Crear y generar<\/button><p id="nuevo-falta"[^>]*>Para continuar falta: escribir el tema · marcar la casilla de arriba\.<\/p>/);
+    expect(html).toMatch(/aria-describedby="nuevo-falta"[^>]*>Crear el video<\/button><p id="nuevo-falta"[^>]*>Para continuar falta: escribir el tema · marcar la casilla de arriba\.<\/p>/);
     expect(html).toMatch(/aria-describedby="demo-falta"[^>]*>Crear video de la página<\/button><p id="demo-falta"[^>]*>Para continuar falta: el link de la página · lo que dice la voz/);
   });
 
@@ -111,7 +139,8 @@ describe("usar un video de MoneyPrinterTurbo (UX-39)", () => {
     const html = pintar();
     const mas = html.match(/<details[^>]*><summary[^>]*>Más opciones<\/summary>([\s\S]*?)<\/details>/)?.[1] ?? "";
     expect(mas).toContain("Usar un video que ya hice con MoneyPrinterTurbo");
-    expect(mas).toContain("Código del video (36 letras y números)");
+    expect(mas).toContain("Código del video (como el de ejemplo, con guiones)");
+    expect(mas).not.toContain("36 letras");
     expect(mas).toContain("storage/tasks");
     expect(html).not.toMatch(/task_id|\bMPT\b|Kokoro|\bQC\b/);
   });

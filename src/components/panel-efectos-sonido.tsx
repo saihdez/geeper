@@ -42,7 +42,7 @@ export function PanelEfectosSonido({ proyectoId, escenas, total, ocupado, alCamb
       const r = await postJson<{ listo: boolean; efecto?: string }>(`/api/proyectos/${proyectoId}/efecto`, cuerpo);
       setMsg(r.listo
         ? { tipo: "ok", texto: `Listo: «${r.efecto}» suena en el segundo ${inicio.toFixed(1)}. Escúchalo en «En vivo»; si no te convence, quítalo en «Superposiciones y efectos de sonido».` }
-        : { tipo: "info", texto: "Creando el sonido con la tarjeta gráfica (unos 3 minutos). Se agrega solo al terminar; el avance está en «Trabajos». Queda guardado para usarlo otra vez al instante." });
+        : { tipo: "info", texto: "Creando el sonido con la tarjeta de video (unos 3 minutos). Se agrega solo al terminar; el avance está en «Trabajos». Queda guardado para usarlo otra vez al instante." });
       alCambiar();
     } catch (e) {
       setMsg({ tipo: "error", texto: (e as Error).message });

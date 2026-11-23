@@ -26,12 +26,13 @@ function Muestra({ estilo, vertical }: { estilo: "3d" | "plano"; vertical: boole
 }
 
 /** Lo que falta para poder enviar, en palabras de la persona (UX-31): va debajo del botón apagado. */
-export function faltaDemo(o: { url: string; linkOk: boolean; largo: number; plantilla: string }): string[] {
+export function faltaDemo(o: { url: string; linkOk: boolean; largo: number; plantilla: string; cargando?: boolean }): string[] {
   const falta: string[] = [];
   if (!o.url.trim()) falta.push("el link de la página");
   else if (!o.linkOk) falta.push("un link completo");
   if (o.largo < 3) falta.push("lo que dice la voz");
-  if (!o.plantilla) falta.push("el estilo del canal");
+  // Mientras llegan los estilos no se cuenta como faltante (si no, parpadea un momento).
+  if (!o.plantilla && !o.cargando) falta.push("el estilo del canal");
   return falta;
 }
 
@@ -54,7 +55,7 @@ export function FormDemo() {
   const plantillaElegida = (plantilla && (!datos || datos.plantillas.some((p) => p.slug === plantilla)) ? plantilla : datos?.plantillas[0]?.slug) || "";
   const linkOk = /^(https?:\/\/)?[^\s/]+\.[^\s]{2,}/i.test(url.trim());
   const linkMal = !linkOk && url.trim().length > 0;
-  const faltan = faltaDemo({ url, linkOk, largo, plantilla: plantillaElegida });
+  const faltan = faltaDemo({ url, linkOk, largo, plantilla: plantillaElegida, cargando: !datos });
 
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
@@ -73,7 +74,7 @@ export function FormDemo() {
     <form onSubmit={enviar} className="space-y-6">
       <p className="text-sm text-tenue">
         Geeper abre la página, la recorre sola como si alguien la estuviera mostrando y arma un video con tu voz, subtítulos y
-        control de calidad. No toca tu mouse ni tus cuentas. Tarda unos 3 a 5 minutos.
+        una revisión antes de publicar. No toca tu mouse ni tus cuentas. Tarda unos 3 a 5 minutos.
       </p>
 
       <section>
@@ -85,7 +86,7 @@ export function FormDemo() {
         <label className="mt-2 flex items-start gap-2 text-sm">
           <input type="checkbox" className="mt-1" checked={propio} onChange={(e) => setPropio(e.target.checked)} />
           <span>Es mi sitio (o tengo permiso para mostrarlo).
-            <span className="block text-xs text-tenue">Si no lo marcas, el video queda como «revisar permiso» y el control de calidad lo avisa antes de publicar.</span>
+            <span className="block text-xs text-tenue">Si no lo marcas, el video queda como «revisar permiso» y la revisión lo avisa antes de publicar.</span>
           </span>
         </label>
       </section>
@@ -139,12 +140,12 @@ export function FormDemo() {
 
       {error && <Aviso tipo="error">{error}</Aviso>}
       <div className="space-y-1">
-        <button className="boton boton-primario" disabled={enviando || faltan.length > 0} aria-describedby={faltan.length ? "demo-falta" : undefined}>
+        <button className="boton boton-primario" disabled={enviando || faltan.length > 0 || !plantillaElegida} aria-describedby={faltan.length ? "demo-falta" : undefined}>
           {enviando ? "Creando…" : "Crear video de la página"}
         </button>
         {faltan.length > 0 && <p id="demo-falta" className="text-xs text-amber-300">Para continuar falta: {faltan.join(" · ")}.</p>}
       </div>
-      <p className="text-xs text-tenue">Después puedes cambiar el texto, la voz o el formato desde el proyecto, como en cualquier otro video. No usa la tarjeta de video.</p>
+      <p className="text-xs text-tenue">Después puedes cambiar el texto, la voz o la forma del video desde el proyecto, como en cualquier otro video. No usa la tarjeta de video.</p>
     </form>
   );
 }

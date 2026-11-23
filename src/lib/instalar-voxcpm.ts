@@ -54,7 +54,7 @@ const PASOS = [
   { id: "pytorch", nombre: "PyTorch con CUDA (unos 3 GB)" },
   { id: "dependencias", nombre: "VoxCPM2 y lo que necesita (unos 2 GB)" },
   { id: "modelo", nombre: "El modelo de voz (unos 4,6 GB)" },
-  { id: "prueba", nombre: "Probar una voz en la tarjeta gráfica" },
+  { id: "prueba", nombre: "Probar una voz en la tarjeta de video" },
 ] as const;
 
 const venv = () => path.dirname(path.dirname(PYTHON_VOXCPM));
@@ -120,7 +120,7 @@ export function revisarVoxcpm(): EstadoVoxcpm {
 /** Empieza la instalación (si no hay otra) y vuelve enseguida; el avance se lee con revisarVoxcpm(). */
 export function instalarVoxcpm(): EstadoVoxcpm {
   const m = memoria();
-  if (!m.estado.disponible) throw new Error("Las voces diseñadas necesitan una tarjeta gráfica NVIDIA: en macOS todavía no se puede.");
+  if (!m.estado.disponible) throw new Error("Las voces diseñadas necesitan una tarjeta de video NVIDIA: en macOS todavía no se puede.");
   if (m.enCurso) return m.estado;
   const e = m.estado;
   Object.assign(e, { corriendo: true, error: null, registro: [], pasos: PASOS.map((p) => ({ ...p, estado: "pendiente" })) });

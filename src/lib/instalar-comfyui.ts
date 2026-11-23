@@ -31,8 +31,8 @@ const PASOS = [
   { id: "codigo", nombre: "Descargar ComfyUI" },
   { id: "python", nombre: "Python propio" },
   { id: "pytorch", nombre: "PyTorch con CUDA (unos 3 GB, o nada si ya está el de Wan2GP)" },
-  { id: "dependencias", nombre: "Lo que necesita ComfyUI, con su editor y sus plantillas (unos 2 GB)" },
-  { id: "prueba", nombre: "Probar la GPU y leer el catálogo" },
+  { id: "dependencias", nombre: "Lo que necesita ComfyUI, con su editor y sus recetas de ejemplo (unos 2 GB)" },
+  { id: "prueba", nombre: "Probar la tarjeta de video y leer el catálogo" },
 ] as const;
 
 /** Comandos de uv, en orden (función pura). */
@@ -75,7 +75,7 @@ const instalador = crearInstaladorPython<EstadoComfyui>({
   extra: instalarAtencionRapida,
   probar: async (dir, python, log) => {
     const r = await correr(python, ["-c", "import torch; ok = torch.cuda.is_available(); print(ok, torch.cuda.get_device_name(0) if ok else '')"], { log, permitirFallo: true, timeout: 120_000 });
-    if (!r.stdout.trim().startsWith("True")) throw new Error("PyTorch no ve la GPU. Actualiza el driver de NVIDIA (R580 o más nuevo) y vuelve a intentar.");
+    if (!r.stdout.trim().startsWith("True")) throw new Error("PyTorch no ve la tarjeta de video. Actualiza el driver de NVIDIA (R580 o más nuevo) y vuelve a intentar.");
     const { workflows } = await leerCatalogo(dir, python);
     log(`Catálogo: ${workflows.length} workflows (${workflows.filter((w) => w.local).length} corren en esta PC).`);
   },

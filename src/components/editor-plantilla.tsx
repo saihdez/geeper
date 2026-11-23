@@ -241,7 +241,7 @@ export function EditorPlantilla({ fila, alGuardar, alCerrar }: { fila: FilaPlant
     setMsg(null);
     try {
       await pedir(`/api/plantillas/${fila.slug}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ nombre, datos: d }) });
-      setMsg({ tipo: "ok", t: fila.usos ? `Guardada. Los ${fila.usos} proyectos que la usan la toman en su próximo render.` : "Guardada." });
+      setMsg({ tipo: "ok", t: fila.usos ? `Guardada. Los ${fila.usos} proyectos que lo usan lo toman la próxima vez que crees el video.` : "Guardada." });
       alGuardar();
     } catch (e) {
       setMsg({ tipo: "error", t: `No se guardó: ${e instanceof Error ? e.message : String(e)}` });
@@ -259,7 +259,7 @@ export function EditorPlantilla({ fila, alGuardar, alCerrar }: { fila: FilaPlant
       <div className="space-y-4">
         <Grupo titulo="Marca">
           <div className="grid gap-3 sm:grid-cols-2">
-            <Campo etiqueta="Nombre de la plantilla" ayuda="Sólo lo ves tú, para elegirla."><input className="campo" value={nombre} maxLength={80} onChange={(e) => setNombre(e.target.value)} /></Campo>
+            <Campo etiqueta="Nombre del estilo" ayuda="Sólo lo ves tú, para elegirlo."><input className="campo" value={nombre} maxLength={80} onChange={(e) => setNombre(e.target.value)} /></Campo>
             <Campo etiqueta="Nombre de la marca" ayuda="Aparece arriba durante todo el video."><input className="campo" value={d.marca.texto} maxLength={40} onChange={(e) => cambiar((x) => { x.marca.texto = e.target.value; })} /></Campo>
           </div>
           <div>
@@ -342,15 +342,15 @@ export function EditorPlantilla({ fila, alGuardar, alCerrar }: { fila: FilaPlant
             <input type="checkbox" checked={d.musica.ducking} onChange={(e) => cambiar((x) => { x.musica.ducking = e.target.checked; })} />
             Bajar la música mientras alguien habla
           </label>
-          {!d.musica.carpeta && <p className="text-xs text-tenue">Esta plantilla no tiene música. La carpeta de canciones se cambia en «Avanzado».</p>}
+          {!d.musica.carpeta && <p className="text-xs text-tenue">Este estilo no tiene música. La carpeta de canciones se cambia en «Avanzado».</p>}
         </Grupo>
 
         <details className="rounded-lg border border-borde p-3" onToggle={(e) => setJson((e.target as HTMLDetailsElement).open ? JSON.stringify(d, null, 2) : null)}>
           <summary className="cursor-pointer text-sm font-semibold">Avanzado (voz, MoneyPrinterTurbo, música, portada)</summary>
-          <p className="mt-2 text-xs text-tenue">Todos los datos de la plantilla. Lo que cambies aquí se aplica al pulsar «Aplicar»; los campos de arriba se actualizan.</p>
+          <p className="mt-2 text-xs text-tenue">Todos los datos del estilo. Lo que cambies aquí se aplica al pulsar «Aplicar»; los campos de arriba se actualizan.</p>
           {json !== null && (
             <>
-              <textarea className="campo mt-2 min-h-72 font-mono text-xs" value={json} onChange={(e) => setJson(e.target.value)} spellCheck={false} aria-label="Datos de la plantilla en JSON" />
+              <textarea className="campo mt-2 min-h-72 font-mono text-xs" value={json} onChange={(e) => setJson(e.target.value)} spellCheck={false} aria-label="Datos del estilo en JSON" />
               <button type="button" className="boton mt-2" onClick={() => {
                 try {
                   setD(JSON.parse(json) as DatosPlantilla);

@@ -21,19 +21,23 @@ body { background: var(--color-fondo); color: #e6e9ef; }
 .boton-peligro { background: #3b1219; border-color: #7f1d1d; }
 /* Opciones elegibles (A11-08): lo elegido se marca con borde celeste, fondo suave y ✓, y sale de
    aria-pressed / aria-checked o del radio marcado de adentro. El relleno de .boton-primario queda sólo
-   para la acción siguiente. .opcion es una pastilla; .opcion-tarjeta, una tarjeta con su ✓ en la esquina. */
-.opcion { display: inline-flex; align-items: center; gap: .4rem; border-radius: 8px; padding: .45rem .8rem; font-size: .875rem;
-          background: #1a1f2b; border: 1px solid var(--color-borde); cursor: pointer; text-align: left; }
-.opcion-tarjeta { position: relative; display: block; border-radius: 12px; background: var(--color-panel);
-                  border: 1px solid var(--color-borde); cursor: pointer; text-align: left; }
-.opcion:hover, .opcion-tarjeta:hover { background: #1f2533; }
-.opcion:is([aria-pressed="true"], [aria-checked="true"], :has(> input:checked)),
-.opcion-tarjeta:is([aria-pressed="true"], [aria-checked="true"], :has(> input:checked)) {
-  border-color: var(--color-acento); background: rgb(125 211 252 / .1); box-shadow: inset 0 0 0 1px var(--color-acento); }
-.opcion:is([aria-pressed="true"], [aria-checked="true"], :has(> input:checked))::before { content: "✓"; color: var(--color-acento); font-weight: 700; }
-.opcion-tarjeta:is([aria-pressed="true"], [aria-checked="true"], :has(> input:checked))::after {
-  content: "✓"; position: absolute; top: .35rem; right: .35rem; width: 1.15rem; height: 1.15rem; border-radius: 999px;
-  display: grid; place-items: center; background: var(--color-acento); color: #0b0d12; font-size: .7rem; font-weight: 700; }
+   para la acción siguiente. .opcion es una pastilla; .opcion-tarjeta, una tarjeta con su ✓ en la esquina.
+   Van en @layer components para que las utilidades (flex, p-3, w-20…) les ganen: fuera de capa, su
+   display:block pisaba el `flex items-center` de «Sin avatar». */
+@layer components {
+  .opcion { display: inline-flex; align-items: center; gap: .4rem; border-radius: 8px; padding: .45rem .8rem; font-size: .875rem;
+            background: #1a1f2b; border: 1px solid var(--color-borde); cursor: pointer; text-align: left; }
+  .opcion-tarjeta { position: relative; display: block; border-radius: 12px; background: var(--color-panel);
+                    border: 1px solid var(--color-borde); cursor: pointer; text-align: left; }
+  .opcion:hover, .opcion-tarjeta:hover { background: #1f2533; }
+  .opcion:is([aria-pressed="true"], [aria-checked="true"], :has(> input:checked)),
+  .opcion-tarjeta:is([aria-pressed="true"], [aria-checked="true"], :has(> input:checked)) {
+    border-color: var(--color-acento); background: rgb(125 211 252 / .1); box-shadow: inset 0 0 0 1px var(--color-acento); }
+  .opcion:is([aria-pressed="true"], [aria-checked="true"], :has(> input:checked))::before { content: "✓"; color: var(--color-acento); font-weight: 700; }
+  .opcion-tarjeta:is([aria-pressed="true"], [aria-checked="true"], :has(> input:checked))::after {
+    content: "✓"; position: absolute; top: .35rem; right: .35rem; width: 1.15rem; height: 1.15rem; border-radius: 999px;
+    display: grid; place-items: center; background: var(--color-acento); color: #0b0d12; font-size: .7rem; font-weight: 700; }
+}
 .campo { width: 100%; background: #0f131a; border: 1px solid #5f6b80; border-radius: 8px; padding: .5rem .65rem; font-size: .9rem; }
 .campo:focus { outline: 2px solid #0891b2; outline-offset: 0; }
 /* Foco del teclado: visible también en las opciones hechas con un input oculto dentro de un label

@@ -157,7 +157,7 @@ async function main() {
   await bundles();
 
   // 3. node_modules plano (npm, sin los enlaces de pnpm, que no sobreviven al instalador) con las
-  //    versiones exactas que usa el servidor, más Hyperframes (se corre como CLI). better-sqlite3 es la
+  //    versiones exactas que usa el servidor, más Hyperframes (se corre como CLI) y gsap (el render lo usa sin internet). better-sqlite3 es la
   //    versión del adaptador de Prisma: un solo módulo nativo, recompilado para Electron.
   const real = (paquete: string) => fs.realpathSync(path.join(REPO, "node_modules", paquete));
   const versionDe = (dir: string) => JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8")).version as string;
@@ -170,6 +170,8 @@ async function main() {
     "@prisma/adapter-better-sqlite3": versionDe(adaptador),
     "better-sqlite3": versionDe(path.join(adaptador, "..", "..", "better-sqlite3")),
     hyperframes: process.env.GEEPER_HYPERFRAMES_VERSION ?? "0.9.27",
+    // REN-10: el render copia node_modules/gsap/dist/gsap.min.js al proyecto en vez de bajarlo del CDN.
+    gsap: versionDe(real("gsap")),
   };
   // Turbopack pide algunos paquetes con un nombre con hash (p. ej. @prisma/client-ad5a…), que en el build
   // son enlaces en .next-escritorio/node_modules. electron-builder descarta todo node_modules que no esté

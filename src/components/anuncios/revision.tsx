@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { ResultadoChequeo } from "@/lib/anuncios/esquema";
+import { nombreForma } from "@/lib/glosario";
 import type { Chequeo, RevisionConcepto } from "@/lib/anuncios/revision";
 import { Aviso } from "../comun";
 import type { Ctx } from "./campana";
@@ -58,7 +59,7 @@ function TarjetaConcepto({ ctx, rc, soloPendiente }: { ctx: Ctx; rc: RevisionCon
   async function arreglar(ch: Chequeo) {
     if (!ch.arreglo) return;
     const formato = ch.arreglo.startsWith("formato:") ? ch.arreglo.slice(8) : undefined;
-    if (formato && !confirm(`Cambiar el formato del video a ${formato} hace que las ubicaciones de otro formato dejen de pasar. Para tener los dos, duplica el concepto y vincula otro video. ¿Seguir?`)) return;
+    if (formato && !confirm(`Cambiar la forma del video a ${nombreForma(formato)} hace que las ubicaciones de otra forma dejen de pasar. Para tener las dos, duplica la idea y vincula otro video. ¿Seguir?`)) return;
     setTrabajando(true);
     setAviso(null);
     try {
@@ -66,7 +67,7 @@ function TarjetaConcepto({ ctx, rc, soloPendiente }: { ctx: Ctx; rc: RevisionCon
       setAviso({
         tipo: "ok",
         texto: r.version ? (
-          <>Versión {r.version} del proyecto: {r.cambios.join(", ")}. <Link className="underline" href={`/proyectos/${rc.proyecto?.id}`}>Renderízala en el editor</Link> para que el QC lo mida.</>
+          <>Versión {r.version} del proyecto: {r.cambios.join(", ")}. <Link className="underline" href={`/proyectos/${rc.proyecto?.id}`}>Crea el video de esta versión en el editor</Link> para que la revisión lo mida.</>
         ) : "El proyecto ya estaba así.",
       });
     } catch (e) {

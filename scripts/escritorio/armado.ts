@@ -89,6 +89,7 @@ export function faltantesApp(app: string): string[] {
   const necesarios = [
     path.join("node_modules", "hyperframes", "dist", "hyperframe.runtime.iife.js"),
     path.join("node_modules", "hyperframes", "bin", "hyperframes.mjs"),
+    path.join("node_modules", "gsap", "dist", "gsap.min.js"),
     path.join("docs", "fuentes.json"),
     "esquema.sql",
     path.join("standalone", "server.js"),

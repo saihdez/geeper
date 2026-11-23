@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Aviso, Estado, archivo, postJson, useSondeo } from "./comun";
 import { textoVpn, type CuentaInfo, type DatosCuentas, type RedInfo } from "./cuentas";
+import { nombreForma } from "@/lib/glosario";
 import { arreglar, bloquea, LIMITES, revisarTexto, type Problema, type TextoPublicacion } from "@/lib/redes/revision-texto";
 
 export interface PublicacionV {
@@ -75,7 +76,7 @@ export function ListaPublicaciones({ publicaciones, alCambiar }: { publicaciones
     setMsg(null);
     try {
       await postJson(`/api/publicaciones/${p.id}`, { accion: a });
-      setMsg({ tipo: "ok", t: a === "reintentar" ? "Reintento en cola: retoma la subida desde donde quedó." : "Publicación cancelada." });
+      setMsg({ tipo: "ok", t: a === "reintentar" ? "Quedó en cola otra vez: retoma la subida desde donde quedó." : "Publicación cancelada." });
       alCambiar();
     } catch (e) {
       setMsg({ tipo: "error", t: e instanceof Error ? e.message : String(e) });
@@ -96,7 +97,7 @@ export function ListaPublicaciones({ publicaciones, alCambiar }: { publicaciones
             <span className="text-tenue">«{p.titulo}» · {PRIVACIDAD[p.privacidad] ?? p.privacidad}{p.programada ? ` · programada ${fecha(p.programada)}` : ""} · {fecha(p.creado)}</span>
             <span className="ml-auto flex gap-2">
               {p.urlExterna && <a className="boton py-0.5 text-xs" href={p.urlExterna} target="_blank" rel="noreferrer">Ver en {NOMBRE_RED[p.cuenta.red] ?? "la red"}</a>}
-              {p.estado === "fallida" && <button type="button" className="boton py-0.5 text-xs" disabled={ocupado === p.id} onClick={() => void accion(p, "reintentar")}>Reintentar</button>}
+              {p.estado === "fallida" && <button type="button" className="boton py-0.5 text-xs" disabled={ocupado === p.id} onClick={() => void accion(p, "reintentar")}>Volver a intentar</button>}
               {["pendiente", "subiendo", "procesando"].includes(p.estado) && (
                 <button type="button" className="boton boton-peligro py-0.5 text-xs" disabled={ocupado === p.id} onClick={() => void accion(p, "cancelar")}>Cancelar</button>
               )}
@@ -172,13 +173,13 @@ function CamposDestino({ proyectoId, c, red, v, cambiar, portada, perfil, texto,
       {red.id === "youtube" && (
         <div className="sm:col-span-2">
           {perfil !== "youtube-16x9" ? (
-            <p className="text-xs text-tenue">En los Shorts, YouTube elige la miniatura desde su app: la portada no se sube.</p>
+            <p className="text-xs text-tenue">En los Shorts, YouTube elige la portada desde su app: la tuya no se sube.</p>
           ) : portada ? (
             <label className="flex items-center gap-3 text-sm">
               <input type="checkbox" checked={v.portada} onChange={(e) => cambiar({ ...v, portada: e.target.checked })} />
               {/* eslint-disable-next-line @next/next/no-img-element -- archivo local */}
               <img src={`${archivo(portada.archivo)}?v=${encodeURIComponent(portada.creada)}`} alt="" className="h-10 rounded" />
-              <span>Usar la portada del video como miniatura <span className="block text-xs text-tenue">YouTube la acepta si el canal está verificado por teléfono.</span></span>
+              <span>Usar la portada del video en YouTube <span className="block text-xs text-tenue">YouTube la acepta si el canal está verificado por teléfono.</span></span>
             </label>
           ) : (
             <p className="text-xs text-tenue">Sin portada: YouTube elegirá una imagen del video. Puedes crearla arriba, en «Portada del video».</p>
@@ -235,7 +236,7 @@ export function PanelPublicar({ proyectoId, render, nombre, tema, publicaciones,
   }
 
   async function publicar() {
-    if (hayPublico && licencia.length > 0 && !confirm("El QC marcó un aviso de licencia en este render. ¿Publicar igual en público?")) return;
+    if (hayPublico && licencia.length > 0 && !confirm("La revisión marcó un aviso de licencia en este video. ¿Publicar igual en público?")) return;
     setEnviando(true);
     setMsg(null);
     try {
@@ -268,7 +269,7 @@ export function PanelPublicar({ proyectoId, render, nombre, tema, publicaciones,
       {datos && !datos.vpn.ok && <Aviso tipo="alerta">{textoVpn(datos.vpn)}. Se puede encolar: antes de subir, Geeper vuelve a medir y espera al VPN.</Aviso>}
       {datos && conectadas.length === 0 && (
         <p className="text-sm text-tenue">
-          No hay cuentas conectadas que admitan el formato {render.perfil}. <Link className="text-acento hover:underline" href="/cuentas">Conectar una cuenta</Link>
+          No hay cuentas conectadas que admitan videos de forma {nombreForma(render.perfil)}. <Link className="text-acento hover:underline" href="/cuentas">Conectar una cuenta</Link>
         </p>
       )}
       {sinPermiso.length > 0 && (
@@ -278,7 +279,7 @@ export function PanelPublicar({ proyectoId, render, nombre, tema, publicaciones,
       )}
       {conectadas.length > 0 && (
         <fieldset className="space-y-3">
-          <legend className="etiqueta">Cuentas compatibles con {render.perfil}</legend>
+          <legend className="etiqueta">Cuentas que admiten videos de forma {nombreForma(render.perfil)}</legend>
           {conectadas.map((c) => {
             const red = redes.get(c.red)!;
             const publicada = ya.has(c.id);
@@ -289,7 +290,7 @@ export function PanelPublicar({ proyectoId, render, nombre, tema, publicaciones,
                   <span className="font-medium">{red.nombre}</span>
                   <span>{c.alias ?? c.usuario}</span>
                   {c.alias && <span className="text-tenue">{c.usuario}</span>}
-                  {publicada && <span className="text-xs text-tenue">(este render ya está en esta cuenta)</span>}
+                  {publicada && <span className="text-xs text-tenue">(este video ya está en esta cuenta)</span>}
                 </label>
                 {marcadas[c.id] && <CamposDestino proyectoId={proyectoId} c={c} red={red} v={marcadas[c.id]!} cambiar={(v) => setMarcadas((m) => ({ ...m, [c.id]: v }))} portada={portada} perfil={render.perfil} texto={textos.get(c.id)!} problemas={problemas.get(c.id) ?? []} />}
               </div>
@@ -299,7 +300,7 @@ export function PanelPublicar({ proyectoId, render, nombre, tema, publicaciones,
       )}
       {hayPublico && licencia.length > 0 && (
         <Aviso tipo="alerta">
-          <p className="font-medium">Aviso de licencia del QC antes de publicar en público:</p>
+          <p className="font-medium">Aviso de licencia de la revisión antes de publicar en público:</p>
           <ul className="mt-1 list-disc pl-5">
             {licencia.map((g) => <li key={g.id}>{g.nombre}{g.detalle ? `: ${g.detalle}` : ""}</li>)}
           </ul>

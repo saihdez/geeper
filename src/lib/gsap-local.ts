@@ -11,7 +11,11 @@ import path from "node:path";
 import { RAIZ_REPO } from "./rutas";
 
 export const VERSION_GSAP = "3.15.0";
-/** Si no está la copia local (una instalación vieja de la app de escritorio): el de siempre. */
+/**
+ * Si no está la copia local: el de siempre. La app de escritorio la lleva desde REN-10 (gsap va en las
+ * dependencias de scripts/escritorio/empaquetar.ts y faltantesApp lo revisa); sólo las versiones
+ * armadas antes vuelven al CDN.
+ */
 export const GSAP_CDN = `https://cdn.jsdelivr.net/npm/gsap@${VERSION_GSAP}/dist/gsap.min.js`;
 /** Dónde queda dentro del proyecto Hyperframes (relativa al index.html). */
 export const GSAP_EN_PROYECTO = "assets/gsap/dist/gsap.min.js";

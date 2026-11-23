@@ -78,7 +78,7 @@ export function TablaVariantes({ ctx, c }: { ctx: Ctx; c: Concepto }) {
     setHecho(null);
     try {
       const r = (await ctx.accion({ tipo: "variantesTabla", concepto: c.id })) as { creados: string[]; errores: number };
-      setHecho(`${r.creados.length} video${r.creados.length === 1 ? "" : "s"} en camino: se renderizan en Trabajos y aparecen como conceptos nuevos.${r.errores ? ` ${r.errores} fila${r.errores === 1 ? "" : "s"} con problemas: mira el detalle en la tabla.` : ""}`);
+      setHecho(`${r.creados.length} video${r.creados.length === 1 ? "" : "s"} en camino: se crean en Trabajos y aparecen como ideas nuevas.${r.errores ? ` ${r.errores} fila${r.errores === 1 ? "" : "s"} con problemas: mira el detalle en la tabla.` : ""}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -143,7 +143,7 @@ export function TablaVariantes({ ctx, c }: { ctx: Ctx; c: Concepto }) {
                   </div>
                   <label className="block">
                     <span className="etiqueta lg:sr-only">Botón final</span>
-                    <input className="campo text-sm" value={f.cta} maxLength={60} disabled={bloqueada} placeholder="El de la plantilla" onChange={(e) => cambiarFila(f.id, { cta: e.target.value })} />
+                    <input className="campo text-sm" value={f.cta} maxLength={60} disabled={bloqueada} placeholder="El del estilo del canal" onChange={(e) => cambiarFila(f.id, { cta: e.target.value })} />
                   </label>
                   {!bloqueada ? (
                     <button type="button" className="boton !px-2 justify-center" aria-label={`Quitar la fila ${i + 1}`} title="Quitar fila" onClick={() => ponerFilas((fs) => fs.filter((x) => x.id !== f.id))}>✕</button>
@@ -151,7 +151,7 @@ export function TablaVariantes({ ctx, c }: { ctx: Ctx; c: Concepto }) {
                   {(bloqueada || f.error || (problemas.length > 0 && !vaciaFila)) && (
                     <p className={`text-xs lg:col-span-5 lg:col-start-2 ${bloqueada ? "text-emerald-300" : "text-red-300"}`}>
                       {bloqueada
-                        ? <>✓ Creada. <button type="button" className="underline" onClick={() => { dialogo.current?.close(); ctx.irA("conceptos", f.concepto!); }}>Ver el concepto</button></>
+                        ? <>✓ Creada. <button type="button" className="underline" onClick={() => { dialogo.current?.close(); ctx.irA("conceptos", f.concepto!); }}>Ver la idea</button></>
                         : f.error || problemas.join("; ")}
                     </p>
                   )}
@@ -188,7 +188,7 @@ export function TablaVariantes({ ctx, c }: { ctx: Ctx; c: Concepto }) {
             </button>
             <span className="text-sm text-tenue">
               {validas.length
-                ? `Se crean ${validas.length} concepto${validas.length === 1 ? "" : "s"} nuevo${validas.length === 1 ? "" : "s"}${!ctx.datos.prueba.control ? " y la prueba A/B queda armada (este video contra las variantes)" : ""}.`
+                ? `Se crean ${validas.length} idea${validas.length === 1 ? "" : "s"} nueva${validas.length === 1 ? "" : "s"}${!ctx.datos.prueba.control ? " y la prueba A/B queda armada (este video contra las variantes)" : ""}.`
                 : conProblemas.length ? "Revisa las filas marcadas en rojo." : "Escribe al menos un cambio en una fila."}
             </span>
           </div>

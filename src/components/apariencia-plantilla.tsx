@@ -95,7 +95,7 @@ export function AparienciaPlantilla({ slug, alCambiar }: { slug: string; alCambi
             const sel = l.id === d.color.look;
             return (
               <button key={l.id} type="button" role="radio" aria-checked={sel} disabled={ocupado} title={l.descripcion}
-                onClick={() => !sel && void guardar({ color: { look: l.id } }, `Look «${l.nombre}» guardado. Se ve en la vista previa y en el próximo render.`)}
+                onClick={() => !sel && void guardar({ color: { look: l.id } }, `Look «${l.nombre}» guardado. Se ve en la vista previa y la próxima vez que crees el video.`)}
                 className={`overflow-hidden rounded border-2 text-left text-sm ${sel ? "border-sky-400" : "border-transparent hover:border-borde"}`}>
                 {/* eslint-disable-next-line @next/next/no-img-element -- muestra local */}
                 <img src={archivo(l.imagen)} alt="" className="aspect-video w-full object-cover" loading="lazy" />

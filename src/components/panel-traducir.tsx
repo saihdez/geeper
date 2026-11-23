@@ -60,7 +60,7 @@ export function PanelTraducir({ proyectoId, idiomaActual, ocupado }: { proyectoI
       </fieldset>
       <p className="text-xs text-tenue">
         Tarda unos minutos y no tienes que hacer nada mientras tanto. La traducción la hace la IA de esta computadora:
-        si la tarjeta gráfica está ocupada con otro video, espera su turno. La voz tendrá el mismo tipo (mujer u hombre) que la original.
+        si la tarjeta de video está ocupada con otro video, espera su turno. La voz tendrá el mismo tipo (mujer u hombre) que la original.
       </p>
       {error && <Aviso tipo="error">{error}</Aviso>}
       <button type="button" className="boton boton-primario" disabled={ocupado || enviando} onClick={() => void crear()}>

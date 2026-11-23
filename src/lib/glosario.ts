@@ -81,3 +81,71 @@ export function sumarAlGlosario(actual: string, termino: string): string {
   if (ya.some((t) => t.toLocaleLowerCase("es") === termino.toLocaleLowerCase("es"))) return ya.join(", ");
   return [...ya, termino].join(", ");
 }
+
+/* ───────────────────────── Vocabulario de pantalla (A11-06) ─────────────────────────
+ * Otro glosario, el de la persona: una palabra por cosa en todas las pantallas. Antes había unos 20
+ * conceptos con 2 a 4 nombres («GPU», «tarjeta gráfica» y «tarjeta de video»; «QC» y «control de
+ * calidad»; «Formato», «9:16» y «shorts-9x16»…). Es el vocabulario de Clips y de la demo web, que son
+ * las pantallas pensadas para quien no sabe de video. Al escribir un texto nuevo se usa `usar`; las
+ * palabras de `evitar` no van en pantalla (sí en el código, el registro y los nombres técnicos).
+ * tests/vocabulario.test.ts revisa los textos de las pantallas que ya lo siguen.
+ */
+export interface Termino {
+  /** La palabra que se muestra. */
+  usar: string;
+  /** Otros nombres de lo mismo que no se muestran (se buscan como palabra entera, sin mayúsculas). */
+  evitar: string[];
+  nota?: string;
+}
+
+export const VOCABULARIO = {
+  tarjeta: { usar: "tarjeta de video", evitar: ["GPU", "tarjeta gráfica", "VRAM"], nota: "«la memoria de la tarjeta de video» en vez de VRAM" },
+  revision: { usar: "revisión", evitar: ["QC", "control de calidad"], nota: "«la revisión» del video antes de publicar" },
+  crear: { usar: "crear el video", evitar: ["renderizar", "renderizado", "render"], nota: "el video terminado es «el video», no «el render»" },
+  enCola: { usar: "en cola", evitar: ["encolado", "render en cola"], nota: "«quedó en cola: empieza cuando termine lo anterior»" },
+  forma: { usar: "forma del video", evitar: ["formato", "perfil", "relación de aspecto", "shorts-9x16", "youtube-16x9", "cuadrado-1x1"], nota: "vertical, horizontal o cuadrado; ver nombreForma()" },
+  estilo: { usar: "estilo del canal", evitar: ["plantilla de canal", "plantilla"], nota: "letra, colores, cierre y voz; la página se llama «Estilos del canal» cuando la toque su grupo" },
+  idea: { usar: "idea", evitar: ["concepto"] },
+  reintentar: { usar: "Volver a intentar", evitar: ["Reintentar", "Relanzar", "reintento", "relanzas"] },
+  nuevo: { usar: "Nuevo video", evitar: ["Nuevo proyecto", "Nuevo proyecto o lote"] },
+  varios: { usar: "varios videos", evitar: ["lote"], nota: "«Crear 3 videos» en vez de «Crear lote de 3»" },
+  interrumpido: { usar: "interrumpido", evitar: ["abortado"], nota: "lo que se cortó porque se apagó la PC o se cerró Geeper" },
+  voz: { usar: "voz", evitar: ["narración", "locución", "TTS"] },
+  subtitulos: { usar: "subtítulos", evitar: ["captions", "SRT"] },
+  portada: { usar: "portada", evitar: ["miniatura", "thumbnail"] },
+  registro: { usar: "registro", evitar: ["log", "logs"] },
+  efectos: { usar: "efectos de sonido", evitar: ["SFX"] },
+  link: { usar: "link", evitar: ["URL"] },
+  escena: { usar: "escena", evitar: ["segmento"] },
+  avatar: { usar: "avatar", evitar: ["gemelo digital"] },
+  cuenta: { usar: "cuenta", evitar: ["credencial", "token"], nota: "«conectar una cuenta»" },
+} as const satisfies Record<string, Termino>;
+
+/** Las palabras que no van en pantalla y la que va en su lugar (para avisos y pruebas). */
+export function palabrasAEvitar(): { palabra: string; usar: string }[] {
+  return Object.values(VOCABULARIO).flatMap((t: Termino) => t.evitar.map((palabra) => ({ palabra, usar: t.usar })));
+}
+
+/** Las palabras de `evitar` que aparecen en `texto`, como palabra entera y sin distinguir mayúsculas. */
+export function jergaEn(texto: string): { palabra: string; usar: string }[] {
+  const t = texto.toLocaleLowerCase("es");
+  return palabrasAEvitar().filter(({ palabra }) => {
+    const p = palabra.toLocaleLowerCase("es").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(?<![\\p{L}\\p{N}_-])${p}(?![\\p{L}\\p{N}_-])`, "u").test(t);
+  });
+}
+
+/** Las tres formas del video, como se muestran. */
+export const FORMAS: Record<"9:16" | "16:9" | "1:1", { nombre: string; para: string }> = {
+  "9:16": { nombre: "Vertical", para: "TikTok, Reels, Shorts" },
+  "16:9": { nombre: "Horizontal", para: "YouTube, web" },
+  "1:1": { nombre: "Cuadrado", para: "Instagram, Facebook" },
+};
+
+const PERFILES: Record<string, keyof typeof FORMAS> = { "shorts-9x16": "9:16", "youtube-16x9": "16:9", "cuadrado-1x1": "1:1" };
+
+/** «vertical (9:16)» para "9:16" o para el perfil "shorts-9x16"; lo que no conoce lo devuelve igual. */
+export function nombreForma(formatoOPerfil: string): string {
+  const f = (formatoOPerfil in FORMAS ? formatoOPerfil : PERFILES[formatoOPerfil]) as keyof typeof FORMAS | undefined;
+  return f ? `${FORMAS[f].nombre.toLocaleLowerCase("es")} (${f})` : formatoOPerfil;
+}
