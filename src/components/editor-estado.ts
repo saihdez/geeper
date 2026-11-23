@@ -211,3 +211,12 @@ export function versionParaDeshacer(versiones: VersionV[], actual: number): Vers
   const antes = versiones.filter((x) => x.numero < cur).sort((a, b) => b.numero - a.numero);
   return antes.find((x) => !hoy?.hash || !x.hash || x.hash !== hoy.hash) ?? null;
 }
+
+/**
+ * UX-37: la escena que cambia una edición, para que la vista en vivo salte a ella al guardar. Quitar una
+ * escena no salta (ya no está) y lo que es de todo el video tampoco.
+ */
+export function escenaDeEdicion(ed: object): string | null {
+  const e = ed as { tipo?: unknown; escena?: unknown };
+  return typeof e.escena === "string" && e.escena && e.tipo !== "quitarEscena" ? e.escena : null;
+}

@@ -1,10 +1,10 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Aviso, Barra, Estado, archivo, haceCuanto, pedir, postJson, segundos, useSondeo } from "./comun";
 import { ACCEPT_IMAGEN, esVector } from "@/lib/formatos-vector";
 import { explicarError } from "@/lib/textos";
 import { avisoSubtitulosRapidos, explicarRegla, LIMITES_SUBTITULOS, porQueFalla, resumirQc, type FraseQc, type SubtitulosRapidos } from "@/lib/qc-explicado";
-import { VistaEnVivo } from "./vista-en-vivo";
+import { VistaEnVivo, type IrA } from "./vista-en-vivo";
 import { ListaTrabajos } from "./lista-trabajos";
 import { ListaPublicaciones, PanelPublicar, type PublicacionV } from "./panel-publicar";
 import { PanelAnimar, type OpcionesAnimar } from "./panel-animar";
@@ -19,7 +19,7 @@ import { SelectorEncuadre, type EncuadreV } from "./selector-encuadre";
 import { PanelOtroEditor } from "./panel-otro-editor";
 import { useAccionesProyecto } from "./acciones-proyecto";
 import { FranjaAviso, type MensajeEditor } from "./franja-aviso";
-import { avisoGuardado, falloReciente, textoFalloCreacion, renderFallido, avisoRitmo, correccionesVacias, enLista, mensajeSinCambios, opcionesRitmo, versionParaDeshacer, errorSubtitulo, escenasConOtraVoz, estaActivo, estadoCreacion, mismoContenido, pasoRender, preguntaVozEscena, renderEnCurso, verTrabajos, TEXTO_RITMO_GUARDADO, type TrabajoV, type VocesV } from "./editor-estado";
+import { avisoGuardado, escenaDeEdicion, falloReciente, textoFalloCreacion, renderFallido, avisoRitmo, correccionesVacias, enLista, mensajeSinCambios, opcionesRitmo, versionParaDeshacer, errorSubtitulo, escenasConOtraVoz, estaActivo, estadoCreacion, mismoContenido, pasoRender, preguntaVozEscena, renderEnCurso, verTrabajos, TEXTO_RITMO_GUARDADO, type TrabajoV, type VocesV } from "./editor-estado";
 import { Plegable } from "./plegable";
 import { EdicionPorTexto, EfectosEscena, PanelAvanzado, PanelEstilo, type EfectosV, type EstiloV, type ExtrasV, type PalabraV } from "./edicion-avanzada";
 
@@ -368,6 +368,11 @@ export function EditorProyecto({ id }: { id: string }) {
   /** La vista más reciente, para lo que se pulsa desde un aviso armado antes (UX-19). */
   const vistaAlDia = useRef<Vista | null>(null);
   useEffect(() => { vistaAlDia.current = v ?? null; }, [v]);
+  // UX-37: tras guardar un cambio de una escena, la vista en vivo salta a esa escena y la muestra 3 s.
+  // El segundo se toma de la vista ya recargada (al mover una escena cambia dónde empieza).
+  const [salto, setSalto] = useState<{ escena: string; vez: number } | null>(null);
+  const inicioSalto = salto ? v?.escenas.find((e) => e.id === salto.escena)?.inicio : undefined;
+  const irA = useMemo<IrA | undefined>(() => (salto && inicioSalto !== undefined ? { segundo: inicioSalto, vez: salto.vez } : undefined), [salto, inicioSalto]);
 
   /**
    * Si `fn` devuelve un texto, ése es el mensaje de éxito (p. ej. con avisos); si no, `ok`. Devuelve si
@@ -402,7 +407,12 @@ export function EditorProyecto({ id }: { id: string }) {
     const nada = mensajeSinCambios(eds as { tipo?: unknown }[], r);
     return nada ?? r; // un texto reemplaza al «Guardado» (y a su «Crear el video»)
   };
-  const editarOk = (ed: object, ok: string | Omit<MensajeEditor, "tipo"> = guardado()) => intentar(() => guardar([ed]), ok);
+  const editarOk = async (ed: object, ok: string | Omit<MensajeEditor, "tipo"> = guardado()) => {
+    const bien = await intentar(() => guardar([ed]), ok);
+    const escena = escenaDeEdicion(ed);
+    if (bien && escena) setSalto((s) => ({ escena, vez: (s?.vez ?? 0) + 1 }));
+    return bien;
+  };
   const editar = async (ed: object) => { await editarOk(ed); };
   const editarVarias = (eds: object[]) => hacer(() => guardar(eds), guardado());
   const subirClip = (escena: string, f: File) => hacer(async () => {
@@ -609,7 +619,7 @@ export function EditorProyecto({ id }: { id: string }) {
             </div>
             {modo === "vivo" ? (
               <>
-                <VistaEnVivo proyectoId={id} version={fila.versionActual} />
+                <VistaEnVivo proyectoId={id} version={fila.versionActual} irA={irA} />
                 {/* UX-28: con cambios sin exportar se abre «En vivo»; la descarga del último video queda a mano. */}
                 {render?.estado === "aprobado" && (
                   <p className="text-sm">

@@ -55,6 +55,16 @@ export function tiempoAlVolver(antes: number, duracion: number): number {
   return Math.min(antes, Math.max(0, duracion - 0.1));
 }
 
+/**
+ * UX-37: qué hacer cuando el player queda listo. Un salto pendiente se aplica sólo en el player de la versión
+ * al día; si no hay salto, se retoma el segundo visto únicamente en un player recién montado (`clave` nueva).
+ * Antes, cada cambio de `version` o de `irA` volvía a hacer seek en el mismo player (un tirón sin motivo).
+ */
+export function accionAlListo(a: { clave: string; montado: string | null; irA?: IrA; aplicado: number; versionVista: number; version: number }): "tramo" | "retomar" | "nada" {
+  if (a.irA && a.irA.vez !== a.aplicado && a.versionVista === a.version) return "tramo";
+  return a.montado === a.clave ? "nada" : "retomar";
+}
+
 export function VistaEnVivo({ proyectoId, version, irA }: { proyectoId: string; version: number; irA?: IrA }) {
   const [vista, setVista] = useState<Vista | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +74,8 @@ export function VistaEnVivo({ proyectoId, version, irA }: { proyectoId: string; 
   const tiempo = useRef(0);
   /** Último salto ya aplicado (UX-37): cada pedido se aplica una vez, en el player de la versión al día. */
   const aplicado = useRef(0);
+  /** Player en el que ya se retomó el segundo (UX-37): el mismo player no vuelve a saltar. */
+  const montado = useRef<string | null>(null);
   /** UX-37: cuando la vista sale de la pantalla se muestra en pequeño, fija abajo a la derecha (el mismo player). */
   const lugar = useRef<HTMLDivElement>(null);
   const [fuera, setFuera] = useState(false);
@@ -101,13 +113,16 @@ export function VistaEnVivo({ proyectoId, version, irA }: { proyectoId: string; 
 
   useEffect(() => {
     const el = caja.current?.querySelector("hyperframes-player") as Player | null | undefined;
-    if (!el) return;
+    if (!el || !vista) return;
     const desde = tiempo.current;
+    const clave = `${vista.ruta}-${vista.version}`;
     let corte: ReturnType<typeof setTimeout> | undefined;
     // Sólo se salta en el player de la versión recién guardada, no en el anterior que sigue a la vista.
-    const s = irA && irA.vez !== aplicado.current && vista?.version === version ? irA : null;
+    const accion = accionAlListo({ clave, montado: montado.current, irA, aplicado: aplicado.current, versionVista: vista.version, version });
     const alListo = () => {
-      if (s) {
+      montado.current = clave;
+      if (accion === "tramo" && irA) {
+        const s = irA;
         aplicado.current = s.vez;
         const { desde: d, hasta } = tramoDeEscena(s.segundo, el.duration);
         el.seek(d);
@@ -115,6 +130,7 @@ export function VistaEnVivo({ proyectoId, version, irA }: { proyectoId: string; 
         corte = setTimeout(() => el.pause(), Math.max(0, hasta - d) * 1000);
         return;
       }
+      if (accion === "nada") return;
       const t = tiempoAlVolver(desde, el.duration);
       if (t > 0) el.seek(t);
     };
