@@ -431,7 +431,7 @@ export function EditorProyecto({ id }: { id: string }) {
   const animar = (escena: string, opciones: OpcionesAnimar) => hacer(() => postJson(`/api/proyectos/${id}/plano`, { escena, opciones }),
     "Animación en cola. Verás el avance en la escena y en «Trabajos»; al terminar queda como versión nueva (ya se ve en «En vivo»).");
   const regenerarVoz = (escena: string | null) => hacer(() => postJson(`/api/proyectos/${id}/voz`, { escena }),
-    "Voz en cola (Kokoro y whisper en CPU). Al terminar se realinean los subtítulos y se vuelve a renderizar.");
+    "Voz en cola. Con una voz diseñada espera su turno en la tarjeta de video. Al terminar se realinean los subtítulos y se vuelve a renderizar.");
   /** Cambia la voz del proyecto y ofrece ponerla ya en el video (regenerar el guion completo). */
   const usarVoz = async (motor: MotorVoz, voz: string, nombre: string) => {
     // UX-26: si no se pudo guardar la voz elegida, no se ofrece decir el guion (saldría con la anterior).
@@ -749,7 +749,7 @@ export function EditorProyecto({ id }: { id: string }) {
                     {opcionesRitmo(p.voz.velocidad).map((x) => <option key={x.valor} value={String(x.valor)}>{x.nombre}</option>)}
                   </select>
                 </div>
-                <button type="button" className="boton" disabled={ocupado} onClick={() => { if (confirm("¿Regenerar la voz de todo el guion? Se realinean los subtítulos y se vuelve a renderizar. No usa la GPU.")) void regenerarVoz(null); }}>
+                <button type="button" className="boton" disabled={ocupado} onClick={() => { if (confirm("¿Regenerar la voz de todo el guion? Se realinean los subtítulos y se vuelve a renderizar. Con una voz diseñada espera su turno en la tarjeta de video.")) void regenerarVoz(null); }}>
                   Regenerar voz del guion completo
                 </button>
                 {avisoRitmo(p.voz.velocidad) && <p id="aviso-ritmo" className="w-full text-xs text-amber-200">{avisoRitmo(p.voz.velocidad)}</p>}

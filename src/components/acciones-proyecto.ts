@@ -54,7 +54,7 @@ export function useAccionesProyecto(d: Datos | null) {
       hacer: () => d.editar({ tipo: "cambiarPlantilla", plantilla: x.slug }),
     })),
     ...(d.hayMusica ? [{ id: "ritmo", grupo, titulo: "Alinear los cortes al ritmo de la música", palabras: "musica pulsos beat ritmo", deshabilitada: d.ocupado, hacer: d.alinearMusica }] : []),
-    { id: "voz", grupo, titulo: "Regenerar la voz de todo el guion", palabras: "voz audio narracion locucion tts", confirmar: "¿Regenerar la voz de todo el guion? Se realinean los subtítulos y se vuelve a renderizar. No usa la GPU.", deshabilitada: d.ocupado, hacer: () => d.regenerarVoz(null) },
+    { id: "voz", grupo, titulo: "Regenerar la voz de todo el guion", palabras: "voz audio narracion locucion tts", confirmar: "¿Regenerar la voz de todo el guion? Se realinean los subtítulos y se vuelve a renderizar. Con una voz diseñada espera su turno en la tarjeta de video.", deshabilitada: d.ocupado, hacer: () => d.regenerarVoz(null) },
     ...(d.versionAnterior !== null ? [{ id: "deshacer", grupo, titulo: `Volver a la versión anterior (v${d.versionAnterior})`, palabras: "deshacer atras historial undo", confirmar: `¿Volver a la versión ${d.versionAnterior}? Se guarda como versión nueva: no se pierde nada.`, deshabilitada: d.ocupado, hacer: () => d.volverA(d.versionAnterior!) }] : []),
   ];
   useAccionesPaleta(`proyecto:${d?.id ?? ""}`, acciones);
