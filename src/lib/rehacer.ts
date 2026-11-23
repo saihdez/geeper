@@ -43,8 +43,8 @@ export const RESOLUCION: Record<Formato, string> = { "9:16": "480x832", "16:9": 
 
 /** Movimientos de ReCamMaster (`model_mode`), con un nombre simple y cómo se ve (para la vista previa). */
 export const MOVIMIENTOS = [
-  { id: 1, nombre: "Girar a la derecha", vista: "paneo-der" },
-  { id: 2, nombre: "Girar a la izquierda", vista: "paneo-izq" },
+  { id: 1, nombre: "Hacia la derecha", vista: "paneo-der" },
+  { id: 2, nombre: "Hacia la izquierda", vista: "paneo-izq" },
   { id: 3, nombre: "Mirar hacia arriba", vista: "arriba" },
   { id: 4, nombre: "Mirar hacia abajo", vista: "abajo" },
   { id: 5, nombre: "Acercarse", vista: "acercar" },
