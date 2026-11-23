@@ -17,6 +17,7 @@ import { dirProyecto } from "@/lib/rutas";
 import { EJECUTORES, rutaLog } from "./ejecutores";
 import { conMedidas, medidasDeLinea, muestrearGpu, type MedidasGpu } from "./telemetria";
 import { barrerLeases, esperarVacio, REVISAR_CANCELADOS_MS, tomarCandadoWorker, TOPE_APAGAR_MS, yaNoSonNuestros } from "./sistema";
+import { reanudarPendientes } from "@/lib/liberar-mpt";
 
 const workerId = nuevoWorkerId();
 let apagando = false;
@@ -184,6 +185,8 @@ async function main() {
   await guardarLatidoWorker();
   void respaldoSiToca();
   const vigiaRespaldo = setInterval(() => void respaldoSiToca(), REVISAR_RESPALDO_MS);
+  // Lo de MPT que Wan dejó parado (liberar-mpt.ts) si el worker se cortó a mitad.
+  void reanudarPendientes();
   const latidoSistema = setInterval(() => {
     guardarLatidoWorker().catch((e: unknown) => avisar(`No se pudo guardar el latido del worker: ${mensaje(e)} (se reintenta en ${LATIDO_MS / 1000} s)`));
     barrerLeases(enCurso.keys(), workerId).then(

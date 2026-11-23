@@ -29,6 +29,8 @@ vi.mock("@/lib/gpu", () => ({
 }));
 vi.mock("@/lib/mpt", () => ({
   apiViva: async () => m.viva,
+  // En la app de escritorio levanta la API caída (liberar-mpt.ts); en la prueba, sólo si está viva.
+  asegurarApi: async () => m.viva,
   cuerpoVideo: () => ({}),
   crearVideo: async () => "tarea-1",
   modeloImagen: async () => undefined,

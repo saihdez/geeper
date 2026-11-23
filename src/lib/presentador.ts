@@ -24,7 +24,7 @@ import { ENTRADA, escenasEnLinea, type EscenaEnLinea } from "./linea";
 import type { Contexto } from "./pasos";
 import { correr } from "./proceso";
 import { FFMPEG } from "./rutas";
-import { generarPlano, instalacionWan2gp, probarWan2gp, type AjustesWan2gp, type Avance } from "./wan2gp";
+import { generarPlano, generarPlanos, instalacionWan2gp, probarWan2gp, type AjustesWan2gp, type Avance } from "./wan2gp";
 
 export const MODELO_HABLAR = "infinitetalk";
 export const FPS_HABLAR = 25;
@@ -277,20 +277,24 @@ export function ponerPresentadorEncima(base: Proyecto, plan: PlanPresentador, as
 }
 
 /** ¿Hay un presentador en el proyecto y sigue al día con la voz? (para el panel). */
-export function estadoPresentador(p: Proyecto): { burbuja: boolean; escenas: string[]; viejo: boolean; avatar: string | null } {
+/**
+ * `viejoBurbuja`: la burbuja (o el streamer) del Presentador; `viejoPantalla`: las escenas donde habla a
+ * pantalla completa (el protagonista de protagonista.ts). Cada panel avisa sólo de lo suyo.
+ */
+export function estadoPresentador(p: Proyecto): { burbuja: boolean; escenas: string[]; viejo: boolean; viejoBurbuja: boolean; viejoPantalla: boolean; avatar: string | null } {
   const todas = escenasEnLinea(p);
   const esPresentador = (id: string) => p.assets[id]?.regenerar.motor === MODELO_HABLAR;
   const enPantalla = todas.filter((e) => esPresentador(e.visual.asset));
   const burbuja = p.pistas.find((x) => x.id === PISTA_PRESENTADOR)?.clips.find((c) => esPresentador(c.asset));
-  let viejo = false;
-  if (burbuja) viejo = p.assets[burbuja.asset]!.regenerar.huella !== huellaVoz(todas);
+  const viejoBurbuja = !!burbuja && p.assets[burbuja.asset]!.regenerar.huella !== huellaVoz(todas);
+  let viejoPantalla = false;
   // Pantalla: la boca sigue al audio de cada escena tal como estaba al generarlo (otra voz la desfasa).
   for (const e of enPantalla) {
     const porEscena = p.assets[e.visual.asset]!.regenerar.voces as Record<string, unknown> | undefined;
-    if (porEscena && porEscena[e.escena.id] !== huellaAudioEscena(e)) viejo = true;
+    if (porEscena && porEscena[e.escena.id] !== huellaAudioEscena(e)) viejoPantalla = true;
   }
   const avatar = (burbuja ? p.assets[burbuja.asset] : enPantalla[0] ? p.assets[enPantalla[0].visual.asset] : null)?.regenerar.avatar;
-  return { burbuja: !!burbuja, escenas: enPantalla.map((e) => e.escena.id), viejo, avatar: typeof avatar === "string" ? avatar : null };
+  return { burbuja: !!burbuja, escenas: enPantalla.map((e) => e.escena.id), viejo: viejoBurbuja || viejoPantalla, viejoBurbuja, viejoPantalla, avatar: typeof avatar === "string" ? avatar : null };
 }
 
 export interface ContextoPresentador extends Contexto {
@@ -298,7 +302,9 @@ export interface ContextoPresentador extends Contexto {
   alAvanzar?: (a: Avance) => void;
 }
 
-const dirCorrida = (dir: string) => path.join(dir, "build", "presentador", new Date().toISOString().replace(/[:.]/g, "-"));
+let corridas = 0;
+// Con varias tomas seguidas, dos pueden caer en el mismo milisegundo: el contador las separa.
+const dirCorrida = (dir: string) => path.join(dir, "build", "presentador", `${new Date().toISOString().replace(/[:.]/g, "-")}-${++corridas}`);
 
 async function prepararAudio(dir: string, p: Proyecto, plan: PlanPresentador, corrida: string): Promise<string> {
   await fs.mkdir(corrida, { recursive: true });
@@ -318,10 +324,15 @@ export async function probarPresentador(dir: string, p: Proyecto, op: OpcionesPr
   return { plan, ajustes, ...(await probarWan2gp(instalacionWan2gp(), ajustes, corrida)) };
 }
 
-/** Genera el presentador (usa toda la GPU) y lo guarda en una versión nueva del proyecto. */
-export async function generarPresentador(ctx: ContextoPresentador, proyectoId: string, p: Proyecto, op: OpcionesPresentador) {
-  // Lo guardado al empezar: al terminar se compara para saber si alguien editó mientras tanto (SEG-05).
-  const guardada = await leerGuardado(proyectoId);
+interface TomaPreparada {
+  avatar: Avatar;
+  plan: PlanPresentador;
+  corrida: string;
+  ajustes: AjustesWan2gp;
+}
+
+/** Plan, audio, imagen y ajustes de una toma (sin GPU). */
+async function prepararToma(ctx: ContextoPresentador, p: Proyecto, op: OpcionesPresentador): Promise<TomaPreparada> {
   const avatar: Avatar = await leerAvatar(op.avatar);
   const plan = planearPresentador(p, op);
   const corrida = dirCorrida(ctx.dir);
@@ -330,9 +341,17 @@ export async function generarPresentador(ctx: ContextoPresentador, proyectoId: s
   const retrato = path.join(corrida, "retrato.png");
   await fs.copyFile(op.imagen ?? rutaRetrato(avatar.id), retrato);
   const ajustes = ajustesHablar(plan, retrato, audio, op.calidad, op.semilla);
-  ctx.log(`Presentador «${avatar.nombre}» (${plan.modo}): ${plan.segundos.toFixed(1)} s, ${plan.cuadros} cuadros a ${plan.resolucion}`);
-  const t0 = Date.now();
-  let video = await generarPlano({ instalacion: instalacionWan2gp(), ajustes, dirCorrida: corrida, signal: ctx.signal, log: ctx.log, alAvanzar: ctx.alAvanzar });
+  return { avatar, plan, corrida, ajustes };
+}
+
+/**
+ * El video generado, como asset del proyecto (con la cara del avatar ya ubicada), y el proyecto con la toma
+ * aplicada (sin guardar la versión). El asset se guarda aparte para aplicarlo después sobre la versión que
+ * haya al terminar (SEG-05), sin depender de la copia sobre la que se calculó.
+ */
+async function armarToma(ctx: ContextoPresentador, p: Proyecto, t: TomaPreparada, generado: string, segundos: number) {
+  const { avatar, plan, corrida, ajustes } = t;
+  let video = generado;
   // Streamer: el avatar se generó sobre verde; se quita el verde y queda un video con transparencia.
   if (plan.marco?.forma === "recorte") {
     const recortado = path.join(corrida, "recorte.webm");
@@ -343,7 +362,6 @@ export async function generarPresentador(ctx: ContextoPresentador, proyectoId: s
   const id = `avatar-${hash.slice(0, 12)}`;
   const ruta = `assets/${id}${path.extname(video).toLowerCase() || ".mp4"}`;
   await fs.copyFile(video, path.join(ctx.dir, ruta));
-  const segundos = Math.round((Date.now() - t0) / 1000);
   const asset = await describirAsset(ctx.dir, ruta, {
     id,
     tipo: "video",
@@ -353,13 +371,74 @@ export async function generarPresentador(ctx: ContextoPresentador, proyectoId: s
   });
   // Video más corto que la voz (InfiniteTalk corta en el último cuadro entero): no debería pasar, pero se avisa.
   if (asset.duracion !== undefined && asset.duracion + 0.2 < plan.segundos) ctx.log(`Aviso: el video dura ${asset.duracion.toFixed(2)} s y la voz ${plan.segundos.toFixed(2)} s`);
-  // La cara del avatar, para encuadrar (la burbuja y el 9:16) sobre ella. Se calcula sobre la copia y se
-  // copia al asset: así no depende de la versión sobre la que termine guardándose.
-  const conCara = (await conFocos(ctx, aplicarPresentador(p, plan, asset), { ids: [id], signal: ctx.signal })).p.assets[id] ?? asset;
+  // La cara del avatar, para encuadrar (la burbuja y el 9:16) sobre ella.
+  const nuevo = (await conFocos(ctx, aplicarPresentador(p, plan, asset), { ids: [id], signal: ctx.signal })).p;
+  const conCara = nuevo.assets[id] ?? asset;
+  return { nuevo, id, ruta, conCara };
+}
+
+/** Genera el presentador (usa toda la GPU) y lo guarda en una versión nueva del proyecto. */
+export async function generarPresentador(ctx: ContextoPresentador, proyectoId: string, p: Proyecto, op: OpcionesPresentador) {
+  // Lo guardado al empezar: al terminar se compara para saber si alguien editó mientras tanto (SEG-05).
+  const guardada = await leerGuardado(proyectoId);
+  const t = await prepararToma(ctx, p, op);
+  const { avatar, plan } = t;
+  ctx.log(`Presentador «${avatar.nombre}» (${plan.modo}): ${plan.segundos.toFixed(1)} s, ${plan.cuadros} cuadros a ${plan.resolucion}`);
+  const t0 = Date.now();
+  const video = await generarPlano({ instalacion: instalacionWan2gp(), ajustes: t.ajustes, dirCorrida: t.corrida, signal: ctx.signal, log: ctx.log, alAvanzar: ctx.alAvanzar });
+  const segundos = Math.round((Date.now() - t0) / 1000);
+  const { id, ruta, conCara } = await armarToma(ctx, p, t, video, segundos);
   const nota = plan.modo === "burbuja" ? `Presentador «${avatar.nombre}» en burbuja` : `Presentador «${avatar.nombre}» en ${plan.escenas.length === 1 ? `la escena ${plan.escenas[0]!.numero}` : `${plan.escenas.length} escenas`}`;
   // Sobre la versión de AHORA (SEG-05): lo editado mientras se generaba (minutos) no se pierde.
   let final = p;
   const version = await guardarEncima(proyectoId, nota, (base) => (final = ponerPresentadorEncima(base, plan, conCara)), { guardada, copia: p });
   await registrarAssetsEnDb(proyectoId, final);
   return { version, asset: id, ruta, segundos, modo: plan.modo };
+}
+
+/**
+ * Varias tomas a pantalla completa (cada una con su imagen y su escena) en una sola corrida de Wan2GP: el
+ * modelo se carga una vez. Cada toma necesita su semilla. Guarda una sola versión con las que salieron y
+ * devuelve sus índices (las que fallan dejan su escena como estaba). Como `generarPresentador`, se guarda
+ * sobre la versión de ahora (SEG-05); una toma cuya escena se quitó mientras tanto no se pone.
+ */
+export async function generarPresentadores(ctx: ContextoPresentador, proyectoId: string, p: Proyecto, ops: OpcionesPresentador[], nota: string) {
+  const guardada = await leerGuardado(proyectoId);
+  const tomas: TomaPreparada[] = [];
+  for (const op of ops) tomas.push(await prepararToma(ctx, p, op));
+  const corrida = dirCorrida(ctx.dir);
+  ctx.log(`${tomas.length} tomas en una corrida: ${tomas.map((t) => `${t.plan.segundos.toFixed(1)} s`).join(", ")} a ${tomas[0]?.plan.resolucion}`);
+  const t0 = Date.now();
+  const videos = await generarPlanos({ instalacion: instalacionWan2gp(), ajustes: tomas.map((t) => t.ajustes), dirCorrida: corrida, signal: ctx.signal, log: ctx.log, alAvanzar: ctx.alAvanzar });
+  const segundos = Math.round((Date.now() - t0) / 1000);
+  let nuevo = p;
+  const listas: { i: number; plan: PlanPresentador; asset: Proyecto["assets"][string] }[] = [];
+  for (const [i, v] of videos.entries()) {
+    if (!v) {
+      ctx.log(`Toma ${i + 1}: Wan2GP no la entregó; esa escena queda como estaba.`);
+      continue;
+    }
+    const r = await armarToma(ctx, nuevo, tomas[i]!, v, Math.round(segundos / tomas.length));
+    nuevo = r.nuevo;
+    listas.push({ i, plan: tomas[i]!.plan, asset: r.conCara });
+  }
+  if (!listas.length) throw new Error("Wan2GP no entregó ninguna toma.");
+  let final = p;
+  let hechas: number[] = [];
+  const version = await guardarEncima(proyectoId, nota, (base) => {
+    let q = base;
+    hechas = [];
+    for (const l of listas) {
+      try {
+        q = ponerPresentadorEncima(q, l.plan, l.asset);
+        hechas.push(l.i);
+      } catch (e) {
+        ctx.log(`Toma ${l.i + 1}: ${(e as Error).message}`);
+      }
+    }
+    if (!hechas.length) throw new Error("Las escenas de todas las tomas se quitaron mientras se creaban: no se puso ninguna.");
+    return (final = q);
+  }, { guardada, copia: p });
+  await registrarAssetsEnDb(proyectoId, final);
+  return { version, hechas, segundos };
 }

@@ -1,6 +1,6 @@
 /** Operaciones de alto nivel que usan la web y los scripts. */
 import { randomBytes } from "node:crypto";
-import { guardarAvatarDelVideo } from "./actuar";
+import { guardarAvatarDelVideo, type CuerpoAvatar } from "./actuar";
 import { guardarEstiloGeneracion } from "./animar-escenas";
 import { ESTILOS_GENERACION, type EstiloGeneracion } from "./estilos-generacion";
 import { crearCarpetas } from "./almacen";
@@ -40,6 +40,8 @@ export interface NuevoProyecto {
   guion?: string;
   /** Avatar de la biblioteca: Geeper lo pone en las escenas que más ganan con él (actuar.ts). */
   avatar?: string;
+  /** De la cintura para arriba o de cuerpo entero (actuar.ts). */
+  cuerpo?: CuerpoAvatar;
   /** Cuánto se trabaja cada escena (estilos-generacion.ts); sin él, «Rápido». */
   estilo?: EstiloGeneracion;
 }
@@ -75,14 +77,14 @@ export async function crearProyecto(n: NuevoProyecto, op: { yaComprobado?: boole
   // Con un estilo que anima, las escenas pasan a video antes del render (después del avatar).
   const anima = !!(n.estilo && ESTILOS_GENERACION[n.estilo].animar);
   const cadena: TipoTrabajo[] = anima ? [...base.slice(0, -1), "escenas.animar", base[base.length - 1]!] : base;
-  if (n.avatar) await guardarAvatarDelVideo(p.slug, { avatar: n.avatar });
+  if (n.avatar) await guardarAvatarDelVideo(p.slug, { avatar: n.avatar, cuerpo: n.cuerpo ?? "medio" });
   if (anima) await guardarEstiloGeneracion(p.slug, n.estilo!);
   await encolar(p.id, "mpt.generar", n.guion?.trim() ? { cadena, guion: n.guion.trim() } : { cadena });
   return p;
 }
 
 /** Un tema por línea. Cada tema es un proyecto con su cadena; los terminados no se repiten. */
-export async function crearLote(temas: string[], formato: Formato, plantilla: string, nombre?: string, avatar?: string, estilo?: EstiloGeneracion) {
+export async function crearLote(temas: string[], formato: Formato, plantilla: string, nombre?: string, avatar?: string, estilo?: EstiloGeneracion, cuerpo?: CuerpoAvatar) {
   const limpios = temas.map((t) => t.trim()).filter(Boolean);
   if (!limpios.length) throw new Error("El lote no tiene temas");
   await exigirGenerador();
@@ -90,7 +92,7 @@ export async function crearLote(temas: string[], formato: Formato, plantilla: st
     data: { nombre: nombre ?? `Lote de ${limpios.length} temas`, formato, plantilla, temas: limpios },
   });
   const proyectos = [];
-  for (const [i, tema] of limpios.entries()) proyectos.push(await crearProyecto({ tema, formato, plantilla, loteId: lote.id, orden: i, avatar, estilo }, { yaComprobado: true }));
+  for (const [i, tema] of limpios.entries()) proyectos.push(await crearProyecto({ tema, formato, plantilla, loteId: lote.id, orden: i, avatar, estilo, cuerpo }, { yaComprobado: true }));
   return { lote, proyectos };
 }
 

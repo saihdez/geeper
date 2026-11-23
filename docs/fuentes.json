@@ -642,6 +642,19 @@
       "archivos": [],
       "docs": "docs/HEREDADO.md",
       "pruebas": []
+    },
+    {
+      "id": "deepseek-harness",
+      "repo": "deepseek-ai/deepseek-harness",
+      "tipo": "commits",
+      "como": [
+        "codigo"
+      ],
+      "commit": "4b399c39",
+      "revisado": "2026-11-23",
+      "que": "Skills de Claude Code (MIT), no código de Geeper: 7 copias adaptadas en ~/.claude/skills (ci-test-reliability, trim-cot-leakage, record-browser-gif, agent-tool-design, defensive-patterns, responsive-ui, perf-evidence) + error-handling/empty-catch.md. Origen de cada una y lo descartado en ~/.claude/skills/DEEPSEEK-HARNESS.md.",
+      "archivos": [],
+      "pruebas": []
     }
   ]
 }

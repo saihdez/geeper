@@ -137,4 +137,14 @@ describe("cola en SQLite", () => {
     expect(await cola.reclamar("voz", "w1")).toBeNull();
     expect((await cola.reclamar("tarjeta", "w1"))?.id).toBe(t.id);
   });
+
+  it("un trabajo interrumpido se puede cerrar (queda cancelado); uno terminado, no", async () => {
+    const t = await cola.encolar("p1", "voz.regenerar", {});
+    await db.trabajo.update({ where: { id: t.id }, data: { estado: "interrumpido" } });
+    await cola.cancelar(t.id);
+    const fila = await db.trabajo.findUniqueOrThrow({ where: { id: t.id } });
+    expect(fila.estado).toBe("cancelado");
+    expect(fila.error).toMatch(/interrumpido/);
+    await expect(cola.cancelar(t.id)).rejects.toThrow(/interrumpidos/);
+  });
 });

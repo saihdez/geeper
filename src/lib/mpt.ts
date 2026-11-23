@@ -2,6 +2,7 @@
 import { randomUUID } from "node:crypto";
 import { encenderIaMpt } from "./ia-mpt";
 import { correr } from "./proceso";
+import { asegurarMpt, levantarMptCaido } from "./liberar-mpt";
 import { MPT_API, MPT_CONTENEDOR, MPT_TAREAS } from "./rutas";
 import type { DatosPlantilla } from "./plantillas";
 import type { Formato } from "./esquema";
@@ -53,11 +54,13 @@ export function cuerpoVideo(tema: string, formato: Formato, mpt: DatosPlantilla[
 
 /**
  * Pide el video. Quien llama ya tiene el candado de la tarjeta (mpt.generar): si un corte dejó apagada la
- * IA de MPT (Ollama escribe el guion, el servidor de imágenes las dibuja), se enciende antes (GPU-02).
+ * IA de MPT (Ollama escribe el guion, el servidor de imágenes las dibuja), se enciende antes (GPU-02). En la
+ * app de escritorio, además, vuelve lo que Wan pausó y se borra su nota (liberar-mpt.ts).
  */
 export async function crearVideo(cuerpo: ReturnType<typeof cuerpoVideo>, log?: (l: string) => void): Promise<string> {
   const ia = await encenderIaMpt({ log });
   if (ia.encendidos.length) log?.(`IA de MPT encendida de nuevo: ${ia.encendidos.join(", ")}`);
+  await asegurarMpt(log, { todos: true });
   if (soloMateriales()) {
     if (await cliConMateriales()) return arrancarCli(cuerpo, log);
     log?.("GEEPER_MPT_SOLO_MATERIALES=1, pero el MPT que corre no trae «cli.py --stop-at materials»: se pide el video completo por la API");
@@ -253,6 +256,22 @@ export function soltarCuandoTermine(
       candado.liberar();
     }
   })();
+}
+
+/**
+ * La API viva, o levantada: si no responde y hay contenedores de MPT parados (un reinicio de WSL los tumba),
+ * los levanta y espera hasta `esperaMs` a que contesten. Sólo en la app de escritorio (liberar-mpt.ts).
+ */
+export async function asegurarApi(log?: (l: string) => void, esperaMs = 120_000): Promise<boolean> {
+  if (await apiViva()) return true;
+  const levantados = await levantarMptCaido(log);
+  if (!levantados.length) return false;
+  const hasta = Date.now() + esperaMs;
+  while (Date.now() < hasta) {
+    await new Promise((r) => setTimeout(r, 3000));
+    if (await apiViva()) return true;
+  }
+  return false;
 }
 
 export async function apiViva(): Promise<boolean> {

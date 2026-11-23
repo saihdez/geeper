@@ -9,6 +9,7 @@ import type { Formato, Marco } from "@/lib/esquema";
 import { metricas } from "@/lib/formatos";
 import { cajaMarco } from "@/lib/marco";
 import { resolverMarco, type Zona } from "@/lib/marco-auto";
+import { minutosHablar } from "@/lib/tiempo-hablar";
 
 interface PlanV { modo: string; escenas: { id: string; numero: number }[]; segundos: number; resolucion: string; notas: string[]; avisos: string[] }
 interface Datos {
@@ -20,7 +21,7 @@ interface Datos {
   vozVideo: { motor: string; voz: string; idioma: string };
   maxSegundos: number;
   calidades: { id: string; nombre: string }[];
-  estado: { burbuja: boolean; escenas: string[]; viejo: boolean; avatar: string | null };
+  estado: { burbuja: boolean; escenas: string[]; viejoBurbuja: boolean; avatar: string | null };
   /** Dónde está ahora la burbuja ya generada (null si no hay). */
   marcoActual: Marco | null;
   plan: PlanV | null;
@@ -83,28 +84,27 @@ const TAMANOS = [
 ];
 
 /**
- * «Presentador»: un avatar de la biblioteca dice la voz del video. En una burbuja durante todo el video o
- * a pantalla completa en las escenas elegidas. Lo simple a la vista; calidad y actitud en «Más opciones».
+ * «Presentador»: un avatar de la biblioteca comenta el video en una ventana encima, todo el video: en una
+ * burbuja o recortado sin fondo, como un streamer (actuar.ts). Que el avatar salga en las escenas, en lugar
+ * de las imágenes, es «Tu avatar en el video» (pedido del dueño, 2026-11-22). Actitud en «Más opciones».
  */
-/**
- * Minutos que tarda en la RTX 5080 a 480p (medido 2026-11-21: 3,2 s de voz → 497 s; 10,4 s → 622 s, con
- * el modelo ya bajado): unos 7 minutos fijos más ~18 s por cada segundo de voz.
- */
-const minutosHablar = (segundos: number) => Math.max(8, Math.ceil((440 + 18 * segundos) / 60));
 
-export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usarVoz }: {
+export function PanelPresentador({ proyectoId, ocupado, alCambiar, usarVoz }: {
   proyectoId: string; escenas: { id: string; numero: number; texto: string }[]; ocupado: boolean; alCambiar: () => void;
   /** Cambia la voz del video (y ofrece decirla de nuevo), como en la sección de voz. */
   usarVoz: (motor: MotorVoz, voz: string, nombre: string) => Promise<void>;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [avatar, setAvatar] = useState<string | null>(null);
-  const [modo, setModo] = useState<Modo>("burbuja");
-  const [elegidas, setElegidas] = useState<string[]>(() => escenas.slice(0, 1).map((e) => e.id));
+  const modo: Modo = "burbuja";
+  const [ventana, setVentana] = useState<"burbuja" | "streamer">("burbuja");
+  const [sEncuadre, setSEncuadre] = useState<"medio" | "completo">("medio");
+  const [sLado, setSLado] = useState<"derecha" | "izquierda">("derecha");
+  const [sTamano, setSTamano] = useState(0.4);
+  const [streamerOk, setStreamerOk] = useState<string | null>(null);
   const [esquina, setEsquina] = useState<Esquina>("auto");
   const [forma, setForma] = useState<"circulo" | "redondeado">("circulo");
   const [tamano, setTamano] = useState(0.34);
-  const [calidad, setCalidad] = useState("normal");
   const [actitud, setActitud] = useState("");
   const [otraActitud, setOtraActitud] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -115,15 +115,11 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
 
   const opciones = useMemo(() => {
     if (!elegido) return null;
-    const o: Record<string, unknown> = { avatar: elegido, modo };
-    if (modo === "pantalla") {
-      o.escenas = elegidas;
-      if (calidad !== "normal") o.calidad = calidad;
-    } else o.marco = { esquina, forma, tamano };
+    const o: Record<string, unknown> = { avatar: elegido, modo, marco: { esquina, forma, tamano } };
     const prompt = otraActitud.trim() || actitud;
     if (prompt) o.prompt = prompt;
     return o;
-  }, [elegido, modo, elegidas, esquina, forma, tamano, calidad, actitud, otraActitud]);
+  }, [elegido, modo, esquina, forma, tamano, actitud, otraActitud]);
   const [pedidas, setPedidas] = useState(opciones);
   useEffect(() => {
     const t = setTimeout(() => setPedidas(opciones), 400);
@@ -131,10 +127,18 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
   }, [opciones]);
   const url = `/api/proyectos/${proyectoId}/presentador${pedidas ? `?opciones=${encodeURIComponent(JSON.stringify(pedidas))}` : ""}`;
   // Como «Animar» y «Rehacer la toma»: cerrado sólo pide mientras hay un presentador en curso.
+  const enCurso = (t: { estado: string }) => t.estado === "pendiente" || t.estado === "corriendo";
   const { datos: d, recargar } = useSondeo<Datos>(url, (x) =>
     abierto ? 4000 : x?.trabajos.some((t) => t.estado === "pendiente" || t.estado === "corriendo") ? 10_000 : Infinity);
+  // El streamer va por la API del avatar (actuar.ts): su avance se sigue aparte. Cerrado y sin streamer en
+  // curso no pregunta; el aviso de trabajos nuevos del proyecto lo despierta (WEB-13).
+  const { datos: av, recargar: recargarAv } = useSondeo<{ trabajos: { id: string; tipo: string; estado: string; etapa: string; progreso: number }[] }>(
+    `/api/proyectos/${proyectoId}/avatar`,
+    (x) => (abierto ? 5000 : x?.trabajos.some((t) => t.tipo === "avatar.streamer" && enCurso(t)) ? 10_000 : Infinity),
+    [`trabajos:${proyectoId}`],
+  );
   const motorVivo = useMotorVivo();
-  const trabajo = d?.trabajos[0] ?? null;
+  const trabajo = d?.trabajos[0] ?? av?.trabajos.find((t) => t.tipo === "avatar.streamer") ?? null;
   if (d && base !== d && !base) {
     setBase(d);
     // Los controles arrancan donde está la burbuja que ya tiene el video.
@@ -160,7 +164,7 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
     if (!trabajo || !confirm("¿Cancelar el presentador? Lo que lleva hecho se pierde.")) return;
     try {
       await postJson(`/api/trabajos/${trabajo.id}`, { accion: "cancelar" });
-      await recargar();
+      await Promise.all([recargar(), recargarAv()]);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -169,7 +173,7 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
   // Con la burbuja ya generada (mismo avatar y misma forma de hablar), cambiar esquina, tamaño o forma no
   // necesita la tarjeta gráfica: se mueve al instante (PATCH, presentador-ubicar.ts).
   const ma = d?.marcoActual ?? null;
-  const puedeMover = Boolean(d && modo === "burbuja" && d.estado.burbuja && ma && (ma.forma === "circulo" || ma.forma === "redondeado") && elegido === d.estado.avatar && !actitud && !otraActitud.trim());
+  const puedeMover = Boolean(d && ventana === "burbuja" && d.estado.burbuja && ma && (ma.forma === "circulo" || ma.forma === "redondeado") && elegido === d.estado.avatar && !actitud && !otraActitud.trim());
   const cambioUbicacion = Boolean(puedeMover && ma && (ma.esquina !== esquina || ma.forma !== forma || Math.abs(ma.tamano - tamano) > 1e-6));
   const [movido, setMovido] = useState<string | null>(null);
 
@@ -189,12 +193,20 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
   }
 
   async function generar() {
-    if (!opciones) return;
+    if (!opciones || !elegido) return;
     setError(null);
+    setStreamerOk(null);
     setEnviando(true);
     try {
-      await postJson(`/api/proyectos/${proyectoId}/presentador`, { opciones });
-      await recargar();
+      if (ventana === "streamer") {
+        const prompt = otraActitud.trim() || actitud;
+        await postJson(`/api/proyectos/${proyectoId}/avatar`, { accion: "streamer", pedido: { avatar: elegido, encuadre: sEncuadre, lado: sLado, tamano: sTamano, ...(prompt ? { actitud: prompt } : {}) } });
+        setStreamerOk("Listo: está en camino. Cuando termine aparece recortado encima de todo el video, como una versión nueva.");
+        await recargarAv();
+      } else {
+        await postJson(`/api/proyectos/${proyectoId}/presentador`, { opciones });
+        await recargar();
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -202,16 +214,17 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
     }
   }
 
-  const resumen = trabajo ? ` · ${trabajo.estado === "pendiente" ? "en espera" : trabajo.etapa || "generando"}` : d?.estado.viejo ? " · hay que actualizarlo" : d?.estado.burbuja || d?.estado.escenas.length ? " · en el video" : "";
+  const resumen = trabajo ? ` · ${trabajo.estado === "pendiente" ? "en espera" : trabajo.etapa || "generando"}` : d?.estado.viejoBurbuja ? " · hay que actualizarlo" : d?.estado.burbuja ? " · en el video" : "";
   return (
     <section className="tarjeta p-4">
       <details open={abierto} onToggle={(ev) => {
         const abre = (ev.target as HTMLDetailsElement).open;
         setAbierto(abre);
         if (abre) void recargar(); // al abrir, datos frescos y vuelve el ritmo de 4 s
+        if (abre) void recargarAv();
       }}>
         <summary className="cursor-pointer font-medium">
-          Presentador <span className="text-xs font-normal text-tenue">(un avatar que dice la voz del video{resumen})</span>
+          Presentador <span className="text-xs font-normal text-tenue">(tu avatar en una ventana, comentando encima del video{resumen})</span>
         </summary>
         {abierto && !d && <p className="mt-2 text-xs text-tenue">Cargando…</p>}
         {abierto && d && (
@@ -241,7 +254,7 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
                     </Aviso>
                   );
                 })()}
-                {d.estado.viejo && <Aviso tipo="alerta">Cambiaste lo que se dice después de poner el presentador: genéralo otra vez para que la boca siga a la voz.</Aviso>}
+                {d.estado.viejoBurbuja && <Aviso tipo="alerta">Cambiaste lo que se dice después de poner el presentador: genéralo otra vez para que la boca siga a la voz.</Aviso>}
                 <fieldset className="space-y-2">
                   <legend className="font-medium">1. ¿Quién presenta?</legend>
                   <div className="flex flex-wrap gap-3">
@@ -260,19 +273,20 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
                 <fieldset className="space-y-2">
                   <legend className="font-medium">2. ¿Dónde aparece?</legend>
                   <div className="grid gap-2 sm:grid-cols-2">
-                    <button type="button" aria-pressed={modo === "burbuja"} onClick={() => setModo("burbuja")} className="opcion-tarjeta p-3">
+                    <button type="button" aria-pressed={ventana === "burbuja"} onClick={() => setVentana("burbuja")} className="opcion-tarjeta p-3">
                       <span className="block font-medium">En una burbuja, todo el video</span>
-                      <span className="block text-xs text-tenue">Las imágenes siguen detrás y el avatar habla en una esquina.</span>
+                      <span className="block text-xs text-tenue">Las imágenes siguen detrás y el avatar comenta desde una esquina.</span>
                     </button>
-                    <button type="button" aria-pressed={modo === "pantalla"} onClick={() => setModo("pantalla")} className="opcion-tarjeta p-3">
-                      <span className="block font-medium">A pantalla completa</span>
-                      <span className="block text-xs text-tenue">El avatar reemplaza la imagen de las escenas que elijas (por ejemplo, la primera y la última).</span>
+                    <button type="button" aria-pressed={ventana === "streamer"} onClick={() => setVentana("streamer")} className="opcion-tarjeta p-3">
+                      <span className="block font-medium">Recortado, como streamer</span>
+                      <span className="block text-xs text-tenue">Sin fondo, encima del video (ideal para gameplay), hablando y gesticulando.</span>
                     </button>
                   </div>
+                  <p className="text-xs text-tenue">¿Quieres que salga en las escenas, en lugar de las imágenes? Eso es «Tu avatar en el video», más arriba.</p>
+                  {ventana === "burbuja" ? (
                   <div className="flex flex-wrap items-start gap-4">
                   <Vista formato={d.formato} plataformas={d.plataformas} zonas={d.zonas} modo={modo} marco={{ esquina, forma, tamano } satisfies Marco} retrato={d.avatares.find((a) => a.id === elegido)?.retrato} />
                   <div className="min-w-0 flex-1">
-                  {modo === "burbuja" ? (
                     <div className="flex flex-wrap gap-3">
                       <label className="space-y-1"><span className="block text-xs text-tenue">Esquina</span>
                         <select className="campo w-auto" value={esquina} onChange={(ev) => setEsquina(ev.target.value as Esquina)}>
@@ -296,19 +310,27 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
                         </select>
                       </label>
                     </div>
+                  </div>
+                  </div>
                   ) : (
-                    <div className="max-h-56 space-y-1 overflow-auto rounded border border-borde p-2">
-                      {escenas.map((e) => (
-                        <label key={e.id} className="flex items-start gap-2">
-                          <input type="checkbox" className="mt-1" checked={elegidas.includes(e.id)}
-                            onChange={(ev) => setElegidas((xs) => (ev.target.checked ? [...xs, e.id] : xs.filter((x) => x !== e.id)))} />
-                          <span><b>Escena {e.numero}:</b> <span className="text-tenue">{e.texto.slice(0, 90)}{e.texto.length > 90 ? "…" : ""}</span></span>
-                        </label>
-                      ))}
+                    <div className="flex flex-wrap gap-3">
+                      <label className="space-y-1"><span className="block text-xs text-tenue">Cuánto se le ve</span>
+                        <select className="campo w-auto" value={sEncuadre} onChange={(ev) => setSEncuadre(ev.target.value as "medio" | "completo")}>
+                          <option value="medio">Medio cuerpo</option>
+                          <option value="completo">Cuerpo completo</option>
+                        </select>
+                      </label>
+                      <label className="space-y-1"><span className="block text-xs text-tenue">Lado</span>
+                        <select className="campo w-auto" value={sLado} onChange={(ev) => setSLado(ev.target.value as "derecha" | "izquierda")}>
+                          <option value="izquierda">↙ Abajo a la izquierda</option>
+                          <option value="derecha">↘ Abajo a la derecha</option>
+                        </select>
+                      </label>
+                      <label className="space-y-1"><span className="block text-xs text-tenue">Tamaño</span>
+                        <input type="range" className="block" min={0.25} max={0.6} step={0.05} value={sTamano} onChange={(ev) => setSTamano(Number(ev.target.value))} />
+                      </label>
                     </div>
                   )}
-                  </div>
-                  </div>
                 </fieldset>
 
                 <fieldset className="space-y-2">
@@ -327,20 +349,15 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
                     <label className="space-y-1"><span className="block text-xs text-tenue">Otra forma de hablar, escrita (en inglés funciona mejor)</span>
                       <input className="campo" maxLength={300} value={otraActitud} onChange={(ev) => setOtraActitud(ev.target.value)} placeholder="nods often, friendly smile" />
                     </label>
-                    {modo === "pantalla" && (
-                      <label className="space-y-1"><span className="block text-xs text-tenue">Calidad</span>
-                        <select className="campo" value={calidad} onChange={(ev) => setCalidad(ev.target.value)}>
-                          {d.calidades.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                        </select>
-                      </label>
-                    )}
                   </div>
                 </details>
 
                 {d.error && <Aviso tipo="alerta">{d.error}</Aviso>}
-                {d.plan && (
+                {ventana === "streamer" && <p className="text-xs text-tenue">Habla con la voz de todo el video. Tarda unos 7 minutos más ~40 s por cada segundo de voz (un short de 30 s, ~23 minutos).</p>}
+                {streamerOk && <Aviso tipo="ok">{streamerOk}</Aviso>}
+                {ventana === "burbuja" && d.plan && (
                   <div className="space-y-1 text-xs text-tenue">
-                    <p>Va a hablar {Math.round(d.plan.segundos)} s{d.plan.modo === "pantalla" ? ` en ${d.plan.escenas.length === 1 ? "la escena" : "las escenas"} ${d.plan.escenas.map((x) => x.numero).join(", ")}` : ""}. Usa la tarjeta de video y tarda unos {minutosHablar(d.plan.segundos)} minutos (la primera vez, más: baja el modelo, unos 28 GB).</p>
+                    <p>Va a hablar {Math.round(d.plan.segundos)} s. Usa la tarjeta de video y tarda unos {minutosHablar(d.plan.segundos)} minutos (la primera vez, más: baja el modelo, unos 28 GB).</p>
                     {d.plan.notas.map((n) => <p key={n}>{n}</p>)}
                     {d.plan.avisos.map((n) => <p key={n} className="text-amber-300">{n}</p>)}
                   </div>
@@ -365,8 +382,8 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
                     <p className="text-xs text-tenue">Mover, agrandar o cambiar la forma no vuelve a generar el avatar: se aplica en segundos. Generarlo otra vez sólo hace falta si cambias el avatar, cómo habla o lo que dice.</p>
                   </div>
                 ) : (
-                  <button className="boton boton-primario" disabled={ocupado || enviando || !d.plan || (modo === "pantalla" && !elegidas.length)} onClick={() => void generar()}>
-                    {d.estado.burbuja || d.estado.escenas.length ? "Generar el presentador otra vez" : "Poner el presentador"}
+                  <button className="boton boton-primario" disabled={ocupado || enviando || (ventana === "burbuja" && !d.plan)} onClick={() => void generar()}>
+                    {ventana === "streamer" ? "Poner el presentador recortado" : d.estado.burbuja ? "Generar el presentador otra vez" : "Poner el presentador"}
                   </button>
                 )}
               </>

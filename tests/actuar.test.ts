@@ -1,10 +1,12 @@
+import { mkdtemp, readdir, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { LIGHTNING_I2V, PedidoActuar, PedidoStreamer, promptAccion, promptComponer, promptPose, proponerEscenas } from "@/lib/actuar";
-import { Marco, pista, validarProyecto } from "@/lib/esquema";
+import { guardarAvatarDelVideo, leerAvatarDelVideo, LIGHTNING_I2V, PedidoActuar, PedidoStreamer, promptAccion, promptComponer, promptPose } from "@/lib/actuar";
+import { Marco } from "@/lib/esquema";
 import { metricas } from "@/lib/formatos";
 import { cajaMarco, estiloMarco, MARGEN_MARCO } from "@/lib/marco";
 import { argsRecorte } from "@/lib/presentador";
-import { proyectoDePrueba } from "./fixtures";
 
 const realista = { estilo: "realista" as const };
 
@@ -39,26 +41,6 @@ describe("tu avatar en el video: instrucciones para la IA", () => {
   });
 });
 
-describe("Geeper propone dónde sale", () => {
-  it("habla en el gancho y en el cierre; actúa en las del medio que hablan de personas", () => {
-    const p = proyectoDePrueba();
-    p.escenas.e02!.texto = "Imagina que eres el jugador que llega primero.";
-    const pr = proponerEscenas(validarProyecto(p), "sofia-1", { producto: "assets/producto-abc.png" });
-    expect(pr.map((x) => [x.numero, x.pedido.tipo, x.pedido.encuadre])).toEqual([[1, "habla", "medio"], [2, "accion", "medio"], [3, "habla", "cara"]]);
-    expect(pr[1]!.pedido).toMatchObject({ producto: "assets/producto-abc.png", que: expect.stringMatching(/producto/) });
-    expect(pr[2]!.pedido.producto).toBe("assets/producto-abc.png");
-  });
-  it("sin personas en el medio, sólo gancho y cierre; con una escena, sólo el gancho", () => {
-    expect(proponerEscenas(proyectoDePrueba(), "a").map((x) => x.numero)).toEqual([1, 3]);
-    const una = proyectoDePrueba();
-    pista(una, "visual").clips.splice(1);
-    pista(una, "voz").clips.splice(1);
-    delete una.escenas.e02;
-    delete una.escenas.e03;
-    expect(proponerEscenas(validarProyecto(una), "a").map((x) => x.numero)).toEqual([1]);
-  });
-});
-
 describe("streamer: el avatar recortado sobre el video", () => {
   it("figura vertical apoyada abajo, dentro de la banda segura, sin borde y con sombra", () => {
     const m = metricas("9:16");
@@ -78,5 +60,23 @@ describe("streamer: el avatar recortado sobre el video", () => {
   });
   it("pedido por defecto: medio cuerpo, abajo a la derecha", () => {
     expect(PedidoStreamer.parse({ avatar: "sofia-1" })).toMatchObject({ encuadre: "medio", lado: "derecha", tamano: 0.4 });
+  });
+});
+
+describe("el avatar elegido en «Nuevo»", () => {
+  it("se guarda sin dejar archivos a medias y se lee igual", async () => {
+    const antes = process.env.GEEPER_DATA;
+    const dir = await mkdtemp(path.join(os.tmpdir(), "geeper-avatar-"));
+    process.env.GEEPER_DATA = dir;
+    try {
+      await guardarAvatarDelVideo("video-1", { avatar: "sofia-1", cuerpo: "completo" });
+      expect(await leerAvatarDelVideo("video-1")).toEqual({ avatar: "sofia-1", cuerpo: "completo" });
+      expect(await readdir(path.join(dir, "video-1"))).toEqual(["avatar.json"]);
+      expect(await leerAvatarDelVideo("otro")).toBeNull();
+    } finally {
+      if (antes === undefined) delete process.env.GEEPER_DATA;
+      else process.env.GEEPER_DATA = antes;
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

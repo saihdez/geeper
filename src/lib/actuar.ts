@@ -89,6 +89,20 @@ export type PedidoActuar = z.infer<typeof PedidoActuar>;
 
 const estiloDe = (a: Pick<Avatar, "estilo">) => (a.estilo === "realista" ? "photorealistic" : ESTILOS[a.estilo].prompt);
 
+/**
+ * Cómo habla a cámara según el encuadre (función pura): de la cara para abajo, como una persona real que
+ * presenta, con las manos acompañando lo que dice; sólo la cara, gestos de la cabeza. InfiniteTalk mueve
+ * todo el cuadro con la voz, así que el prompt decide si el cuerpo acompaña o queda quieto.
+ */
+export function promptHabla(encuadre: Encuadre, que = ""): string {
+  const extra = que.trim().replace(/[.\s]+$/, "");
+  const cuerpo = encuadre === "cara"
+    ? "talks to the camera with natural facial expressions"
+    : "talks to the camera like a real person presenting, natural hand gestures that follow the words, relaxed shoulders, small natural weight shifts, expressive face" +
+      (encuadre === "completo" ? ", the whole body visible and moving naturally, feet on the ground" : "");
+  return extra ? `${extra}. The person ${cuerpo}` : `The person ${cuerpo}`;
+}
+
 /** Instrucción para el encuadre del avatar (función pura). */
 export function promptPose(a: Pick<Avatar, "estilo">, encuadre: Encuadre, fondo: FondoPose): string {
   return [
@@ -104,7 +118,11 @@ export function promptPose(a: Pick<Avatar, "estilo">, encuadre: Encuadre, fondo:
 export function promptComponer(a: Pick<Avatar, "estilo">, p: Pick<PedidoActuar, "tipo" | "encuadre" | "que" | "lugar" | "donde">, refs: { escena: boolean; producto: boolean }): string {
   const n = { escena: refs.escena ? 2 : 0, producto: refs.producto ? (refs.escena ? 3 : 2) : 0 };
   const partes = [`The person from image 1 as a ${ENCUADRES[p.encuadre].prompt}`];
-  if (p.lugar === "escena" && refs.escena) partes.push(`placed naturally inside the place shown in image ${n.escena}, matching its lighting, perspective and colors, keeping that place recognizable`);
+  if (p.lugar === "escena" && refs.escena) {
+    partes.push(`placed naturally inside the place shown in image ${n.escena}, matching its lighting, perspective and colors, keeping that place recognizable`);
+    // Tu avatar es la única persona del video: la gente que traiga la imagen del tema sale.
+    partes.push(`remove every other person, face or human silhouette from that place, this person is the only human in the image`);
+  }
   else if (p.lugar === "describir" && p.donde) partes.push(`in this place: ${p.donde}`);
   else partes.push(`in a ${FONDOS_POSE.neutro}`);
   if (refs.producto) partes.push(`holding the product from image ${n.producto} clearly visible, keeping the product exactly as it is`);
@@ -139,7 +157,11 @@ export async function poseAvatar(ctx: ContextoActuar, avatarId: string, encuadre
   const [img] = await generarImagenes({ instalacion: instalacionWan2gp(), ajustes, dirCorrida: corrida, signal: ctx.signal, log: ctx.log, alAvanzar: ctx.alAvanzar });
   if (!img) throw new Error("Wan2GP no devolvió la imagen del encuadre.");
   await fs.mkdir(dir, { recursive: true });
-  await correr(FFMPEG, ["-v", "error", "-y", "-i", img, destino]);
+  // Primero a un archivo aparte y después se renombra: si la PC se apaga a mitad, no queda un encuadre
+  // cortado que se reusaría para siempre (el caché sólo mira si el archivo existe).
+  const parcial = destino.replace(/\.png$/, ".parcial.png");
+  await correr(FFMPEG, ["-v", "error", "-y", "-i", img, parcial]);
+  await fs.rename(parcial, destino);
   return destino;
 }
 
@@ -198,7 +220,8 @@ export async function actuarEscena(ctx: ContextoActuar, proyectoId: string, p: P
       modo: "pantalla",
       escenas: [es.escena.id],
       imagen: cuadro,
-      prompt: pedido.que || undefined,
+      prompt: promptHabla(pedido.encuadre, pedido.que),
+      // 480p siempre (tiempo-hablar.ts): a 720p tarda ~5 veces más con el mismo modelo de 480p.
       semilla: pedido.semilla,
     });
   }
@@ -236,49 +259,27 @@ export async function streamerAvatar(ctx: ContextoActuar, proyectoId: string, p:
 }
 
 // ---------------------------------------------------------------------------------------------------
-// «Geeper propone»: dónde sale el avatar en un video nuevo
+// «Tu avatar en el video» (protagonista, protagonista.ts): lo elegido para el video
 
-export interface Propuesta {
-  escena: string;
-  numero: number;
-  pedido: PedidoActuar;
-  porque: string;
-}
-
-const PERSONA = /\b(yo|t[uú]|nosotros|gente|persona|personas|quien|alguien|cliente|usuario|jugador|creador|imagina|mira|te |tu |vos|ustedes)\b/i;
-
-/**
- * Escenas donde más gana el avatar (función pura): habla en el gancho y en el cierre; hace algo en las que
- * hablan de personas o le hablan a quien mira (como mucho `maxAccion`). La persona ajusta en el editor.
- */
-export function proponerEscenas(p: Proyecto, avatar: string, o: { producto?: string; maxAccion?: number } = {}): Propuesta[] {
-  const es = escenasEnLinea(p);
-  if (!es.length) return [];
-  const out: Propuesta[] = [];
-  const base = { avatar, lugar: "escena" as const, donde: "" };
-  out.push({ escena: es[0]!.escena.id, numero: 1, porque: "el gancho: una cara que habla retiene más", pedido: PedidoActuar.parse({ ...base, tipo: "habla", encuadre: "medio", que: "" }) });
-  if (es.length > 1) {
-    const u = es.at(-1)!;
-    out.push({ escena: u.escena.id, numero: u.indice + 1, porque: "el cierre: pide la acción mirando a cámara", pedido: PedidoActuar.parse({ ...base, tipo: "habla", encuadre: "cara", que: "", producto: o.producto }) });
-  }
-  const medio = es.slice(1, -1).filter((e) => PERSONA.test(e.escena.texto)).slice(0, o.maxAccion ?? 1);
-  for (const e of medio) {
-    out.push({
-      escena: e.escena.id, numero: e.indice + 1, porque: "habla de personas: el avatar lo actúa",
-      pedido: PedidoActuar.parse({ ...base, tipo: "accion", encuadre: "medio", que: o.producto ? "muestra el producto a la cámara con entusiasmo" : "gesticula con naturalidad mientras explica", producto: o.producto }),
-    });
-  }
-  return out.sort((x, y) => x.numero - y.numero);
-}
+/** Cómo sale el avatar en un video nuevo: de la cintura para arriba o de cuerpo entero. */
+export const CuerpoAvatar = z.enum(["medio", "completo"]);
+export type CuerpoAvatar = z.infer<typeof CuerpoAvatar>;
 
 /** El avatar elegido en «Nuevo» (y, si hay, la foto del producto), para el paso `avatar.escenas`. */
-export const AvatarDelVideo = z.object({ avatar: z.string().regex(/^[a-z0-9-]+$/), producto: z.string().regex(/^assets\/[\w.-]+$/).optional() });
+export const AvatarDelVideo = z.object({
+  avatar: z.string().regex(/^[a-z0-9-]+$/),
+  producto: z.string().regex(/^assets\/[\w.-]+$/).optional(),
+  cuerpo: CuerpoAvatar.default("medio"),
+});
 export type AvatarDelVideo = z.infer<typeof AvatarDelVideo>;
 const rutaAvatarDelVideo = (slug: string) => path.join(dirProyecto(slug), "avatar.json");
 
-export async function guardarAvatarDelVideo(slug: string, a: AvatarDelVideo) {
+export async function guardarAvatarDelVideo(slug: string, a: z.input<typeof AvatarDelVideo>) {
   await fs.mkdir(dirProyecto(slug), { recursive: true });
-  await fs.writeFile(rutaAvatarDelVideo(slug), JSON.stringify(AvatarDelVideo.parse(a), null, 2));
+  // Mismo cuidado que con los encuadres: un avatar.json cortado haría que el video saliera sin avatar.
+  const ruta = rutaAvatarDelVideo(slug);
+  await fs.writeFile(`${ruta}.parcial`, JSON.stringify(AvatarDelVideo.parse(a), null, 2));
+  await fs.rename(`${ruta}.parcial`, ruta);
 }
 
 export async function leerAvatarDelVideo(slug: string): Promise<AvatarDelVideo | null> {

@@ -10,8 +10,9 @@ describe("CI de los instaladores (ESC-08)", () => {
     expect(flujo).toMatch(/tags: \["v\*"\]/);
   });
   it("cancela la corrida vieja de la misma rama y guarda los instaladores pocos días", () => {
-    expect(flujo).toMatch(/concurrency:\s*\n\s+group: escritorio-\$\{\{ github\.ref \}\}\s*\n\s+cancel-in-progress: true/);
-    expect(flujo).toMatch(/retention-days: 5/);
+    // Las etiquetas (releases) no se cancelan nunca.
+    expect(flujo).toMatch(/concurrency:\s*\n\s+group: escritorio-\$\{\{ github\.ref \}\}\s*\n(\s*#.*\n)?\s+cancel-in-progress: \$\{\{ !startsWith\(github\.ref, 'refs\/tags\/'\) \}\}/);
+    expect(flujo).toMatch(/retention-days: 2/);
   });
   it("sólo el paso de la release puede escribir en el repo", () => {
     expect(flujo.match(/contents: write/g)).toHaveLength(1);

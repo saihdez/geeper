@@ -163,6 +163,27 @@ describe("salida de wgp.py", () => {
     expect(ev[3]).toMatchObject({ paso: 2, pasos: 4 });
   });
 
+  it("videos largos por partes (InfiniteTalk): el avance es de todo el video, no se queda en «Cargando»", () => {
+    const leer = crearLectorAvance();
+    // Líneas reales de wgp.log (presentador de 29 s, 10 partes).
+    const ev: Avance[] = [
+      ...leer("Loading Model 'ckpts/wan2.1_image2video_480p_14B.safetensors' ...\n  [3/3] Loading - Weights Loaded\n"),
+      ...leer("  [0/24] Sliding Window 1/10 - Encoding Text Prompt | 0.2s\n  [0/4] Sliding Window 1/10 - Denoising | 10.0s\n"),
+      ...leer("  [1/4] Sliding Window 1/10 - Denoising | 41.4s / 2m 15s\r  [1/4] Sliding Window 1/10 - Denoising | 42.9s / 2m 15s\r"),
+      ...leer("  [4/4] Sliding Window 1/10 - VAE Decoding | 2m 08s\n  [0/4] Sliding Window 2/10 - Denoising | 2m 30s\n"),
+      ...leer("  [2/4] Sliding Window 10/10 - Denoising | 20m 01s\n"),
+    ];
+    const partes = ev.filter((e) => e.ventanas);
+    expect(partes.every((e) => e.fase === "generando" && e.ventanas === 10)).toBe(true);
+    expect(partes.find((e) => e.paso === 1)).toMatchObject({ ventana: 1, paso: 1, pasos: 4 });
+    expect(partes.filter((e) => e.ventana === 1 && e.paso === 1)).toHaveLength(1);
+    for (let i = 1; i < ev.length; i++) expect(ev[i]!.avance).toBeGreaterThanOrEqual(ev[i - 1]!.avance);
+    const ultima = partes.at(-1)!;
+    expect(ultima).toMatchObject({ ventana: 10, paso: 2 });
+    expect(ultima.avance).toBeGreaterThan(0.9);
+    expect(etapaDePlano(ultima)).toBe("Generando: parte 10 de 10, paso 2 de 4");
+  });
+
   it("ruta guardada: gana la última (posproceso)", () => {
     expect(rutaGuardada("Video file saved to Path: /o/a.mp4\nRemuxed Video saved to Path: /o/b.mp4 \n")).toBe("/o/b.mp4");
     expect(rutaGuardada("nada")).toBeNull();

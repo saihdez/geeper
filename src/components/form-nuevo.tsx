@@ -32,11 +32,12 @@ export function FormNuevo() {
   const [mptTaskId, setMpt] = useState("");
   const [rehacerVoz, setRehacerVoz] = useState(true);
   const [aceptoGpu, setAcepto] = useState(false);
-  // Tu avatar en el video (actuar.ts): Geeper lo pone en las escenas que más ganan con él.
+  // Tu avatar en el video (protagonista.ts): protagoniza cada escena, dentro de su fondo, y es la única persona.
   const { datos: lib } = useSondeo<{ avatares: { id: string; nombre: string; retrato: string }[] }>("/api/avatares", 60_000);
   const [avatar, setAvatar] = useState<string | null>(null);
   // Qué tan real (estilos-generacion.ts): «Lo más real posible» anima cada escena con Wan.
   const [estilo, setEstilo] = useState<EstiloGeneracion>("rapido");
+  const [cuerpo, setCuerpo] = useState<"medio" | "completo">("medio");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lista = temas.split("\n").map((t) => t.trim()).filter(Boolean);
@@ -50,7 +51,7 @@ export function FormNuevo() {
     setEnviando(true);
     setError(null);
     try {
-      const r = await postJson<{ proyectos: { id: string }[] }>("/api/proyectos", { temas, formato, plantilla, mptTaskId: mptTaskId.trim() || undefined, rehacerVoz, avatar: !importa && avatar ? avatar : undefined, estilo: importa ? undefined : estilo });
+      const r = await postJson<{ proyectos: { id: string }[] }>("/api/proyectos", { temas, formato, plantilla, mptTaskId: mptTaskId.trim() || undefined, rehacerVoz, avatar: !importa && avatar ? avatar : undefined, estilo: importa ? undefined : estilo, cuerpo: !importa && avatar ? cuerpo : undefined });
       router.push(r.proyectos.length === 1 ? `/proyectos/${r.proyectos[0]!.id}` : "/");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -89,7 +90,7 @@ export function FormNuevo() {
       </div>
       {!!lib?.avatares.length && !importa && (
         <fieldset className="space-y-2">
-          <legend className="etiqueta">¿Sale tu avatar? (opcional)</legend>
+          <legend className="etiqueta">¿Tu avatar protagoniza el video? (opcional)</legend>
           <div className="flex flex-wrap gap-2">
             <button type="button" aria-pressed={!avatar} onClick={() => setAvatar(null)}
               className="opcion-tarjeta flex h-24 w-20 items-center justify-center text-center text-xs">Sin avatar</button>
@@ -102,7 +103,17 @@ export function FormNuevo() {
               </button>
             ))}
           </div>
-          {avatar && <p className="text-xs text-tenue">Geeper lo pone hablando en el gancho y en el cierre, y actuando en las escenas que hablan de personas. Suma unos 10 minutos por escena en la tarjeta de video; después puedes cambiarlo escena por escena.</p>}
+          {avatar && (
+            <div className="flex flex-wrap items-center gap-2 text-sm" role="radiogroup" aria-label="¿Cómo sale tu avatar?">
+              <span className="text-xs text-tenue">¿Cómo sale?</span>
+              {([["medio", "De la cintura para arriba"], ["completo", "Cuerpo completo"]] as const).map(([id, nombre]) => (
+                <button key={id} type="button" role="radio" aria-checked={cuerpo === id} onClick={() => setCuerpo(id)}
+                  className="opcion">{nombre}</button>
+              ))}
+            </div>
+          )}
+          {avatar && cuerpo === "completo" && <p className="text-xs text-tenue">De cuerpo entero habla gesticulando con todo el cuerpo, como una persona frente a la cámara.</p>}
+          {avatar && <p className="text-xs text-tenue">Sale en todas las escenas, dentro del fondo que se genera para cada una, y es la única persona del video: habla a cámara con su voz y gesticula como un humano. Suma unos 35 minutos en un short de 30 segundos y unos 55 en uno de un minuto. Para que comente en una ventana encima del video, usa «Presentador» en el editor.</p>}
         </fieldset>
       )}
       {!importa && (
@@ -117,7 +128,7 @@ export function FormNuevo() {
               </button>
             ))}
           </div>
-          <p className="text-xs text-tenue">{tiempoEstimado(estilo)}</p>
+          <p className="text-xs text-tenue">{avatar ? "Con tu avatar de protagonista el video ya es video de verdad: esto sólo cambia el acabado («Lo más real posible» suma un grano fino de cámara) y no suma tiempo." : tiempoEstimado(estilo)}</p>
         </fieldset>
       )}
       {/* Para quien instaló MoneyPrinterTurbo (UX-39): queda guardado en «Más opciones». */}

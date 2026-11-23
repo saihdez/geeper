@@ -1,6 +1,6 @@
 ---
 name: novedades
-description: Revisar las novedades de los repos de los que salió Geeper (apps Craft de storytold, Hyperframes, MoneyPrinterTurbo, claude-ads, gtavi-claudecode, YuNet) y traer a Geeper las mejoras que sirvan, probadas y sin romper nada. Úsala cuando la persona diga «/novedades», «revisa las novedades», «actualiza lo de storytold», «¿hay versión nueva de PhotoCraft/VectorCraft/Hyperframes?» o pegue «/novedades <id>» desde Sistema.
+description: Revisar las novedades de los repos de los que salió Geeper (apps Craft de storytold, Hyperframes, MoneyPrinterTurbo, claude-ads, gtavi-claudecode, YuNet; y las skills sacadas de deepseek-harness) y traer a Geeper las mejoras que sirvan, probadas y sin romper nada. Úsala cuando la persona diga «/novedades», «revisa las novedades», «actualiza lo de storytold», «¿hay versión nueva de PhotoCraft/VectorCraft/Hyperframes?», «¿qué hay nuevo en deepseek-harness?» o pegue «/novedades <id>» desde Sistema.
 ---
 
 # Novedades de los repos integrados
@@ -51,6 +51,19 @@ Para leer el código que cambió usa `gh` (sólo lectura): `gh api repos/<repo>/
 - **servicio** (MoneyPrinterTurbo): no actualices el contenedor. Lee las notas, busca cambios en su API
   (rutas, campos de `video_script`, estados de tarea) que afecten `src/lib/mpt.ts`, y avisa a la persona
   con el plan. Nunca `docker compose down -v` ni `prune`.
+
+- **deepseek-harness** (skills de Claude Code, no código de Geeper): la tabla de origen está en
+  `~/.claude/skills/DEEPSEEK-HARNESS.md`. Mira en el compare sólo esas rutas de origen
+  (`.agents/skills/dsh-ci-test-reliability`, `dsh-trim-cot-leakage`, `dsh-prose-standard`,
+  `record-browser-gif`, `dsh-responsive-ui`, `dsh-client-ui-ux/references`, `dsh-speed-up-perf`,
+  `dsh-error-handling`, `docs/defensive-patterns/general.md`,
+  `packages/preset/agent-preset/skills/dsh-doc/references/tool-design.md`) y skills nuevas en
+  `.agents/skills/` o `packages/**/skills/` que no sean de procesos internos de DSH. Lleva lo que sirva a
+  la copia en `~/.claude/skills/<nombre>`, manteniéndola genérica (sin rutas ni reglas de DSH), y anótalo
+  en DEEPSEEK-HARNESS.md con el commit nuevo. Si cambió `encode_gif.py`, corre su prueba
+  (`python3 -I -m unittest discover -s ~/.claude/skills/record-browser-gif/scripts -p 'test_*.py'`).
+  Aquí no hay commit en Geeper salvo el `--marcar` del registro. El programa `dsh` no se instala
+  (lo decidió el dueño el 2026-11-23).
 
 ## 3. Traerlo
 

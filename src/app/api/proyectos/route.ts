@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CuerpoAvatar } from "@/lib/actuar";
 import { EstiloGeneracion } from "@/lib/estilos-generacion";
 import { db } from "@/lib/db";
 import { Formato } from "@/lib/esquema";
@@ -33,6 +34,8 @@ const Pedido = z.object({
   avatar: z.string().regex(/^[a-z0-9-]+$/).optional(),
   /** Cuánto se trabaja cada escena (estilos-generacion.ts); sin él, «Rápido». */
   estilo: EstiloGeneracion.optional(),
+  /** Con avatar: de la cintura para arriba o de cuerpo entero. */
+  cuerpo: CuerpoAvatar.optional(),
 });
 
 export async function POST(req: Request) {
@@ -43,8 +46,8 @@ export async function POST(req: Request) {
       const p = await importarTareaMpt(d.mptTaskId.trim(), { tema: temas[0]!, formato: d.formato, plantilla: d.plantilla }, d.rehacerVoz);
       return json({ proyectos: [p] }, 201);
     }
-    if (temas.length === 1) return json({ proyectos: [await crearProyecto({ tema: temas[0]!, formato: d.formato, plantilla: d.plantilla, avatar: d.avatar, estilo: d.estilo })] }, 201);
-    const r = await crearLote(temas, d.formato, d.plantilla, d.nombreLote, d.avatar, d.estilo);
+    if (temas.length === 1) return json({ proyectos: [await crearProyecto({ tema: temas[0]!, formato: d.formato, plantilla: d.plantilla, avatar: d.avatar, estilo: d.estilo, cuerpo: d.cuerpo })] }, 201);
+    const r = await crearLote(temas, d.formato, d.plantilla, d.nombreLote, d.avatar, d.estilo, d.cuerpo);
     return json({ lote: r.lote, proyectos: r.proyectos }, 201);
   });
 }

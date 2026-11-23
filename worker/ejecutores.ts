@@ -12,14 +12,15 @@ import { importarDemo } from "@/lib/importador-demo";
 import { buscarMomentos } from "@/lib/buscar-momentos";
 import { Campania } from "@/lib/clips";
 import { ENCUADRES, importarClip, type EncuadreClip } from "@/lib/importador-clip";
-import { apiViva, crearVideo, cuerpoVideo, estadoTarea, materialesListos, modeloImagen, PROGRESO_MATERIALES, soltarCuandoTermine } from "@/lib/mpt";
+import { asegurarApi, crearVideo, cuerpoVideo, estadoTarea, materialesListos, modeloImagen, PROGRESO_MATERIALES, soltarCuandoTermine } from "@/lib/mpt";
 import type { Contexto } from "@/lib/pasos";
 import { obtenerPlantilla } from "@/lib/plantillas";
 import { generarPlanoEscena, type OpcionesPlano } from "@/lib/plano";
 import { generarPresentador, type OpcionesPresentador } from "@/lib/presentador";
 import { PedidoRehacer, rehacerEscena } from "@/lib/rehacer";
 import { animarEscenasDelVideo } from "@/lib/animar-escenas";
-import { actuarEscena, leerAvatarDelVideo, PedidoActuar, PedidoStreamer, proponerEscenas, streamerAvatar } from "@/lib/actuar";
+import { actuarEscena, leerAvatarDelVideo, PedidoActuar, PedidoStreamer, streamerAvatar } from "@/lib/actuar";
+import { protagonizarVideo } from "@/lib/protagonista";
 import { correrWorkflow, PedidoWorkflow } from "@/lib/workflows";
 import { regenerarVoz, textoADecir } from "@/lib/regenerar";
 import { IdiomaTraduccion, traducirProyecto } from "@/lib/traducir";
@@ -69,7 +70,8 @@ async function mptGenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
   const proyecto = await db.proyecto.findUniqueOrThrow({ where: { id: t.proyectoId! } });
   await crearCarpetas(proyecto.slug);
   const plantilla = await obtenerPlantilla(proyecto.plantilla);
-  if (!(await apiViva())) throw new Error("El generador de videos está apagado. Abre Docker Desktop, espera un minuto y pulsa «Volver a intentar».");
+  // Si la API de MPT se cayó (un reinicio de WSL), en la app de escritorio se levanta sola antes del error.
+  if (!(await asegurarApi(h.log))) throw new Error("El generador de videos está apagado. Abre Docker Desktop, espera un minuto y pulsa «Volver a intentar».");
   await db.proyecto.update({ where: { id: proyecto.id }, data: { estado: "generando" } });
 
   let taskId = typeof t.payload.mptTaskId === "string" ? t.payload.mptTaskId : undefined;
@@ -350,6 +352,7 @@ export function etapaDePlano(a: Avance): string {
     case "codificando":
       return "Preparando la imagen";
     case "generando":
+      if (a.ventanas && a.ventanas > 1) return `Generando: parte ${a.ventana} de ${a.ventanas}${a.pasos ? `, paso ${a.paso} de ${a.pasos}` : ""}`;
       return a.pasos ? `Animando: paso ${a.paso} de ${a.pasos}` : "Animando";
     case "decodificando":
       return "Armando el video";
@@ -381,7 +384,9 @@ function conAvance(h: Herramientas, verbo: string) {
   return {
     ...h,
     alAvanzar: (a: Avance) => {
-      const e = a.fase === "generando" ? (a.pasos ? `${verbo}: paso ${a.paso} de ${a.pasos}` : verbo) : etapaDePlano(a).replace("Guardando el plano", "Guardando");
+      const e = a.fase === "generando"
+        ? a.ventanas && a.ventanas > 1 ? `${verbo}: parte ${a.ventana} de ${a.ventanas}` : a.pasos ? `${verbo}: paso ${a.paso} de ${a.pasos}` : verbo
+        : etapaDePlano(a).replace("Guardando el plano", "Guardando");
       if (e !== ultima) void h.etapa((ultima = e), a.avance);
     },
   };
@@ -425,28 +430,14 @@ async function avatarStreamer(t: Trabajo, h: Herramientas): Promise<Salida> {
   return { resultado: r, siguiente: siguienteDe(t.payload, { version: r.version }) };
 }
 
-/** Video nuevo con avatar: lo pone en las escenas que propone Geeper, una por una (la persona ajusta después). */
+/** «Tu avatar en el video»: protagoniza todo el video en un solo set, de corrido (protagonista.ts). */
 async function avatarEscenas(t: Trabajo, h: Herramientas): Promise<Salida> {
   const fila = await db.proyecto.findUniqueOrThrow({ where: { id: t.proyectoId! } });
   const elegido = await leerAvatarDelVideo(fila.slug);
-  if (!elegido) return { resultado: { escenas: 0 }, siguiente: siguienteDe(t.payload) };
-  let { p } = await versionDeProyecto(t.proyectoId!);
-  const propuestas = proponerEscenas(p, elegido.avatar, { producto: elegido.producto });
-  const hechas: number[] = [];
-  for (const [i, pr] of propuestas.entries()) {
-    await h.etapa(`Tu avatar en la escena ${pr.numero} (${i + 1} de ${propuestas.length}): ${pr.porque}`, i / propuestas.length);
-    try {
-      const r = await actuarEscena(conAvance(h, `Escena ${pr.numero}`), t.proyectoId!, p, pr.escena, pr.pedido);
-      hechas.push(pr.numero);
-      h.log(`Escena ${pr.numero} con avatar → versión ${r.version}`);
-      ({ p } = await versionDeProyecto(t.proyectoId!));
-    } catch (e) {
-      // Una escena que falla no tumba el video: queda como estaba y se puede reintentar desde el editor.
-      if (h.signal?.aborted) throw e;
-      h.log(`Escena ${pr.numero}: no se pudo (${e instanceof Error ? e.message.split("\n")[0] : e}); queda como estaba.`);
-    }
-  }
-  return { resultado: { escenas: hechas }, siguiente: siguienteDe(t.payload) };
+  if (!elegido) return { resultado: { escenas: [] }, siguiente: siguienteDe(t.payload) };
+  const r = await protagonizarVideo(conAvance(h, "Tu avatar"), t.proyectoId!, elegido, (a) => h.etapa(a.etapa, a.avance));
+  h.log(r.escenas.length ? `Tu avatar protagoniza las escenas ${r.escenas.join(", ")} (${r.tomas === 1 ? "una toma" : `${r.tomas} tomas`})` : "Tu avatar no pudo entrar en el video: queda con las imágenes");
+  return { resultado: r, siguiente: siguienteDe(t.payload) };
 }
 
 /** Video nuevo «Equilibrado» o «Lo más real posible»: cada escena de MPT pasa a video (animar-escenas.ts). */

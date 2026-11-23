@@ -241,12 +241,22 @@ export async function relanzar(id: string) {
   if (r.count !== 1) throw new Error("Sólo se relanzan trabajos fallidos, interrumpidos o cancelados");
 }
 
+/**
+ * Cancela un trabajo pendiente o corriendo. Uno «interrumpido» (lo cortó un reinicio y espera que la
+ * persona decida) se cierra igual: queda cancelado y deja de pedir que lo relancen.
+ */
 export async function cancelar(id: string) {
+  const ahora = new Date();
   const r = await db.trabajo.updateMany({
     where: { id, estado: { in: ["pendiente", "corriendo"] } },
-    data: { estado: "cancelado", terminado: new Date(), leaseUntil: null, error: "Cancelado por la persona" },
+    data: { estado: "cancelado", terminado: ahora, leaseUntil: null, error: "Cancelado por la persona" },
   });
-  if (r.count !== 1) throw new Error("Sólo se cancelan trabajos pendientes o corriendo");
+  if (r.count === 1) return;
+  const i = await db.trabajo.updateMany({
+    where: { id, estado: "interrumpido" },
+    data: { estado: "cancelado", terminado: ahora, leaseUntil: null, error: "Cerrado por la persona (estaba interrumpido)" },
+  });
+  if (i.count !== 1) throw new Error("Sólo se cancelan trabajos pendientes, corriendo o interrumpidos");
 }
 
 const CLAVE_LATIDO = "worker.latido";

@@ -134,6 +134,8 @@ export function ListaTrabajos({ proyectoId }: { proyectoId?: string }) {
             {/* UX-17: si el link de la página web no abría, se corrige sin escribir todo otra vez. */}
             {ofreceCambiarLink(t) && <CambiarLink trabajoId={t.id} />}
             {vivo && <button type="button" className="boton boton-peligro" onClick={() => void accion(t.id, "cancelar")}>Cancelar</button>}
+            {/* Un «interrumpido» (lo cortó un reinicio) se cierra sin relanzarlo: queda cancelado. */}
+            {t.estado === "interrumpido" && <button type="button" className="boton" title="No lo vuelve a intentar: queda cerrado" onClick={() => void accion(t.id, "cancelar")}>Cerrar</button>}
             <button type="button" className="boton" aria-expanded={abierto === t.id} onClick={() => setAbierto(abierto === t.id ? null : t.id)}>
               {abierto === t.id ? "Ocultar el registro" : "Ver el registro"}
             </button>
