@@ -19,7 +19,6 @@ export const MAX_CARACTERES_DEMO = 700;
 /** Caracteres por segundo de Kokoro a velocidad 0,85 (medido 2026-11-20: 126 caracteres → ~11 s). */
 export const CPS_VOZ = 11.5;
 
-/** Segundos aproximados que dura decir `texto` (contador de la página Nuevo). */
 /** Lo que se escribió en «Desde una página web», para volver a Nuevo con todo puesto. */
 export interface BorradorDemo {
   url: string;
@@ -45,6 +44,25 @@ export function enlaceCambiarLink(b: Partial<BorradorDemo>): string {
   return `/nuevo?${q.toString()}`;
 }
 
+/**
+ * El enlace «Cambiar el link» de un trabajo `demo.crear` que falló (UX-17): el link, el texto, el
+ * estilo y «es mío» salen del payload; la forma y el estilo del canal, del proyecto. Lo que no sea
+ * válido se descarta (pasa por leerBorradorDemo).
+ */
+export function enlaceDeTrabajoDemo(payload: unknown, proyecto: { formato: string; plantilla: string } | null): string {
+  const p = (payload && typeof payload === "object" ? payload : {}) as Record<string, unknown>;
+  const q = new URLSearchParams();
+  if (typeof p.url === "string") q.set("url", p.url);
+  if (typeof p.texto === "string") q.set("texto", p.texto);
+  if (typeof p.estilo === "string") q.set("estilo", p.estilo);
+  if (p.propio === true) q.set("propio", "1");
+  if (proyecto) {
+    q.set("formato", proyecto.formato);
+    q.set("plantilla", proyecto.plantilla);
+  }
+  return enlaceCambiarLink(leerBorradorDemo(q));
+}
+
 /** Lo que trae el enlace de enlaceCambiarLink (lo que no sea válido se ignora). */
 export function leerBorradorDemo(q: Pick<URLSearchParams, "get">): Partial<BorradorDemo> {
   const b: Partial<BorradorDemo> = {};
@@ -62,6 +80,7 @@ export function leerBorradorDemo(q: Pick<URLSearchParams, "get">): Partial<Borra
   return b;
 }
 
+/** Segundos aproximados que dura decir `texto` (contador de la página Nuevo). */
 export function segundosEstimados(texto: string): number {
   return Math.round((texto.replace(/\s+/g, " ").trim().length / CPS_VOZ) * 10) / 10;
 }
