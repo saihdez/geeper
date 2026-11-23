@@ -52,6 +52,8 @@ model Proyecto {
   trabajos       Trabajo[]
   renders        Render[]
   publicaciones  Publicacion[]
+
+  @@index([actualizado])
 }
 
 model Version {
@@ -126,6 +128,8 @@ model Trabajo {
   @@index([tipo, estado])
   @@index([estado])
   @@index([creado])
+  // WEB-13: el vigía de /api/eventos lee max(actualizado) cada segundo.
+  @@index([actualizado])
 }
 
 model Render {

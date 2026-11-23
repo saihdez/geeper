@@ -117,11 +117,26 @@ describe("sondeo con el canal de avisos (WEB-13)", () => {
     for (let i = 0; i < 5; i++) f.creadas[0]!.cambio({ tipo: "trabajos" });
     expect(pendientes[1]!.signal.aborted).toBe(false);
     pendientes[1]!.ok("{}");
-    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(3000);
     expect(pedirTexto).toHaveBeenCalledTimes(3);
     pendientes[2]!.ok("{}");
     await vi.advanceTimersByTimeAsync(10_000);
     expect(pedirTexto).toHaveBeenCalledTimes(3);
+    sondeo.detener();
+  });
+
+  it("con un trabajo en curso (un aviso por segundo) no pide más seguido que su ritmo propio", async () => {
+    const { f, pedirTexto, sondeo } = armar(15_000);
+    sondeo.iniciar();
+    f.creadas[0]!.abrir();
+    await vi.advanceTimersByTimeAsync(20_000);
+    const antes = pedirTexto.mock.calls.length;
+    for (let i = 0; i < 60; i++) {
+      f.creadas[0]!.cambio({ tipo: "trabajos" });
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    expect(pedirTexto.mock.calls.length - antes).toBeLessThanOrEqual(5);
+    expect(pedirTexto.mock.calls.length - antes).toBeGreaterThanOrEqual(3);
     sondeo.detener();
   });
 
@@ -136,7 +151,7 @@ describe("sondeo con el canal de avisos (WEB-13)", () => {
     expect(pedirTexto.mock.calls.length).toBeGreaterThanOrEqual(10);
     const antes = pedirTexto.mock.calls.length;
     f.creadas[0]!.abrir(); // EventSource reconecta solo
-    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(3000);
     expect(pedirTexto.mock.calls.length).toBeLessThanOrEqual(antes + 1);
     const tras = pedirTexto.mock.calls.length;
     await vi.advanceTimersByTimeAsync(30_000);

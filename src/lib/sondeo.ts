@@ -77,14 +77,18 @@ export function crearSondeo<T>(o: OpcionesSondeo<T>): Sondeo {
     temporizador = setTimeout(() => void ciclo(), Math.max(250, ms));
   }
 
-  /** Pide por un aviso, sin cortar la que está en vuelo y sin pedir más de una vez por ENTRE_AVISOS_MS. */
+  /** Pide por un aviso, sin cortar la que está en vuelo y sin pedir más seguido que su ritmo (mínimo ENTRE_AVISOS_MS). */
   function porAviso() {
     if (detenido || oculto()) return;
     if (enVuelo) {
       otraVez = true;
       return;
     }
-    const falta = ultimoInicio + ENTRE_AVISOS_MS - Date.now();
+    // Nunca más seguido que el ritmo propio de la pantalla: con un trabajo en curso el worker escribe en
+    // cada etapa y en cada lease, y una pantalla de 15 s no debe pasar a pedir cada segundo.
+    const base = o.intervalo(ultimos);
+    const entre = Math.max(ENTRE_AVISOS_MS, Number.isFinite(base) ? base : 0);
+    const falta = ultimoInicio + entre - Date.now();
     if (falta <= 0) {
       void ciclo();
       return;
