@@ -1,11 +1,13 @@
 "use client";
 /** Aviso común «Geeper está en pausa», visible en todas las páginas cuando el motor no corre. */
 import { useSyncExternalStore } from "react";
+import { canalDeLaPagina } from "@/lib/eventos-cliente";
 import { crearSondeo, type Sondeo } from "@/lib/sondeo";
 
 /**
  * Un solo sondeo de /api/sistema/motor para toda la página, lo usen cuantos componentes lo usen: en el
- * editor cada escena montaba el suyo (18 peticiones por minuto en vez de 2).
+ * editor cada escena montaba el suyo (18 peticiones por minuto en vez de 2). Con el canal de avisos
+ * abierto (WEB-13) pregunta sólo cuando el motor se apaga o vuelve, y una vez por minuto de respaldo.
  */
 let vivoActual: boolean | null = null;
 let compartido: Sondeo | null = null;
@@ -18,6 +20,7 @@ export function suscribirMotor(oyente: () => void): () => void {
     compartido = crearSondeo<{ vivo: boolean }>({
       url: "/api/sistema/motor",
       intervalo: () => 30_000,
+      avisos: { canal: canalDeLaPagina(), filtros: ["motor"] },
       alDatos: (d) => {
         if (d.vivo === vivoActual) return;
         vivoActual = d.vivo;
