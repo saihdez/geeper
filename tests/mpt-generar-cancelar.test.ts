@@ -11,8 +11,10 @@ const m = vi.hoisted(() => ({
   liberado: 0,
   opciones: [] as Record<string, unknown>[],
   vigilado: [] as string[],
-  estados: [] as string[],
+  estados: [] as (string | { estado: string; progreso: number })[],
   viva: true,
+  materiales: true,
+  miradas: 0,
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -30,7 +32,12 @@ vi.mock("@/lib/mpt", () => ({
   cuerpoVideo: () => ({}),
   crearVideo: async () => "tarea-1",
   modeloImagen: async () => undefined,
-  estadoTarea: async () => ({ estado: m.estados.shift() ?? "procesando", progreso: 40 }),
+  estadoTarea: async () => {
+    const e = m.estados.shift() ?? "procesando";
+    return typeof e === "string" ? { estado: e, progreso: 40 } : e;
+  },
+  PROGRESO_MATERIALES: 50,
+  materialesListos: async () => (m.miradas++, m.materiales),
   soltarCuandoTermine: (id: string) => (m.vigilado.push(id), Promise.resolve("completa")),
 }));
 
@@ -75,5 +82,39 @@ describe("mpt.generar y la tarjeta al cancelar (GPU-03)", () => {
     } finally {
       m.viva = true;
     }
+  });
+
+  it("con el guion, la voz y los clips listos importa sin esperar el video final de MPT; la tarjeta queda al vigilante (TER-06)", async () => {
+    m.liberado = 0; m.vigilado = []; m.miradas = 0; m.materiales = true;
+    m.estados = [{ estado: "procesando", progreso: 62 }, "completa"];
+    const t0 = Date.now();
+    const r = await EJECUTORES["mpt.generar"]({ id: "t5", tipo: "mpt.generar", proyectoId: "p1", payload: { cadena: ["proyecto.importar"] } }, herramientas(new AbortController()));
+    expect(Date.now() - t0).toBeLessThan(2000); // no esperó otra vuelta de 5 s
+    expect(r.siguiente?.tipo).toBe("proyecto.importar");
+    expect(m.vigilado).toEqual(["tarea-1"]);
+    expect(m.liberado).toBe(0);
+  });
+
+  it("con el avance en 50 justo (MPT aún escribe material_sources) ni siquiera mira los archivos (TER-06)", async () => {
+    m.liberado = 0; m.vigilado = []; m.miradas = 0; m.materiales = true;
+    m.estados = [{ estado: "procesando", progreso: 50 }];
+    const ctrl = new AbortController();
+    const p = EJECUTORES["mpt.generar"]({ id: "t6", tipo: "mpt.generar", proyectoId: "p1", payload: {} }, herramientas(ctrl));
+    await new Promise((r) => setTimeout(r, 50));
+    ctrl.abort();
+    await expect(p).rejects.toThrow(/Cancelado/);
+    expect(m.miradas).toBe(0);
+  });
+
+  it("pasado 50 pero sin los archivos en disco, sigue esperando (TER-06)", async () => {
+    m.liberado = 0; m.vigilado = []; m.miradas = 0; m.materiales = false;
+    m.estados = [{ estado: "procesando", progreso: 70 }];
+    const ctrl = new AbortController();
+    const p = EJECUTORES["mpt.generar"]({ id: "t7", tipo: "mpt.generar", proyectoId: "p1", payload: {} }, herramientas(ctrl));
+    await new Promise((r) => setTimeout(r, 50));
+    ctrl.abort();
+    await expect(p).rejects.toThrow(/Cancelado/);
+    expect(m.miradas).toBe(1);
+    m.materiales = true;
   });
 });

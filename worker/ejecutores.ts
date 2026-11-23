@@ -12,7 +12,7 @@ import { importarDemo } from "@/lib/importador-demo";
 import { buscarMomentos } from "@/lib/buscar-momentos";
 import { Campania } from "@/lib/clips";
 import { ENCUADRES, importarClip, type EncuadreClip } from "@/lib/importador-clip";
-import { apiViva, crearVideo, cuerpoVideo, estadoTarea, modeloImagen, soltarCuandoTermine } from "@/lib/mpt";
+import { apiViva, crearVideo, cuerpoVideo, estadoTarea, materialesListos, modeloImagen, PROGRESO_MATERIALES, soltarCuandoTermine } from "@/lib/mpt";
 import type { Contexto } from "@/lib/pasos";
 import { obtenerPlantilla } from "@/lib/plantillas";
 import { generarPlanoEscena, type OpcionesPlano } from "@/lib/plano";
@@ -98,6 +98,8 @@ async function mptGenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
   });
   // La telemetría de la tarjeta (CSV y pico en el resultado) la lleva el worker para todo trabajo de GPU (GPU-10).
   let terminada = false;
+  // Los materiales ya están y MPT sigue armando su video final (TER-06): Geeper importa sin esperarlo.
+  let soloFalta = false;
   try {
     if (!taskId) {
       const guion = typeof t.payload.guion === "string" ? t.payload.guion : undefined;
@@ -115,13 +117,26 @@ async function mptGenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
         terminada = true;
         throw new Error(`MPT: tarea ${taskId} ${e.estado}. ${e.detalle ?? ""}`);
       }
+      // Geeper no usa el video final de MPT: con el guion, la voz y los clips en disco se importa ya.
+      if (e.progreso > PROGRESO_MATERIALES && (await materialesListos(taskId))) {
+        soloFalta = true;
+        break;
+      }
       await h.etapa(`MPT generando (${e.progreso} %, ${Math.round((Date.now() - t0) / 1000)} s)`, 0.02 + (e.progreso / 100) * 0.95);
       await dormir(5000, h.signal);
     }
     terminada = true;
-    h.log(`MPT terminó la tarea ${taskId} en ${((Date.now() - t0) / 1000).toFixed(0)} s`);
+    h.log(
+      soloFalta
+        ? `MPT dejó listos el guion, la voz y los clips de ${taskId} en ${((Date.now() - t0) / 1000).toFixed(0)} s: se importan sin esperar su video final`
+        : `MPT terminó la tarea ${taskId} en ${((Date.now() - t0) / 1000).toFixed(0)} s`,
+    );
   } finally {
-    if (candado && taskId && !terminada && h.signal.aborted) {
+    if (candado && taskId && soloFalta) {
+      // MPT codifica su video final con la tarjeta (NVENC): el candado sigue tomado hasta que termine,
+      // pero la importación (CPU) ya no lo espera.
+      void soltarCuandoTermine(taskId, candado, { log: h.log });
+    } else if (candado && taskId && !terminada && h.signal.aborted) {
       // Cancelado con la tarea en marcha: la tarjeta sigue tomada hasta que MPT la suelte (tope 10 min).
       // El trabajo siguiente lo muestra como «Esperando la GPU (la tiene: mpt …)».
       h.log(`Cancelado: MPT sigue con la tarea ${taskId}; la tarjeta se suelta cuando la termine (como mucho 10 min)`);
