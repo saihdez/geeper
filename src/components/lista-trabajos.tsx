@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { textoIntentos, type IntentoPrevio } from "@/lib/intentos";
 import { etapaSimple, explicarError, nombreTipo } from "@/lib/textos";
 import { Aviso, Barra, Estado, haceCuanto, MotorApagado, postJson, segundos, useSondeo } from "./comun";
 import { CambiarLink, ofreceCambiarLink } from "./cambiar-link";
@@ -14,6 +15,8 @@ interface Trabajo {
   progreso: number;
   error: string | null;
   intentos: number;
+  /** UX-41: los intentos anteriores que terminaron mal (los guarda «Volver a intentar»). */
+  anteriores?: IntentoPrevio[] | null;
   usaGpu: boolean;
   creado: string;
   iniciado: string | null;
@@ -141,6 +144,7 @@ export function ListaTrabajos({ proyectoId }: { proyectoId?: string }) {
             <Barra valor={t.progreso} etiqueta={`Avance: ${nombreTipo(t.tipo)}`} />
           </div>
         )}
+        {textoIntentos(t.anteriores) && <p className="mt-1 text-xs text-tenue">{textoIntentos(t.anteriores)}</p>}
         {t.error && <ErrorTrabajo error={t.error} />}
         {abierto === t.id && <Log id={t.id} vivo={vivo} />}
       </li>

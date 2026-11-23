@@ -43,3 +43,14 @@ describe("«Cambiar el link» en Trabajos (UX-17)", () => {
     expect(s.slice(i, i + 400)).toContain("{ofreceCambiarLink(t) && <CambiarLink trabajoId={t.id} />}");
   });
 });
+
+describe("el intento anterior se ve en Trabajos (UX-41)", () => {
+  it("cada fila dice qué pasó con el intento anterior, con lo que da /api/trabajos", async () => {
+    const { textoIntentos } = await import("@/lib/intentos");
+    expect(textoIntentos([{ estado: "fallido", error: "x", iniciado: "2026-11-23T10:00:00Z", terminado: "2026-11-23T10:06:36Z" }])).toBe("2.º intento (el 1.º falló a los 6 min 36 s)");
+    const s = fs.readFileSync(path.join(process.cwd(), "src/components/lista-trabajos.tsx"), "utf8");
+    expect(s).toContain("textoIntentos(t.anteriores)");
+    const api = fs.readFileSync(path.join(process.cwd(), "src/app/api/trabajos/route.ts"), "utf8");
+    expect(api).toContain("anteriores: true");
+  });
+});
