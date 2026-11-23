@@ -5,6 +5,13 @@ import { crearSondeo, type Sondeo } from "@/lib/sondeo";
 import { ESTADOS, nombreEstado } from "@/lib/textos";
 
 /**
+ * A11-08: los pasos (Clips, Avatares) se marcan igual que en Anuncios: el actual en negrita con su número en
+ * celeste, los hechos con ✓ en verde. Sin el borde celeste, que es de las opciones elegidas.
+ */
+export const CLASE_PASO = { actual: "font-semibold text-white", hecho: "text-tenue hover:text-white", pendiente: "text-tenue opacity-60" } as const;
+export const CIRCULO_PASO = { actual: "bg-cyan-500 text-black", hecho: "bg-emerald-700 text-white", pendiente: "bg-slate-800 text-slate-400" } as const;
+
+/**
  * GPU-09: lo que se muestra junto al botón mientras se espera a la IA local, que puede estar cargando el
  * modelo. Copia de AVISO_DESPERTANDO de @/lib/llm-local (ése es del servidor: no se importa aquí).
  */

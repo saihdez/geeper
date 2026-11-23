@@ -83,7 +83,7 @@ export function PaginaWorkflows() {
               <input className="campo max-w-sm" type="search" placeholder="Buscar: retrato, música, quitar fondo, video…" value={buscar} onChange={(ev) => { setBuscar(ev.target.value); setCuantos(48); }} aria-label="Buscar workflows" />
               <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="Qué workflows mostrar">
                 {([["ligeras", `Ligeras, menos de 10 GB (${ligeras}) · recomendado`], ["local", `Corren en tu PC (${locales})`], ["todos", `Todos (${total})`], ["pago", `De pago (${total - locales})`]] as const).map(([id, n]) => (
-                  <button key={id} role="radio" aria-checked={filtro === id} className={`boton text-xs ${filtro === id ? "boton-primario" : ""}`} onClick={() => { setFiltro(id); setCategoria("Todas"); setCuantos(48); }}>{n}</button>
+                  <button key={id} role="radio" aria-checked={filtro === id} type="button" className="opcion text-xs" onClick={() => { setFiltro(id); setCategoria("Todas"); setCuantos(48); }}>{n}</button>
                 ))}
               </div>
             </div>
@@ -91,7 +91,7 @@ export function PaginaWorkflows() {
             {(filtro === "todos" || filtro === "pago") && <p className="text-xs text-tenue">Los de pago usan servicios de la nube de Comfy que cobran por uso: aparecen para que los conozcas, pero están bloqueados porque Geeper funciona gratis.</p>}
             <div className="flex flex-wrap gap-1">
               {[["Todas", lista.length] as const, ...categorias].map(([c, n]) => (
-                <button key={c} aria-pressed={categoria === c} className={`rounded-full border px-3 py-1 text-xs ${categoria === c ? "border-cyan-500 bg-cyan-950/40 ring-2 ring-cyan-500" : "border-borde text-tenue hover:text-white"}`} onClick={() => { setCategoria(c); setCuantos(48); }}>
+                <button key={c} type="button" aria-pressed={categoria === c} className="opcion rounded-full text-xs" onClick={() => { setCategoria(c); setCuantos(48); }}>
                   {c}{c !== "Todas" ? ` · ${n}` : ""}
                 </button>
               ))}
@@ -101,10 +101,10 @@ export function PaginaWorkflows() {
             ) : (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                 {lista.slice(0, cuantos).map((w) => (
-                  <button key={w.id} type="button" onClick={() => setAbierto(w.id)} className={`tarjeta overflow-hidden text-left hover:bg-white/5 ${abierto === w.id ? "ring-2 ring-cyan-500" : ""}`}>
+                  <button key={w.id} type="button" aria-pressed={abierto === w.id} onClick={() => setAbierto(w.id)} className="opcion-tarjeta overflow-hidden">
                     <div className="relative aspect-video bg-slate-800">
                       <Miniatura key={w.id} urls={w.miniaturas} tipo={w.tipo} apagada={!!w.bloqueo} />
-                      {!w.local && <span className="absolute right-1 top-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px]">🔒 De pago</span>}
+                      {!w.local && <span className="absolute left-1 top-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px]">🔒 De pago</span>}
                     </div>
                     <div className="space-y-1 p-2">
                       <p className="line-clamp-2 text-sm font-medium">{w.titulo}</p>

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { cancelarAlSalir, escribirEstadoAsistente, leerEstadoAsistente, pedidoAvatar, puedeCrearAvatar, volverSeguro, type EstadoAsistente, type TextosAvatar } from "@/lib/asistente-avatar";
-import { Aviso, Barra, pedir, postJson, useSondeo } from "./comun";
+import { Aviso, Barra, CIRCULO_PASO, CLASE_PASO, pedir, postJson, useSondeo } from "./comun";
 import { ElegirVozAvatar, type VozElegida } from "./elegir-voz-avatar";
 
 export interface AvatarV {
@@ -124,8 +124,8 @@ export function PaginaAvatares() {
 
 function Paso({ actual, n, titulo }: { actual: number; n: number; titulo: string }) {
   return (
-    <li className={`flex items-center gap-2 ${actual === n ? "text-white" : "text-tenue"}`} aria-current={actual === n ? "step" : undefined}>
-      <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs ${actual >= n ? "bg-cyan-700" : "bg-slate-700"}`}>{n}</span>
+    <li className={`flex items-center gap-2 ${CLASE_PASO[actual === n ? "actual" : actual > n ? "hecho" : "pendiente"]}`} aria-current={actual === n ? "step" : undefined}>
+      <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs ${CIRCULO_PASO[actual === n ? "actual" : actual > n ? "hecho" : "pendiente"]}`}>{actual > n ? "✓" : n}</span>
       {titulo}
     </li>
   );
@@ -267,8 +267,8 @@ function Crear({ datos, inicial, cerrar, alGuardar }: { datos: Datos; inicial: E
       {paso === 1 && (
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="De dónde sale el avatar">
-            <button role="radio" aria-checked={!conFoto} className={`boton ${!conFoto ? "boton-primario" : ""}`} onClick={() => setConFoto(false)}>Describirlo con palabras</button>
-            <button role="radio" aria-checked={conFoto} className={`boton ${conFoto ? "boton-primario" : ""}`} onClick={() => setConFoto(true)}>Desde una foto</button>
+            <button type="button" role="radio" aria-checked={!conFoto} className="opcion" onClick={() => setConFoto(false)}>Describirlo con palabras</button>
+            <button type="button" role="radio" aria-checked={conFoto} className="opcion" onClick={() => setConFoto(true)}>Desde una foto</button>
           </div>
 
           <fieldset className="space-y-2">
@@ -276,7 +276,7 @@ function Crear({ datos, inicial, cerrar, alGuardar }: { datos: Datos; inicial: E
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {datos.estilos.map((e) => (
                 <button key={e.id} type="button" aria-pressed={estilo === e.id} onClick={() => setEstilo(e.id)}
-                  className={`tarjeta p-3 text-left hover:bg-white/5 ${estilo === e.id ? "outline outline-2 outline-cyan-500" : ""}`}>
+                  className="opcion-tarjeta p-3">
                   <span className="block font-medium">{e.nombre}</span>
                   <span className="block text-xs text-tenue">{e.detalle}</span>
                 </button>
@@ -320,7 +320,7 @@ function Crear({ datos, inicial, cerrar, alGuardar }: { datos: Datos; inicial: E
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium">Fondo</legend>
             <div className="flex flex-wrap gap-2">
-              {datos.fondos.map((f) => <button key={f.id} type="button" aria-pressed={fondo === f.id} className={`boton ${fondo === f.id ? "boton-primario" : ""}`} onClick={() => setFondo(f.id)}>{f.nombre}</button>)}
+              {datos.fondos.map((f) => <button key={f.id} type="button" aria-pressed={fondo === f.id} className="opcion" onClick={() => setFondo(f.id)}>{f.nombre}</button>)}
             </div>
           </fieldset>
 
@@ -370,7 +370,7 @@ function Crear({ datos, inicial, cerrar, alGuardar }: { datos: Datos; inicial: E
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {avance.tomas.map((t) => (
                   <button key={t.url} type="button" aria-pressed={elegida === t.numero} onClick={() => setElegida(t.numero)}
-                    className={`overflow-hidden rounded-lg border ${elegida === t.numero ? "border-cyan-400 outline outline-2 outline-cyan-500" : "border-transparent"}`}>
+                    className="opcion-tarjeta overflow-hidden">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={t.url} alt={`Opción ${t.numero}`} className="aspect-[832/1216] w-full object-cover" />
                   </button>
@@ -510,7 +510,7 @@ function ElegirRetoque({ avatar: a, ocupado, elegir }: { avatar: AvatarV; ocupad
       <div className="grid grid-cols-3 gap-1" role="radiogroup" aria-label="Opciones del retoque">
         {[{ toma: null as number | null, url: a.retrato, titulo: "Actual" }, ...r.opciones.map((url, i) => ({ toma: i + 1 as number | null, url, titulo: `Opción ${i + 1}` }))].map((o) => (
           <button key={o.titulo} type="button" role="radio" aria-checked={elegida === o.toma}
-            className={`overflow-hidden rounded border-2 text-xs ${elegida === o.toma ? "border-cyan-400" : "border-transparent"}`}
+            className="opcion-tarjeta overflow-hidden text-xs"
             onClick={() => setElegida(o.toma)}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={o.url} alt={o.titulo} className="aspect-[832/1216] w-full object-cover" />

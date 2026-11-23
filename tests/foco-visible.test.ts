@@ -12,9 +12,9 @@ describe("foco visible (A11-02)", () => {
     }
   });
 
-  it("en las recetas lo elegido lleva anillo", () => {
+  it("en las recetas lo elegido se marca con .opcion-tarjeta y aria-pressed (A11-08)", () => {
     const s = leer("workflows.tsx");
-    expect(s).toContain('abierto === w.id ? "ring-2 ring-cyan-500"');
+    expect(s).toContain('aria-pressed={abierto === w.id} onClick={() => setAbierto(w.id)} className="opcion-tarjeta overflow-hidden"');
     expect(s).toContain("aria-pressed={categoria === c}");
   });
 });
@@ -36,9 +36,9 @@ describe("foco visible en Clips (A11-02)", () => {
     expect(s).toContain("entrada.current?.click()");
   });
 
-  it("el estilo elegido y el gancho elegido llevan anillo, no sólo color de borde", () => {
-    expect(s).toContain('estilo === s.id ? "border-cyan-500 bg-cyan-950/40 ring-2 ring-cyan-500"');
-    expect(s).toContain('gancho === g ? "border-cyan-500 bg-cyan-950/50 ring-2 ring-cyan-500"');
+  it("el estilo elegido y el gancho elegido se marcan con .opcion (borde, fondo y ✓), no sólo color de borde", () => {
+    expect(s).toContain('<label key={s.id} className="opcion-tarjeta p-3 text-center">');
+    expect(s).toContain('aria-pressed={gancho === g} onClick={() => setGancho(g)} className="opcion rounded-full"');
     // Las tarjetas de estilo usan un radio sr-only dentro de un label: globals.css les pone contorno.
     expect(fs.readFileSync(path.join(process.cwd(), "src/app/globals.css"), "utf8")).toContain("label:has(input.sr-only:focus-visible)");
   });
