@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { MARCOS, ubicacion } from "@/lib/anuncios/catalogo";
 import { Concepto, type Concepto as ConceptoT } from "@/lib/anuncios/esquema";
-import { Aviso, Estado, useSondeo } from "../comun";
+import { Aviso, AvisoTarjeta, Estado, LineaFalta, faltanConGuardar, useGuardeAntes, useSondeo } from "../comun";
 import type { Ctx } from "./campana";
 import { BotonIdeas } from "./guia";
 import { TablaVariantes } from "./tabla-variantes";
@@ -228,7 +228,8 @@ function VideoDelConcepto({ ctx, c }: { ctx: Ctx; c: ConceptoT }) {
   const rc = ctx.revision.conceptos.find((x) => x.conceptoId === c.id);
   const p = rc?.proyecto ?? null;
   const [modo, setModo] = useState<"nada" | "generar" | "vincular">("nada");
-  const [acepto, setAcepto] = useState(false);
+  const guarde = useGuardeAntes();
+  const faltanGenerar = faltanConGuardar(guarde, c.guion.trim().length < 20 ? ["escribir el guion"] : []);
   const [elegido, setElegido] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -285,18 +286,15 @@ function VideoDelConcepto({ ctx, c }: { ctx: Ctx; c: ConceptoT }) {
               {c.guion.trim().length < 20 ? (
                 <Aviso tipo="alerta">Primero escribe el guion: es lo que va a decir la voz.</Aviso>
               ) : (
-                <Aviso tipo="alerta">
-                  <p className="font-medium">Hacer el video tarda unos 3 minutos y usa la tarjeta de video.</p>
-                  <p className="mt-1">Windows se ha reiniciado sin aviso durante generaciones: guarda tu trabajo antes. Si se corta, el trabajo queda «interrumpido» y lo vuelves a empezar desde Trabajos con «Volver a intentar».</p>
-                  <label className="mt-2 flex items-center gap-2">
-                    <input type="checkbox" checked={acepto} onChange={(e) => setAcepto(e.target.checked)} />
-                    Guardé mi trabajo; puedo generar.
-                  </label>
-                </Aviso>
+                <AvisoTarjeta g={guarde}>
+                  Hacer el video tarda unos 3 minutos. Si se corta, queda «interrumpido» y lo vuelves a empezar desde Trabajos con «Volver a intentar».
+                </AvisoTarjeta>
               )}
-              <button className="boton boton-primario w-full justify-center" disabled={!acepto || ocupado || c.guion.trim().length < 20} onClick={() => void correr({ tipo: "generar", concepto: c.id })}>
+              <button className="boton boton-primario w-full justify-center" disabled={faltanGenerar.length > 0 || ocupado} aria-describedby={faltanGenerar.length ? guarde.idFalta : undefined}
+                onClick={() => void correr({ tipo: "generar", concepto: c.id })}>
                 {ocupado ? "Empezando…" : "Hacer el video con este guion"}
               </button>
+              <LineaFalta id={guarde.idFalta} faltan={faltanGenerar} />
             </div>
           )}
           {modo === "vincular" && (

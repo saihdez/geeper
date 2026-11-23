@@ -1,4 +1,6 @@
 /** UX-09: un solo aviso antes de lo que usa toda la tarjeta de video, con la casilla «Ya guardé…». */
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import path from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
@@ -69,5 +71,44 @@ describe("la casilla se recuerda durante la sesión de la pestaña", () => {
     expect(leerGuarde()).toBe(false);
     expect(() => escribirGuarde(true)).not.toThrow();
     expect(leerGuarde()).toBe(true);
+  });
+});
+
+const RAIZ = path.resolve(__dirname, "..");
+const fuente = (f: string) => readFileSync(path.join(RAIZ, f), "utf8");
+function archivos(dir: string): string[] {
+  return readdirSync(path.join(RAIZ, dir)).flatMap((n) => {
+    const r = `${dir}/${n}`;
+    return statSync(path.join(RAIZ, r)).isDirectory() ? archivos(r) : /\.tsx?$/.test(n) ? [r] : [];
+  });
+}
+
+/** Las pantallas con una acción que encola un trabajo de toda la tarjeta (cola.ts: motor «mpt» o «tarjeta»). */
+const SITIOS = [
+  "src/components/form-nuevo.tsx",
+  "src/components/anuncios/conceptos.tsx",
+  "src/components/panel-animar.tsx",
+];
+
+describe("cada acción de tarjeta usa el mismo aviso", () => {
+  it.each(SITIOS)("%s", (f) => {
+    const s = fuente(f);
+    expect(s).toMatch(/useGuardeAntes\(\)/);
+    expect(s).toMatch(/<AvisoTarjeta g=\{/);
+    expect(s).toMatch(/aria-describedby=\{[^}]*\.idFalta/);
+    expect(s).toMatch(/<LineaFalta id=\{/);
+  });
+
+  it("Animar ya no pregunta con confirm()", () => {
+    expect(fuente("src/components/panel-animar.tsx")).not.toMatch(/\bconfirm\(/);
+  });
+
+  it("no quedan las casillas ni avisos viejos con otras palabras", () => {
+    for (const f of archivos("src")) {
+      const s = fuente(f);
+      expect(s, f).not.toMatch(/Guardé mi trabajo|guarda tu trabajo antes|Guarda lo que tengas abierto en Windows|reiniciado sin aviso|marcar la casilla de arriba/i);
+      // El texto del aviso vive sólo en comun.tsx.
+      if (f !== "src/components/comun.tsx") expect(s, f).not.toContain("se reinicia sola");
+    }
   });
 });

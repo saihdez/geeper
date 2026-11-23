@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { Aviso, numero as cifra, useSondeo } from "./comun";
+import { Aviso, AvisoTarjeta, LineaFalta, faltanConGuardar, numero as cifra, useGuardeAntes, useSondeo } from "./comun";
 import { NOMBRES, type Camara } from "@/lib/prompt-camara";
 
 interface ModeloV { id: string; nombre: string; nota: string; descripcion: string; simple: boolean; maxSegundos: number; necesitaImagen: boolean; licencia: string; estado: string | null }
@@ -93,6 +93,7 @@ function Contenido({ proyectoId, escena, numero, ocupado, animar, trabajo, base 
   const [camara, setCamara] = useState<Camara["camara"]>();
   const [sinImagen, setSinImagen] = useState(false);
   const [semilla, setSemilla] = useState("");
+  const guarde = useGuardeAntes();
 
   const opciones: OpcionesAnimar = useMemo(() => {
     const cam: Camara = { movimiento: mov, lente, focal, apertura, camara, plano, luz, look };
@@ -149,10 +150,10 @@ function Contenido({ proyectoId, escena, numero, ocupado, animar, trabajo, base 
   }
 
   async function lanzar() {
-    if (!confirm(`Animar la escena ${numero} usa toda la tarjeta de video durante varios minutos (la primera vez, además, baja el modelo) y pausa la IA de MoneyPrinterTurbo mientras tanto.\n\nGuarda lo que tengas abierto en Windows antes de seguir.\n\n¿Animar ahora?`)) return;
     // Las opciones de este momento, no las de la última consulta (puede faltar la espera de 400 ms).
     await animar(escena, opciones);
   }
+  const faltan = faltanConGuardar(guarde);
 
   const simples = d.modelos.filter((m) => m.simple);
   return (
@@ -235,10 +236,15 @@ function Contenido({ proyectoId, escena, numero, ocupado, animar, trabajo, base 
       {d.error && <Aviso tipo="error">{d.error}</Aviso>}
       {plan?.notas.map((a) => <p key={a} className="text-xs text-tenue">{a}</p>)}
       {plan?.avisos.map((a) => <Aviso key={a} tipo="alerta">{a}</Aviso>)}
+      <AvisoTarjeta g={guarde}>
+        Animar la escena {numero} tarda varios minutos (la primera vez, además, baja el modelo) y pausa la IA de MoneyPrinterTurbo mientras tanto.
+      </AvisoTarjeta>
       <div className="flex flex-wrap items-center gap-3">
-        <button type="button" className="boton boton-primario" disabled={ocupado || !plan} onClick={() => void lanzar()}>Animar la escena {numero}</button>
+        <button type="button" className="boton boton-primario" disabled={ocupado || !plan || faltan.length > 0} aria-describedby={faltan.length ? guarde.idFalta : undefined}
+          onClick={() => void lanzar()}>Animar la escena {numero}</button>
         <span className="text-xs text-tenue">Queda como versión nueva: si no te gusta, vuelves atrás en «Historial».</span>
       </div>
+      <LineaFalta id={guarde.idFalta} faltan={faltan} />
     </div>
   );
 }

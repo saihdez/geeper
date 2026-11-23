@@ -107,7 +107,7 @@ describe("lo elegido no se pinta como el botón principal (A11-08)", () => {
 describe("el botón apagado dice qué falta (UX-31)", () => {
   it("Desde un tema: el tema y la casilla", async () => {
     const { faltaNuevo } = await import("@/components/form-nuevo");
-    expect(faltaNuevo({ temas: 0, necesitaGpu: true, aceptoGpu: false })).toEqual(["escribir el tema", "marcar la casilla de arriba"]);
+    expect(faltaNuevo({ temas: 0, necesitaGpu: true, aceptoGpu: false })).toEqual(["escribir el tema", "marcar «Ya guardé lo que tenía abierto»"]);
     expect(faltaNuevo({ temas: 1, necesitaGpu: true, aceptoGpu: true })).toEqual([]);
     expect(faltaNuevo({ temas: 1, necesitaGpu: false, aceptoGpu: false })).toEqual([]);
   });
@@ -123,7 +123,7 @@ describe("el botón apagado dice qué falta (UX-31)", () => {
 
   it("la línea va debajo del botón y el botón la nombra", () => {
     const html = pintar();
-    expect(html).toMatch(/aria-describedby="nuevo-falta"[^>]*>Crear el video<\/button><p id="nuevo-falta"[^>]*>Para continuar falta: escribir el tema · marcar la casilla de arriba\.<\/p>/);
+    expect(html).toMatch(/disabled=""[^>]*aria-describedby="([^"]+-falta)"[^>]*>Crear el video<\/button><p id="\1"[^>]*>Para continuar falta: escribir el tema · marcar «Ya guardé lo que tenía abierto»\.<\/p>/);
     expect(html).toMatch(/aria-describedby="demo-falta"[^>]*>Crear video de la página<\/button><p id="demo-falta"[^>]*>Para continuar falta: el link de la página · lo que dice la voz/);
   });
 
