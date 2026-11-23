@@ -52,7 +52,7 @@ const PASOS = [
   { id: "python", nombre: "Python propio" },
   { id: "pytorch", nombre: "PyTorch con CUDA (unos 3 GB)" },
   { id: "dependencias", nombre: "Lo que necesita Wan2GP (unos 3 GB)" },
-  { id: "prueba", nombre: "Probar la GPU y Wan2GP" },
+  { id: "prueba", nombre: "Probar la tarjeta de video y Wan2GP" },
 ] as const;
 
 /**
@@ -106,9 +106,9 @@ async function bajarConGit(dir: string, log: Registro) {
 async function probar(i: InstalacionWan2gp, log: Registro) {
   const r = await correr(i.python, ["-c", "import torch; ok = torch.cuda.is_available(); print(ok, torch.cuda.get_device_name(0) if ok else '')"], { log, permitirFallo: true, timeout: 120_000 });
   if (!r.stdout.trim().startsWith("True")) {
-    throw new Error("PyTorch no ve la GPU. Actualiza el driver de NVIDIA (hace falta R580 o más nuevo para CUDA 13) y vuelve a intentar.");
+    throw new Error("PyTorch no ve la tarjeta de video. Actualiza el driver de NVIDIA (hace falta R580 o más nuevo para CUDA 13) y vuelve a intentar.");
   }
-  log(`GPU: ${r.stdout.trim().replace(/^True\s*/, "")}`);
+  log(`Tarjeta de video: ${r.stdout.trim().replace(/^True\s*/, "")}`);
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "geeper-wan2gp-"));
   try {
     const ajustes = ajustesWan2gp(modeloPlano(MODELO_POR_DEFECTO), { prompt: "a calm sea at sunset", formato: "9:16", segundos: 1, semilla: 1 });
@@ -128,7 +128,7 @@ async function probar(i: InstalacionWan2gp, log: Registro) {
 const instalador = crearInstaladorPython<EstadoWan2gp>({
   clave: "__wan2gp",
   pasos: PASOS,
-  sinMac: "Wan2GP necesita una GPU NVIDIA: en macOS no se puede.",
+  sinMac: "Wan2GP necesita una tarjeta de video NVIDIA: en macOS no se puede.",
   contarLineas: true,
   // Lo que falta (null si está instalado: código, Python y wgp.py). La GPU se prueba al instalar.
   falta: () => faltaEnInstalacion(instalacionWan2gp()),

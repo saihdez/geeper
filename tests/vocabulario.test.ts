@@ -64,3 +64,15 @@ describe("las pantallas usan el vocabulario", () => {
     expect(jerga).toEqual([]);
   });
 });
+
+describe("los instaladores usan el vocabulario", () => {
+  const dir = path.join(process.cwd(), "src/lib");
+  const instaladores = fs.readdirSync(dir).filter((f) => /^instalar-.*\.ts$/.test(f));
+
+  it.each(instaladores)("%s no dice GPU ni tarjeta gráfica en sus pasos y mensajes", (f) => {
+    // Sólo las cadenas (los pasos y los errores que se ven en Sistema); los comentarios no cuentan.
+    const textos = textosDePantalla(fs.readFileSync(path.join(dir, f), "utf8").replace(/>([^<>{}]+)</g, "><"));
+    const jerga = textos.flatMap((t) => jergaEn(t).filter((j) => j.usar === "tarjeta de video").map((j) => `«${j.palabra}» en: ${t.slice(0, 90)}`));
+    expect(jerga).toEqual([]);
+  });
+});
