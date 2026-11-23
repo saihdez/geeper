@@ -42,3 +42,19 @@ describe("voces mezcladas (UX-12)", () => {
     expect(escenasConOtraVoz([esc("e1", 0, "ef_dora")], null)).toEqual([]);
   });
 });
+
+describe("rehacer la voz de varias escenas en un solo trabajo (GPU-07)", () => {
+  const editor = fs.readFileSync(path.join(process.cwd(), "src", "components", "editor-proyecto.tsx"), "utf8");
+
+  it("junta los ids de las escenas que suenan con otra voz", async () => {
+    const { idsConOtraVoz } = await import("@/components/editor-estado");
+    const escenas = [esc("e1", 0, "em_alex"), esc("e2", 1, "ef_dora"), esc("e3", 2, null), esc("e4", 3, "ef_dora")];
+    expect(idsConOtraVoz(escenas, "em_alex")).toEqual(["e2", "e4"]);
+    expect(idsConOtraVoz(escenas, null)).toEqual([]);
+  });
+
+  it("el botón manda la lista a la ruta de voz en un solo pedido", () => {
+    expect(editor).toContain("postJson(`/api/proyectos/${id}/voz`, { escenas: ids })");
+    expect(editor).toMatch(/onClick=\{\(\) => void rehacerVoces\(idsConOtraVoz\(escenas, [^)]*\), otraVoz\)\}>Rehacer la voz de las escenas cambiadas<\/button>/);
+  });
+});

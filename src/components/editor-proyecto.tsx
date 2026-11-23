@@ -20,7 +20,7 @@ import { PanelOtroEditor } from "./panel-otro-editor";
 import { useAccionesProyecto } from "./acciones-proyecto";
 import { FranjaAviso, type MensajeEditor } from "./franja-aviso";
 import { AvisoRevisionVieja, NOTA_CONTINUACION, NOTA_EDITA_COMPLETO, NOTA_SUBTITULO_REPARTIDO, repartoDeGrupos } from "./aviso-revision-vieja";
-import { avisoGuardado, escenaDeEdicion, PASOS_EDITOR, siguientePaso, falloReciente, textoFalloCreacion, renderFallido, avisoRitmo, correccionesVacias, enLista, mensajeSinCambios, opcionesRitmo, versionParaDeshacer, errorSubtitulo, escenasConOtraVoz, estaActivo, estadoCreacion, mismoContenido, pasoRender, preguntaVozEscena, renderEnCurso, verTrabajos, TEXTO_RITMO_GUARDADO, type TrabajoV, type VocesV } from "./editor-estado";
+import { avisoGuardado, escenaDeEdicion, PASOS_EDITOR, siguientePaso, falloReciente, textoFalloCreacion, renderFallido, avisoRitmo, correccionesVacias, enLista, mensajeSinCambios, opcionesRitmo, versionParaDeshacer, errorSubtitulo, escenasConOtraVoz, estaActivo, idsConOtraVoz, estadoCreacion, mismoContenido, pasoRender, preguntaVozEscena, renderEnCurso, verTrabajos, TEXTO_RITMO_GUARDADO, type TrabajoV, type VocesV } from "./editor-estado";
 import { Plegable } from "./plegable";
 import { avisoMezclaVoces } from "@/lib/ediciones";
 import { EdicionPorTexto, EfectosEscena, PanelAvanzado, PanelEstilo, type EfectosV, type EstiloV, type ExtrasV, type PalabraV } from "./edicion-avanzada";
@@ -468,6 +468,9 @@ export function EditorProyecto({ id }: { id: string }) {
     "Animación en cola. Verás el avance en la escena y en «Trabajos»; al terminar queda como versión nueva (ya se ve en «En vivo»).");
   const regenerarVoz = (escena: string | null) => hacer(() => postJson(`/api/proyectos/${id}/voz`, { escena }),
     "Voz en cola. Con una voz diseñada espera su turno en la tarjeta de video. Al terminar se realinean los subtítulos y se vuelve a renderizar.");
+  /** GPU-07: varias escenas en UN solo trabajo de voz y un solo video al final. */
+  const rehacerVoces = (ids: string[], numeros: number[]) => hacer(() => postJson(`/api/proyectos/${id}/voz`, { escenas: ids }),
+    `Voz en cola para ${numeros.length === 1 ? "la escena" : "las escenas"} ${enLista(numeros)}: se dicen todas juntas y al final se crea el video una sola vez.`);
   /** Cambia la voz del proyecto y ofrece ponerla ya en el video (regenerar el guion completo). */
   const usarVoz = async (motor: MotorVoz, voz: string, nombre: string) => {
     // UX-26: si no se pudo guardar la voz elegida, no se ofrece decir el guion (saldría con la anterior).
@@ -777,6 +780,10 @@ export function EditorProyecto({ id }: { id: string }) {
                     </p>
                     <button type="button" className="boton py-1" disabled={ocupado || !!otroActivo}
                       onClick={() => { if (confirm("Se vuelve a decir todo el guion con la voz elegida, se acomodan los subtítulos y se crea el video (unos minutos).")) void regenerarVoz(null); }}>Ponerla en todo el video</button>
+                    {otraVoz.length < escenas.length && (
+                      <button type="button" className="boton py-1" disabled={ocupado || !!otroActivo}
+                        onClick={() => void rehacerVoces(idsConOtraVoz(escenas, v.voces?.elegida ?? null), otraVoz)}>Rehacer la voz de las escenas cambiadas</button>
+                    )}
                   </div>
                 )}
               </div>
