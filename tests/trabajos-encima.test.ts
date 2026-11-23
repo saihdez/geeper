@@ -115,4 +115,11 @@ describe("Animar una escena (ponerPlano)", () => {
     otraImagen.pistas.find((x) => x.id === "visual")!.clips[1]!.asset = "clip-03";
     expect(() => ponerPlano(otraImagen, plan, asset, "clip-02")).toThrow(/cambiaste la imagen de la escena 2/);
   });
+
+  it("animando desde el texto (sin imagen de partida), tampoco pisa la imagen que se puso mientras tanto", async () => {
+    const { ponerPlano } = await import("@/lib/plano");
+    const otraImagen = proyectoDePrueba();
+    otraImagen.pistas.find((x) => x.id === "visual")!.clips[1]!.asset = "clip-03";
+    expect(() => ponerPlano(otraImagen, { ...plan, conImagen: false } as never, asset, "clip-02")).toThrow(/cambiaste la imagen de la escena 2/);
+  });
 });

@@ -601,6 +601,17 @@ export function tiempoDelTexto(cuando: string, segundo: string, dura: string, es
   return { inicio: Math.round(inicio * 100) / 100, duracion: Math.min(60, Math.max(0.3, Math.round(duracion * 100) / 100)) };
 }
 
+/**
+ * Lo elegido en «¿Cuándo aparece?» (null: nada todavía). Sin elegir, o si la escena elegida ya no está,
+ * va «al empezar la escena 1»; sin escenas, en un segundo exacto. Se calcula en cada render: las escenas
+ * pueden llegar después de montar el panel.
+ */
+export function cuandoDe(elegido: string | null, escenas: EscenaT[]): string {
+  if (elegido === "segundo") return elegido;
+  if (elegido && escenas.some((x) => `escena:${x.numero}` === elegido)) return elegido;
+  return escenas.length ? "escena:1" : "segundo";
+}
+
 const PLATAFORMAS = [["youtube", "YouTube Shorts"], ["tiktok", "TikTok"], ["instagram", "Instagram Reels"], ["facebook", "Facebook Reels"]] as const;
 
 /** Destino, edición por texto global, música, textos superpuestos y pistas libres del proyecto. */
@@ -615,7 +626,9 @@ export function PanelAvanzado({ extras, formato, total, editar, alinearMusica, s
   subirLibre: (f: File, pista: string, inicio: number, licencia: string) => Promise<void>;
 }) {
   const d = extras.destino;
-  const [texto, setTexto] = useState({ texto: "", cuando: escenas.length ? "escena:1" : "segundo", inicio: "0", duracion: "3", estilo: "rotulo", posicion: "arriba" });
+  const [texto, setTexto] = useState({ texto: "", cuando: null as string | null, inicio: "0", duracion: "3", estilo: "rotulo", posicion: "arriba" });
+  const cuando = cuandoDe(texto.cuando, escenas);
+  const dura = cuando === "segundo" && texto.duracion === "escena" ? "3" : texto.duracion;
   const [libre, setLibre] = useState({ inicio: "0", licencia: "" });
   const conPlataformas = (pl: string, on: boolean) => editar({ tipo: "cambiarDestino", plataformas: on ? [...d.plataformas, pl] : d.plataformas.filter((x) => x !== pl) });
   return (
@@ -682,24 +695,24 @@ export function PanelAvanzado({ extras, formato, total, editar, alinearMusica, s
         )}
         <form className="grid gap-2 sm:grid-cols-6" onSubmit={(ev) => {
           ev.preventDefault();
-          const t = tiempoDelTexto(texto.cuando, texto.inicio, texto.duracion, escenas);
+          const t = tiempoDelTexto(cuando, texto.inicio, dura, escenas);
           void editar({ tipo: "agregarTexto", texto: { texto: texto.texto.trim(), ...t, estilo: texto.estilo, posicion: texto.posicion } })
             .then(() => setTexto({ ...texto, texto: "" }));
         }}>
           <input aria-label="Texto" className="campo sm:col-span-6" placeholder="Título, dato o rótulo" maxLength={160} value={texto.texto} onChange={(e) => setTexto({ ...texto, texto: e.target.value })} />
           <label className="etiqueta sm:col-span-2">¿Cuándo aparece?
-            <select className="campo py-1" value={texto.cuando} onChange={(e) => setTexto({ ...texto, cuando: e.target.value, duracion: e.target.value === "segundo" && texto.duracion === "escena" ? "3" : texto.duracion })}>
+            <select className="campo py-1" value={cuando} onChange={(e) => setTexto({ ...texto, cuando: e.target.value, duracion: e.target.value === "segundo" && dura === "escena" ? "3" : dura })}>
               {escenas.map((e) => <option key={e.numero} value={`escena:${e.numero}`}>Al empezar la escena {e.numero}</option>)}
               <option value="segundo">En un segundo exacto…</option>
             </select>
           </label>
-          {texto.cuando === "segundo" && (
+          {cuando === "segundo" && (
             <label className="etiqueta sm:col-span-1">Segundo<input className="campo py-1" type="number" min={0} max={total} step={0.1} value={texto.inicio} onChange={(e) => setTexto({ ...texto, inicio: e.target.value })} /></label>
           )}
-          <label className={`etiqueta ${texto.cuando === "segundo" ? "sm:col-span-3" : "sm:col-span-4"}`}>¿Cuánto dura?
-            <select className="campo py-1" value={texto.duracion} onChange={(e) => setTexto({ ...texto, duracion: e.target.value })}>
+          <label className={`etiqueta ${cuando === "segundo" ? "sm:col-span-3" : "sm:col-span-4"}`}>¿Cuánto dura?
+            <select className="campo py-1" value={dura} onChange={(e) => setTexto({ ...texto, duracion: e.target.value })}>
               {["2", "3", "5", "8"].map((x) => <option key={x} value={x}>{x} segundos</option>)}
-              {texto.cuando !== "segundo" && <option value="escena">Toda la escena</option>}
+              {cuando !== "segundo" && <option value="escena">Toda la escena</option>}
             </select>
           </label>
           <label className="etiqueta sm:col-span-3">Estilo<select className="campo py-1" value={texto.estilo} onChange={(e) => setTexto({ ...texto, estilo: e.target.value })}><option value="rotulo">Rótulo</option><option value="titulo">Título</option><option value="cita">Cita</option></select></label>

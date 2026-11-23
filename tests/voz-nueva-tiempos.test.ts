@@ -69,17 +69,30 @@ describe("alinearVozNueva", () => {
     expect(palabras.at(-1)!.inicio).toBeCloseTo(2.5, 2);
   });
 
-  it("si las dos quedan corridas, no devuelve tiempos: falla con un mensaje simple", async () => {
+  it("si las dos quedan corridas, no devuelve tiempos: falla diciendo qué cambiar", async () => {
     const { alinearVozNueva, NO_SE_ACOMODA } = await import("@/lib/voz");
     respuesta = () => oidas(1.8);
-    await expect(alinearVozNueva(ctx, wav, TEXTO, "es")).rejects.toThrow(NO_SE_ACOMODA);
-    expect(NO_SE_ACOMODA).toBe("No se pudo acomodar la voz nueva. Vuelve a intentarlo.");
+    await expect(alinearVozNueva(ctx, wav, TEXTO, "es", { escena: 3 })).rejects.toThrow(
+      `${NO_SE_ACOMODA} Cambia un poco el texto de la escena 3 o elige otro ritmo de voz.`,
+    );
   });
 
-  it("la revisión de quien llama también cuenta (p. ej. una escena demasiado corta)", async () => {
-    const { alinearVozNueva, NO_SE_ACOMODA } = await import("@/lib/voz");
+  it("una alineación mala no queda guardada: al pedirla otra vez se vuelve a alinear", async () => {
+    const { alinearVozNueva } = await import("@/lib/voz");
+    respuesta = () => oidas(1.8);
+    await expect(alinearVozNueva(ctx, wav, TEXTO, "es")).rejects.toThrow(/otro ritmo de voz/);
+    expect(llamadas).toEqual([false, true]);
     respuesta = () => oidas(0);
-    await expect(alinearVozNueva(ctx, wav, TEXTO, "es", () => "la escena 2 quedaría de menos de 0.2 s")).rejects.toThrow(NO_SE_ACOMODA);
+    const palabras = await alinearVozNueva(ctx, wav, TEXTO, "es");
+    expect(llamadas).toEqual([false, true, false]);
+    expect(palabras.at(-1)!.inicio).toBeCloseTo(2.5, 2);
+  });
+
+  it("la revisión de quien llama también cuenta, y dice qué escena cambiar", async () => {
+    const { alinearVozNueva } = await import("@/lib/voz");
+    respuesta = () => oidas(0);
+    const revisar = () => ({ problema: "la escena 2 quedaría de menos de 0.2 s", escena: 2 });
+    await expect(alinearVozNueva(ctx, wav, TEXTO, "es", { revisar })).rejects.toThrow(/el texto de la escena 2 o elige otro ritmo/);
     expect(llamadas).toEqual([false, true]);
   });
 });
