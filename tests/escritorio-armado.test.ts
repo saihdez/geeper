@@ -93,8 +93,48 @@ describe("lo que la app lee al correr (ESC-01)", () => {
     fs.mkdirSync(app);
     expect(faltantesApp(app)).toEqual(expect.arrayContaining([path.join("node_modules", "hyperframes", "dist", "hyperframe.runtime.iife.js"), path.join("node_modules", "gsap", "dist", "gsap.min.js"), path.join("docs", "fuentes.json"), "esquema.sql", path.join("py", "*.py")]));
     for (const f of ["node_modules/hyperframes/dist/hyperframe.runtime.iife.js", "node_modules/hyperframes/bin/hyperframes.mjs", "node_modules/gsap/dist/gsap.min.js", "docs/fuentes.json", "esquema.sql", "standalone/server.js", "main.cjs", "worker.mjs", "preparar-db.mjs", "vigia.mjs", "py/reencuadre.py"]) escribir(path.join("app", f));
+    const fuentes = path.join(app, "standalone", "public", "fuentes");
+    fs.mkdirSync(path.join(fuentes, "inter"), { recursive: true });
+    fs.writeFileSync(path.join(fuentes, "fuentes.json"), JSON.stringify({ Inter: { carpeta: "inter", caras: [{ archivo: "inter/inter-normal-400-latin.woff2" }] } }));
+    fs.writeFileSync(path.join(fuentes, "inter", "inter-normal-400-latin.woff2"), "x");
     expect(faltantesApp(app)).toEqual([]);
     fs.writeFileSync(path.join(app, "esquema.sql"), "");
     expect(faltantesApp(app)).toEqual(["esquema.sql"]);
+  });
+});
+
+describe("las letras viajan en el instalador (REN-10)", () => {
+  const dir = path.join("standalone", "public", "fuentes");
+  const armar = () => {
+    const app = path.join(tmp, "app");
+    for (const f of ["node_modules/hyperframes/dist/hyperframe.runtime.iife.js", "node_modules/hyperframes/bin/hyperframes.mjs", "node_modules/gsap/dist/gsap.min.js", "docs/fuentes.json", "esquema.sql", "standalone/server.js", "main.cjs", "worker.mjs", "preparar-db.mjs", "vigia.mjs", "py/reencuadre.py"]) escribir(path.join("app", f));
+    return app;
+  };
+
+  it("sin public/fuentes en standalone avisa que falta fuentes.json", () => {
+    expect(faltantesApp(armar())).toEqual([path.join(dir, "fuentes.json")]);
+  });
+
+  it("nombra cada archivo de letra que pide el manifiesto y no está", () => {
+    const app = armar();
+    const fuentes = path.join(app, dir);
+    fs.mkdirSync(path.join(fuentes, "inter"), { recursive: true });
+    const caras = [{ archivo: "inter/inter-normal-400-latin.woff2" }, { archivo: "inter/inter-normal-400-latin-ext.woff2" }];
+    fs.writeFileSync(path.join(fuentes, "fuentes.json"), JSON.stringify({ Inter: { carpeta: "inter", caras } }));
+    fs.writeFileSync(path.join(fuentes, "inter", "inter-normal-400-latin.woff2"), "x");
+    expect(faltantesApp(app)).toEqual([path.join(dir, "inter", "inter-normal-400-latin-ext.woff2")]);
+  });
+
+  it("un fuentes.json roto cuenta como faltante", () => {
+    const app = armar();
+    fs.mkdirSync(path.join(app, dir), { recursive: true });
+    fs.writeFileSync(path.join(app, dir, "fuentes.json"), "{ roto");
+    expect(faltantesApp(app)).toEqual([path.join(dir, "fuentes.json")]);
+  });
+
+  it("el public/fuentes del repo cumple: su manifiesto y todos sus archivos existen", () => {
+    const app = armar();
+    fs.cpSync(path.join(process.cwd(), "public", "fuentes"), path.join(app, dir), { recursive: true });
+    expect(faltantesApp(app)).toEqual([]);
   });
 });

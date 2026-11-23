@@ -53,4 +53,34 @@ describe("recetas en español (UX-36)", () => {
       expect(`${r.titulo} ${r.descripcion}`, id).not.toMatch(/vídeo|Lérricas|Diversión|[ûàèìòù]/i);
     }
   });
+
+  // Nombres propios de nodos o modelos que llevan palabras en inglés y se dejan como vienen.
+  const NOMBRES_EN_INGLES = [/Join Image with Alpha/g];
+  // Lo que va entre comillas o etiquetas es texto que la persona copia tal cual (frases clave, etiquetas).
+  const LITERALES = [/"[^"]*"/g, /«[^»]*»/g, /<[^>]*>/g];
+  const sinExcepciones = (t: string) => [...NOMBRES_EN_INGLES, ...LITERALES].reduce((s, re) => s.replace(re, " "), t);
+  const PALABRAS_EN = /\b(the|and|with|to|of|for|your|from|this|that)\b/gi;
+
+  it("ninguna descripción quedó en inglés", () => {
+    const enIngles = Object.entries(RECETAS_ES)
+      .filter(([, r]) => (sinExcepciones(r.descripcion).match(PALABRAS_EN) ?? []).length >= 4)
+      .map(([id]) => id);
+    expect(enIngles).toEqual([]);
+    // La propia prueba detecta una descripción en inglés.
+    expect(sinExcepciones("Reframe a finished clip to a new aspect ratio with the partner API for your channel.").match(PALABRAS_EN)!.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("los textos tratan de tú, no de usted", () => {
+    const USTED = /\b(usted|ustedes|Genere|Seleccione|Utilice|Ingrese|Cargue|Elija|Introduzca|Proporcione|Suba|Haga|Escriba|Obtenga|Cree|Agregue|Añada|Pruebe|Descubra)\b/;
+    const conUsted = Object.entries(RECETAS_ES)
+      .filter(([, r]) => USTED.test(`${r.titulo} ${r.descripcion}`))
+      .map(([id]) => id);
+    expect(conUsted).toEqual([]);
+  });
+
+  it("no quedan los errores que encontró la revisión", () => {
+    for (const [id, r] of Object.entries(RECETAS_ES)) {
+      expect(`${r.titulo} ${r.descripcion}`, id).not.toMatch(/salida una|Finalizado|la Escena|alta volumen|\bprompts?\b|Image Stitch|Video Upscale:/);
+    }
+  });
 });

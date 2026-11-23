@@ -104,5 +104,32 @@ export function faltantesApp(app: string): string[] {
   }
   const py = path.join(app, "py");
   if (!fs.existsSync(py) || !fs.readdirSync(py).some((n) => n.endsWith(".py"))) falta.push(path.join("py", "*.py"));
+  falta.push(...faltantesFuentes(app));
+  return falta;
+}
+
+/**
+ * Las letras que trae Geeper (REN-10): el empaquetado copia public a standalone/public y fuentes-letra.ts
+ * las busca ahí. Si falta el manifiesto o alguno de sus archivos, la app vuelve a bajar las letras de
+ * Google y sin internet los subtítulos salen con la letra común.
+ */
+function faltantesFuentes(app: string): string[] {
+  const dir = path.join("standalone", "public", "fuentes");
+  const manifiesto = path.join(app, dir, "fuentes.json");
+  if (!fs.existsSync(manifiesto) || fs.statSync(manifiesto).size === 0) return [path.join(dir, "fuentes.json")];
+  let familias: Record<string, { caras?: { archivo?: string }[] }>;
+  try {
+    familias = JSON.parse(fs.readFileSync(manifiesto, "utf8"));
+  } catch {
+    return [path.join(dir, "fuentes.json")];
+  }
+  const falta: string[] = [];
+  for (const { caras = [] } of Object.values(familias)) {
+    for (const { archivo } of caras) {
+      if (!archivo) continue;
+      const f = path.join(app, dir, archivo);
+      if (!fs.existsSync(f) || fs.statSync(f).size === 0) falta.push(path.join(dir, archivo));
+    }
+  }
   return falta;
 }
