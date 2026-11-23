@@ -10,7 +10,7 @@ interface TrabajoV { id: string; estado: string; etapa: string; progreso: number
 interface Datos { comfy: { listo: boolean; falta: string | null; instalando: boolean; disponible: boolean; aMedias?: boolean; detalle?: string }; workflows: WfV[]; corridas: CorridaV[]; trabajos: TrabajoV[] }
 interface Detalle {
   workflow: WfV & { miniaturas: string[] };
-  textos: { nodo: string; indice: number; etiqueta: string; valor: string }[];
+  textos: { nodo: string; indice: number; etiqueta: string; valor: string; experto?: boolean }[];
   notas: string[];
   modelos: { nombre: string; carpeta: string; listo: boolean }[];
   faltan: number;
@@ -213,7 +213,8 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
     setEnviando(true);
     try {
       const f = new FormData();
-      f.set("textos", JSON.stringify(d.textos.map((t) => ({ nodo: t.nodo, indice: t.indice, valor: textos[`${t.nodo}/${t.indice}`] ?? t.valor }))));
+      // Sólo lo que cambió: lo demás queda como lo dejó el autor (y unas instrucciones largas no pasan el tope).
+      f.set("textos", JSON.stringify(d.textos.map((t) => ({ nodo: t.nodo, indice: t.indice, valor: textos[`${t.nodo}/${t.indice}`] ?? t.valor })).filter((t, i) => t.valor !== d.textos[i]!.valor)));
       for (const [nodo, a] of Object.entries(archivos)) if (a) f.set(`archivo-${nodo}`, a);
       if (permiso) f.set("permitirNodos", "1");
       await pedir(`/api/workflows/${encodeURIComponent(id)}`, { method: "POST", body: f });
@@ -275,16 +276,29 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
               ))}
             </fieldset>
           )}
-          {d.textos.length > 0 && (
+          {d.textos.some((t) => !t.experto) && (
             <fieldset className="space-y-3">
               <legend className="font-medium">{d.entradas.length ? "2." : "1."} Lo que quieres <span className="text-xs font-normal text-tenue">(en inglés suele salir mejor)</span></legend>
-              {d.textos.map((t) => (
+              {d.textos.filter((t) => !t.experto).map((t) => (
                 <label key={`${t.nodo}/${t.indice}`} className="block space-y-1">
                   <span className="text-xs text-tenue">{t.etiqueta}</span>
                   <textarea className="campo min-h-20" maxLength={5000} value={textos[`${t.nodo}/${t.indice}`] ?? ""} onChange={(ev) => setTextos((x) => ({ ...x, [`${t.nodo}/${t.indice}`]: ev.target.value }))} />
                 </label>
               ))}
             </fieldset>
+          )}
+          {d.textos.some((t) => t.experto) && (
+            <details className="text-sm">
+              <summary className="cursor-pointer text-tenue">Para expertos: las instrucciones para la IA que mejora tu pedido (no hace falta tocarlas)</summary>
+              <div className="mt-2 space-y-3">
+                {d.textos.filter((t) => t.experto).map((t) => (
+                  <textarea key={`${t.nodo}/${t.indice}`} aria-label={t.etiqueta} className="campo min-h-20 text-xs" maxLength={5000} value={textos[`${t.nodo}/${t.indice}`] ?? ""} onChange={(ev) => setTextos((x) => ({ ...x, [`${t.nodo}/${t.indice}`]: ev.target.value }))} />
+                ))}
+              </div>
+            </details>
+          )}
+          {!d.textos.some((t) => !t.experto) && d.entradas.length === 0 && (
+            <Aviso tipo="info">Esta receta todavía no deja escribir lo que quieres: hará el ejemplo del autor.</Aviso>
           )}
           <div className="space-y-1 text-xs text-tenue">
             <p>

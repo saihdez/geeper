@@ -84,8 +84,8 @@ describe("lo que hay dentro de un workflow", () => {
   it("textos editables: prompts y entradas de subgrafos; no notas, archivos ni nodos salteados", () => {
     expect(textosDeWorkflow(grafo)).toEqual([
       { nodo: "1", indice: 0, etiqueta: "Qué quieres que salga", valor: "a lighthouse at dusk, cinematic" },
-      { nodo: "2", indice: 0, etiqueta: "Lo que NO quieres que aparezca", valor: "blurry, low quality" },
       { nodo: "7", indice: 0, etiqueta: "Qué quieres que salga", valor: "a woman talking to camera" },
+      { nodo: "2", indice: 0, etiqueta: "Lo que NO quieres que aparezca", valor: "blurry, low quality" },
     ]);
     expect(notasDeWorkflow(grafo)).toEqual(["## How to use\nDownload the models below"]);
     expect(etiquetaTexto({ id: 1, type: "TextEncodeAceStepAudio1.5", title: "Lyrics" })).toBe("Letra");
