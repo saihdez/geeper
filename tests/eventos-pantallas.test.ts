@@ -11,6 +11,7 @@ const ESPERADO: [archivo: string, llamada: string][] = [
   ["editor-proyecto.tsx", "useSondeo<Vista>(`/api/proyectos/${id}`, 3000, [`proyecto:${id}`, `trabajos:${id}`])"],
   ["clips.tsx", 'useSondeo<Datos>("/api/clips", 3000, ["trabajos", "motor"])'],
   ["avatares.tsx", 'useSondeo<Datos>("/api/avatares", 5000, ["trabajos"])'],
+  ["trabajos-flotantes.tsx", 'useSondeo<Datos>("/api/trabajos/activos", (d) => (d?.trabajos.length ? 2000 : 10_000), ["trabajos"])'],
   ["anuncios/conceptos.tsx", 'useSondeo<{ proyectos: ProyectoLista[] }>("/api/proyectos", 15000, ["proyecto", "trabajos"])'],
 ];
 

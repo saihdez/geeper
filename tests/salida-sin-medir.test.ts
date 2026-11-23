@@ -16,7 +16,7 @@ let salida: typeof import("@/lib/redes/salida");
 beforeAll(async () => {
   execFileSync(path.join(process.cwd(), "node_modules", ".bin", "prisma"), ["db", "push"], { env: process.env, stdio: "ignore" });
   salida = await import("@/lib/redes/salida");
-});
+}, 60_000); // db push tarda más de los 10 s por defecto con la batería completa corriendo
 
 describe("verificarSinMedir", () => {
   it("con el VPN requerido no llama al medidor: dice que todavía no se midió", async () => {

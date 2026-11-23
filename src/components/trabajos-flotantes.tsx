@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import { useSondeo } from "./comun";
 
 interface Trabajo {
   id: string;
@@ -59,11 +60,13 @@ function Fila({ t, ahora }: { t: Trabajo; ahora: number }) {
 
 /**
  * Panel flotante (abajo a la derecha, en todas las páginas) con las tareas en curso y su avance. Aparece
- * solo cuando hay algo trabajando o que acaba de terminar; se puede achicar a una pastilla. Consulta cada
- * 2 s mientras hay tareas y cada 10 s si no, y nada mientras la pestaña está oculta.
+ * solo cuando hay algo trabajando o que acaba de terminar; se puede achicar a una pastilla. Pide al llegar
+ * un aviso de trabajos (WEB-13) y, sin canal, cada 2 s mientras hay tareas y cada 10 s si no.
  */
 export function TrabajosFlotantes() {
-  const [datos, setDatos] = useState<Datos | null>(null);
+  // WEB-13: pide al llegar un aviso de trabajos; sin canal, cada 2 s con tareas y cada 10 s sin ellas.
+  // useSondeo ya no pide con la pestaña oculta y se pone al día al volver.
+  const { datos } = useSondeo<Datos>("/api/trabajos/activos", (d) => (d?.trabajos.length ? 2000 : 10_000), ["trabajos"]);
   // Lo que se eligió la última vez (no se dibuja nada hasta que llegan datos: no choca con el servidor).
   const [abierto, setAbierto] = useState(() => {
     try {
@@ -72,35 +75,6 @@ export function TrabajosFlotantes() {
       return true;
     }
   });
-  const vivo = useRef(true);
-
-  useEffect(() => {
-    vivo.current = true;
-    let t: ReturnType<typeof setTimeout> | undefined;
-    const tick = async () => {
-      let hay = false;
-      if (document.visibilityState === "visible") {
-        try {
-          const r = await fetch("/api/trabajos/activos", { cache: "no-store" });
-          if (r.ok) {
-            const d = (await r.json()) as Datos;
-            if (!vivo.current) return;
-            setDatos(d);
-            hay = d.trabajos.length > 0;
-          }
-        } catch { /* el servidor se está reiniciando: se reintenta */ }
-      }
-      if (vivo.current) t = setTimeout(() => void tick(), hay ? 2000 : 10_000);
-    };
-    void tick();
-    const alVolver = () => { if (document.visibilityState === "visible") { clearTimeout(t); void tick(); } };
-    document.addEventListener("visibilitychange", alVolver);
-    return () => {
-      vivo.current = false;
-      clearTimeout(t);
-      document.removeEventListener("visibilitychange", alVolver);
-    };
-  }, []);
 
   const cambiar = (v: boolean) => {
     setAbierto(v);
