@@ -132,7 +132,10 @@ async function bundles() {
   // ESM: el cliente de Prisma generado usa import.meta. `require` para las dependencias CJS empaquetadas.
   const banner = { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" };
   for (const [entrada, salida] of [["worker/index.ts", "worker.mjs"], ["escritorio/preparar-db.ts", "preparar-db.mjs"]] as const) {
-    await build({ ...comun, entryPoints: [path.join(REPO, entrada)], outfile: path.join(APP, salida), format: "esm", banner, external: ["better-sqlite3"] });
+    // playwright-core (comfyui.ts pasa los workflows al formato de la API con Chrome) busca su package.json
+    // junto a su código: empaquetado dentro de worker.mjs fallaba con «Cannot find module
+    // resources\package.json». Va aparte, en node_modules (abajo).
+    await build({ ...comun, entryPoints: [path.join(REPO, entrada)], outfile: path.join(APP, salida), format: "esm", banner, external: ["better-sqlite3", "playwright-core"] });
   }
   // Arranca el servidor y el worker y los apaga en orden cuando la carcasa cierra (escritorio/main.ts).
   fs.copyFileSync(path.join(REPO, "escritorio", "vigia.mjs"), path.join(APP, "vigia.mjs"));
@@ -172,6 +175,7 @@ async function main() {
     hyperframes: process.env.GEEPER_HYPERFRAMES_VERSION ?? "0.9.27",
     // REN-10: el render copia node_modules/gsap/dist/gsap.min.js al proyecto en vez de bajarlo del CDN.
     gsap: versionDe(real("gsap")),
+    "playwright-core": versionDe(real("playwright-core")),
   };
   // Turbopack pide algunos paquetes con un nombre con hash (p. ej. @prisma/client-ad5a…), que en el build
   // son enlaces en .next-escritorio/node_modules. electron-builder descarta todo node_modules que no esté
