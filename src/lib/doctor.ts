@@ -169,12 +169,12 @@ export async function diagnosticar(): Promise<Chequeo[]> {
 
   // venv del estudio.
   const venv = PYTHON_VOZ;
-  const py = ESCRITORIO
-    ? await intento(venv, ["-I", "-c", "import kokoro_onnx, soundfile, sys; print(sys.version.split()[0])"], 60_000)
-    : await intento(venv, ["-c", "import torch, kokoro_onnx; print(torch.__version__, torch.cuda.is_available())"], 60_000);
+  // Sólo lo que usa la voz: importar torch y preguntar torch.cuda cargaba PyTorch y encendía CUDA en la
+  // tarjeta cada vez que se abría Sistema, y Kokoro (onnx) no los necesita.
+  const py = await intento(venv, ["-I", "-c", "import kokoro_onnx, soundfile, sys; print(sys.version.split()[0])"], 60_000);
   c.push({
     nombre: ESCRITORIO ? "Python de la voz (Kokoro)" : "venv del estudio (Kokoro para regenerar voz)", ok: py.codigo === 0,
-    detalle: py.codigo === 0 ? (ESCRITORIO ? `Python ${py.stdout.trim()} con kokoro-onnx` : `kokoro-onnx ok, torch ${py.stdout.trim()}`) : "no responde: regenerar la voz no funcionará",
+    detalle: py.codigo === 0 ? `Python ${py.stdout.trim()} con kokoro-onnx` : "no responde: regenerar la voz no funcionará",
     arreglo: py.codigo === 0 ? undefined : ESCRITORIO ? PREPARAR : "source ~/dev/video-tools/estudio.sh  (ver ESTUDIO.md)",
   });
 
