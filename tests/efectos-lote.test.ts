@@ -60,6 +60,22 @@ describe("generarEfectos (GPU-05)", () => {
     await expect(ef.generarEfectos(ctx, [{ nombre: "C", prompt: "c thing", segundos: 2 }], { correr: mossFalso(["c thing"]).correr })).rejects.toThrow(/No se pudo crear el sonido/);
   });
 
+  it("un .tmp.wav viejo o cortado no entra a la biblioteca: sólo lo que MOSS confirma (GPU-05)", async () => {
+    const pedido = { nombre: "D", prompt: "d thing", segundos: 2 };
+    const tmp = `${ef.rutaEfecto(ef.idEfecto(pedido.prompt, pedido.segundos))}.tmp.wav`;
+    fs.writeFileSync(tmp, "RIFF a medias"); // quedó de un intento cancelado
+    const caido: import("@/lib/efectos-sonido").CorrerMoss = async () => ({ codigo: 1, stdout: "", stderr: "Error al cargar el modelo" });
+    await expect(ef.generarEfectos(ctx, [pedido], { correr: caido })).rejects.toThrow(/No se pudo crear el sonido/);
+    expect(fs.existsSync(tmp)).toBe(false);
+    // Escrito pero sin confirmar (el proceso murió entre sf.write y el print): tampoco cuenta.
+    const sinConfirmar: import("@/lib/efectos-sonido").CorrerMoss = async (pedidoJson) => {
+      for (const p of JSON.parse(pedidoJson) as { salida: string }[]) fs.writeFileSync(p.salida, "RIFF");
+      return { codigo: 1, stdout: JSON.stringify({ cargado_s: 80 }), stderr: "Killed" };
+    };
+    await expect(ef.generarEfectos(ctx, [pedido], { correr: sinConfirmar })).rejects.toThrow(/No se pudo crear el sonido/);
+    expect((await ef.listarEfectos()).some((e) => e.nombre === "D")).toBe(false);
+  });
+
   it("describir en inglés usa el modelo chico por defecto", () => {
     expect(ef.MODELO_DESCRIBIR).toBe("gemma4:12b");
   });

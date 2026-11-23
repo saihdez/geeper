@@ -152,6 +152,21 @@ export function medidasMoss(stdout: string): MedidasMoss {
   return m;
 }
 
+/** Las rutas que MOSS confirmó en stdout (`{"salida": …}`, después de `sf.write`) (función pura). */
+export function salidasConfirmadas(stdout: string): Set<string> {
+  const hechas = new Set<string>();
+  for (const l of stdout.split("\n")) {
+    if (!l.startsWith("{")) continue;
+    try {
+      const j = JSON.parse(l) as { salida?: unknown };
+      if (typeof j.salida === "string") hechas.add(j.salida);
+    } catch {
+      /* línea que no es JSON completo */
+    }
+  }
+  return hechas;
+}
+
 /**
  * Genera (o reutiliza) varios efectos de la biblioteca con **una sola carga** del modelo (GPU-05): lo que ya
  * está no usa la tarjeta, y lo que falta va todo junto a un proceso de MOSS. Si alguno sale y otro no, se
@@ -177,14 +192,19 @@ export async function generarEfectos(
   if (!pendientes.length) return { efectos, generados: 0, fallidos: [], medidas: {} };
   if (!efectosInstalados()) throw new Error("Los efectos de sonido no están instalados en esta computadora (falta MOSS-SoundEffect).");
   await fs.mkdir(dirEfectos(), { recursive: true });
+  // Un .tmp.wav de un intento cancelado puede estar cortado (MOSS escribe directo): fuera antes de empezar.
+  await Promise.all(pendientes.map((p) => fs.rm(p.tmp, { force: true })));
   const pedido = JSON.stringify(pendientes.map((p) => ({ prompt: p.prompt, segundos: p.segundos, semilla: 0, salida: p.tmp })));
   ctx.log(`Creando ${pendientes.length === 1 ? "el sonido" : `${pendientes.length} sonidos`}: cargar el modelo tarda 1–2 min y después ~10 s por efecto.`);
   const r = await (op.correr ?? correrMoss)(pedido, ctx);
   for (const l of r.stdout.split("\n")) if (l.startsWith("{")) ctx.log(l);
+  const confirmados = salidasConfirmadas(r.stdout);
   const fallidos: string[] = [];
   let generados = 0;
   for (const p of pendientes) {
-    if (!existsSync(p.tmp)) {
+    // Sólo cuenta lo que MOSS dice que terminó de escribir: si murió a mitad, el archivo puede estar cortado.
+    if (!confirmados.has(p.tmp) || !existsSync(p.tmp)) {
+      await fs.rm(p.tmp, { force: true });
       fallidos.push(p.nombre);
       continue;
     }

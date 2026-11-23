@@ -12,7 +12,7 @@ import { importarDemo } from "@/lib/importador-demo";
 import { buscarMomentos } from "@/lib/buscar-momentos";
 import { Campania } from "@/lib/clips";
 import { ENCUADRES, importarClip, type EncuadreClip } from "@/lib/importador-clip";
-import { apiViva, crearVideo, cuerpoVideo, estadoTarea, modeloImagen, soltarCuandoTermine } from "@/lib/mpt";
+import { apiViva, crearVideo, cuerpoVideo, estadoTarea, materialesListos, modeloImagen, PROGRESO_MATERIALES, soltarCuandoTermine } from "@/lib/mpt";
 import type { Contexto } from "@/lib/pasos";
 import { obtenerPlantilla } from "@/lib/plantillas";
 import { generarPlanoEscena, type OpcionesPlano } from "@/lib/plano";
@@ -21,9 +21,9 @@ import { PedidoRehacer, rehacerEscena } from "@/lib/rehacer";
 import { animarEscenasDelVideo } from "@/lib/animar-escenas";
 import { actuarEscena, leerAvatarDelVideo, PedidoActuar, PedidoStreamer, proponerEscenas, streamerAvatar } from "@/lib/actuar";
 import { correrWorkflow, PedidoWorkflow } from "@/lib/workflows";
-import { regenerarVoz } from "@/lib/regenerar";
+import { regenerarVoz, textoADecir } from "@/lib/regenerar";
 import { IdiomaTraduccion, traducirProyecto } from "@/lib/traducir";
-import { disenarVoz } from "@/lib/voces";
+import { adelantarVoxcpm, disenarVoz } from "@/lib/voces";
 import { agregarEfecto, describirEnIngles, generarEfecto, generarEfectos, presetsQueFaltan } from "@/lib/efectos-sonido";
 import type { Avance } from "@/lib/wan2gp";
 import { reencuadrarEscena } from "@/lib/reencuadre";
@@ -69,7 +69,7 @@ async function mptGenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
   const proyecto = await db.proyecto.findUniqueOrThrow({ where: { id: t.proyectoId! } });
   await crearCarpetas(proyecto.slug);
   const plantilla = await obtenerPlantilla(proyecto.plantilla);
-  if (!(await apiViva())) throw new Error("El generador de videos está apagado. Abre Docker Desktop, espera un minuto y pulsa «Relanzar».");
+  if (!(await apiViva())) throw new Error("El generador de videos está apagado. Abre Docker Desktop, espera un minuto y pulsa «Volver a intentar».");
   await db.proyecto.update({ where: { id: proyecto.id }, data: { estado: "generando" } });
 
   let taskId = typeof t.payload.mptTaskId === "string" ? t.payload.mptTaskId : undefined;
@@ -98,6 +98,8 @@ async function mptGenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
   });
   // La telemetría de la tarjeta (CSV y pico en el resultado) la lleva el worker para todo trabajo de GPU (GPU-10).
   let terminada = false;
+  // Los materiales ya están y MPT sigue armando su video final (TER-06): Geeper importa sin esperarlo.
+  let soloFalta = false;
   try {
     if (!taskId) {
       const guion = typeof t.payload.guion === "string" ? t.payload.guion : undefined;
@@ -115,13 +117,26 @@ async function mptGenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
         terminada = true;
         throw new Error(`MPT: tarea ${taskId} ${e.estado}. ${e.detalle ?? ""}`);
       }
+      // Geeper no usa el video final de MPT: con el guion, la voz y los clips en disco se importa ya.
+      if (e.progreso > PROGRESO_MATERIALES && (await materialesListos(taskId))) {
+        soloFalta = true;
+        break;
+      }
       await h.etapa(`MPT generando (${e.progreso} %, ${Math.round((Date.now() - t0) / 1000)} s)`, 0.02 + (e.progreso / 100) * 0.95);
       await dormir(5000, h.signal);
     }
     terminada = true;
-    h.log(`MPT terminó la tarea ${taskId} en ${((Date.now() - t0) / 1000).toFixed(0)} s`);
+    h.log(
+      soloFalta
+        ? `MPT dejó listos el guion, la voz y los clips de ${taskId} en ${((Date.now() - t0) / 1000).toFixed(0)} s: se importan sin esperar su video final`
+        : `MPT terminó la tarea ${taskId} en ${((Date.now() - t0) / 1000).toFixed(0)} s`,
+    );
   } finally {
-    if (candado && taskId && !terminada && h.signal.aborted) {
+    if (candado && taskId && soloFalta) {
+      // MPT codifica su video final con la tarjeta (NVENC): el candado sigue tomado hasta que termine,
+      // pero la importación (CPU) ya no lo espera.
+      void soltarCuandoTermine(taskId, candado, { log: h.log });
+    } else if (candado && taskId && !terminada && h.signal.aborted) {
       // Cancelado con la tarea en marcha: la tarjeta sigue tomada hasta que MPT la suelte (tope 10 min).
       // El trabajo siguiente lo muestra como «Esperando la GPU (la tiene: mpt …)».
       h.log(`Cancelado: MPT sigue con la tarea ${taskId}; la tarjeta se suelta cuando la termine (como mucho 10 min)`);
@@ -226,14 +241,53 @@ async function visualReencuadrar(t: Trabajo, h: Herramientas): Promise<Salida> {
   return { resultado: r, siguiente: siguienteDe(t.payload, { version: r.version }) };
 }
 
+/** Las escenas de `payload.escenas` (rehacer varias en un solo trabajo, GPU-07), sin repetir; null si no hay. */
+export function escenasDelPedido(payload: Payload): string[] | null {
+  const l = Array.isArray(payload.escenas) ? payload.escenas.filter((x): x is string => typeof x === "string" && x.length > 0) : [];
+  return l.length ? [...new Set(l)] : null;
+}
+
+const palabrasDe = (s: string) => s.split(/\s+/).filter(Boolean).join(" ");
+
 async function vozRegenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
   const escena = typeof t.payload.escena === "string" ? t.payload.escena : null;
   const { p } = await versionDeProyecto(t.proyectoId!);
   // Una voz diseñada (VoxCPM2) espera la tarjeta: en la fila «voz» frenaría importar, clips y demos (GPU-06).
   if (p.voz.motor === "voxcpm" && (t.motor ?? "voz") === "voz") throw new CambiarDeFila("tarjeta", "En cola: espera la tarjeta gráfica (voz diseñada)");
+  const varias = escenasDelPedido(t.payload);
+  if (varias) return vozRegenerarVarias(t, h, varias);
   await h.etapa(escena ? `Voz nueva para ${escena} y subtítulos realineados` : "Voz nueva del guion completo y subtítulos realineados", 0.1);
   const r = await regenerarVoz(h, t.proyectoId!, p, escena);
   return { resultado: r, siguiente: siguienteDe(t.payload, { version: r.version }) };
+}
+
+/**
+ * Voz nueva de varias escenas en un solo trabajo (GPU-07): con una voz diseñada, VoxCPM2 carga una sola
+ * vez para todas (antes, 60–95 s de carga por escena) y el video se renderiza una sola vez, al final.
+ * Cada escena se guarda sobre la versión de ese momento, como al rehacer una sola; si la persona quitó
+ * una escena mientras tanto, se salta.
+ */
+async function vozRegenerarVarias(t: Trabajo, h: Herramientas, escenas: string[]): Promise<Salida> {
+  const { p } = await versionDeProyecto(t.proyectoId!);
+  if (p.voz.motor === "voxcpm") {
+    await h.etapa(`Voz nueva de ${escenas.length} escenas (una sola carga de la voz diseñada)`, 0.05);
+    const textos = escenas.flatMap((id) => (p.escenas[id] ? [palabrasDe(textoADecir(p.escenas[id]))] : []));
+    await adelantarVoxcpm(h, textos, p.voz.voz);
+  }
+  let ultima: { version: number; asset: string } | null = null;
+  const hechas: string[] = [];
+  for (const [i, id] of escenas.entries()) {
+    const { p: ahora } = await versionDeProyecto(t.proyectoId!);
+    if (!ahora.escenas[id]) {
+      h.log(`La escena ${id} ya no está en el video: se salta.`);
+      continue;
+    }
+    await h.etapa(`Voz nueva de la escena ${i + 1} de ${escenas.length} y subtítulos realineados`, 0.1 + (0.85 * i) / escenas.length);
+    ultima = await regenerarVoz(h, t.proyectoId!, ahora, id);
+    hechas.push(id);
+  }
+  if (!ultima) throw new Error("Esas escenas ya no están en el video: no hubo voz que rehacer.");
+  return { resultado: { ...ultima, escenas: hechas }, siguiente: siguienteDe(t.payload, { version: ultima.version }) };
 }
 
 async function efectoGenerar(t: Trabajo, h: Herramientas): Promise<Salida> {

@@ -107,6 +107,22 @@ describe("cola en SQLite", () => {
     expect((await db.trabajo.findUniqueOrThrow({ where: { id: t.id } })).error).toBe(cola.CORTADO_DOS_VECES);
   }, 60_000);
 
+  it("una fila vieja o creada con maxIntentos 1 (p. ej. «publicar.subir») vuelve a la cola a la primera caída (WRK-09)", async () => {
+    await db.trabajo.updateMany({ data: { estado: "cancelado" } });
+    await cola.guardarLatidoWorker();
+    const t = await db.trabajo.create({ data: { proyectoId: "p1", tipo: "proyecto.importar", motor: "voz", usaGpu: false, payload: {}, maxIntentos: 1 } });
+    await cola.reclamar("voz", "muerto-1");
+    await db.trabajo.update({ where: { id: t.id }, data: { leaseUntil: new Date(Date.now() - 1000) } });
+    await cola.recuperarVencidos();
+    expect((await db.trabajo.findUniqueOrThrow({ where: { id: t.id } })).estado).toBe("pendiente");
+    await cola.reclamar("voz", "muerto-2");
+    await db.trabajo.update({ where: { id: t.id }, data: { leaseUntil: new Date(Date.now() - 1000) } });
+    await cola.recuperarAlArrancar();
+    const fila = await db.trabajo.findUniqueOrThrow({ where: { id: t.id } });
+    expect(fila.estado).toBe("interrumpido");
+    expect(fila.error).toBe(cola.CORTADO_DOS_VECES);
+  }, 60_000);
+
   it("lo que espera la tarjeta no va en la fila «voz» y un trabajo puede cambiar de fila sin gastar intento (GPU-06)", async () => {
     expect(cola.TIPOS["voz.disenar"].motor).toBe("tarjeta");
     expect(cola.TIPOS["proyecto.traducir"].motor).toBe("tarjeta");

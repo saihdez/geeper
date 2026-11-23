@@ -55,11 +55,14 @@ export interface DatosImport {
   modeloImagen?: string;
 }
 
-/** Copia la tarea de MPT a <proyecto>/mpt/<task_id>/ (temporal + rename). Se salta si ya está. */
+/**
+ * Copia la tarea de MPT a <proyecto>/mpt/<task_id>/ (temporal + rename). Se salta si ya está: basta el
+ * guion y la voz, porque desde TER-06 se importa sin esperar el video final de MPT (final-1.mp4).
+ */
 export async function copiarTareaMpt(ctx: Contexto, taskId: string): Promise<string> {
   if (!/^[0-9a-f-]{36}$/.test(taskId)) throw new Error(`task_id inválido: ${taskId}`);
   const destino = path.join(ctx.dir, "mpt", taskId);
-  if ((await existe(path.join(destino, "script.json"))) && (await existe(path.join(destino, "final-1.mp4")))) {
+  if ((await existe(path.join(destino, "script.json"))) && (await existe(path.join(destino, "audio.mp3")))) {
     ctx.log(`· tarea MPT ${taskId} ya copiada, se salta`);
     return destino;
   }

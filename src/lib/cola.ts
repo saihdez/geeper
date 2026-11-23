@@ -256,9 +256,13 @@ export async function recuperarAlArrancar(): Promise<{ reinicio: Reinicio; inter
   return { reinicio, interrumpidos, reencolados };
 }
 
-/** Ya empezó tantas veces como permite su fila (`maxIntentos`). */
+/**
+ * Ya empezó tantas veces como permite su fila (`maxIntentos`), nunca menos de MAX_INTENTOS: las filas
+ * de antes de WRK-09 y las que aún se crean con 1 (publicar.subir, que retoma su subida) no deben
+ * quedar «Se cortó dos veces» a la primera caída.
+ */
 function agotado(t: { intentos: number; maxIntentos: number }): boolean {
-  return t.intentos >= t.maxIntentos;
+  return t.intentos >= Math.max(t.maxIntentos, MAX_INTENTOS);
 }
 
 export function nuevoWorkerId(): string {

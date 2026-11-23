@@ -8,7 +8,7 @@
  * Sólo voces diseñadas: no se clona la voz de una persona real (eso pide su consentimiento escrito).
  * VoxCPM2 usa ~6 GB de la tarjeta gráfica: toma el gpu-lock y espera su turno.
  */
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -138,7 +138,8 @@ export async function muestraKokoro(voz: string): Promise<string> {
   return ruta;
 }
 
-async function correrVoxcpm(pedido: Record<string, unknown>, ctx: Pick<Contexto, "log"> & { signal?: AbortSignal }, que: string, probando = false): Promise<void> {
+/** Devuelve el stdout de VoxCPM2 (una línea JSON por archivo escrito). */
+async function correrVoxcpm(pedido: Record<string, unknown>, ctx: Pick<Contexto, "log"> & { signal?: AbortSignal }, que: string, probando = false): Promise<string> {
   if (!(probando ? existsSync(PYTHON_VOXCPM) : vozInstalada())) throw new Error("Las voces diseñadas no están instaladas en esta computadora (falta VoxCPM2).");
   ctx.log(`${que}: esperando la tarjeta gráfica…`);
   const candado = await tomarGpu(`voz ${que}`, {
@@ -166,6 +167,7 @@ async function correrVoxcpm(pedido: Record<string, unknown>, ctx: Pick<Contexto,
       if (err.includes("out of memory")) throw new Error("La tarjeta gráfica se quedó sin memoria: cierra otros programas que la usen y vuelve a intentar.");
       throw new Error(`VoxCPM2 falló: ${r.stderr.trim().split("\n").slice(-3).join(" ").slice(0, 400)}`);
     }
+    return r.stdout;
   } finally {
     candado?.liberar();
   }
@@ -215,6 +217,77 @@ export async function guardarVoz(propuesta: string, toma: number, nombre: string
 }
 
 /**
+ * Frases dichas de antemano con una sola carga de VoxCPM2 (GPU-07): rehacer la voz de varias escenas
+ * cargaba el modelo una vez por escena (60–95 s en frío cada una). `sintetizarVoxcpm` las toma de aquí.
+ */
+const dirAdelantadas = () => path.join(dirVoces(), "_adelantadas");
+/** Lo que no se usó en un día (la escena cambió otra vez, o el trabajo se canceló) se borra. */
+const VIDA_ADELANTADA_MS = 24 * 3600_000;
+
+/** Dónde queda la frase `texto` dicha con la voz `v`: cambia si cambia la muestra de la voz. */
+async function rutaAdelantada(v: { id: string; referencia: string }, texto: string): Promise<string> {
+  const st = await fs.stat(v.referencia);
+  const clave = createHash("sha256")
+    .update(JSON.stringify({ voz: v.id, muestra: [st.size, Math.round(st.mtimeMs)], texto: texto.trim() }))
+    .digest("hex")
+    .slice(0, 16);
+  return path.join(dirAdelantadas(), `${clave}.wav`);
+}
+
+/** Los archivos que VoxCPM2 confirmó en stdout (`{"archivo": …}`, después de escribirlos) (función pura). */
+export function archivosConfirmados(stdout: string): Set<string> {
+  const hechos = new Set<string>();
+  for (const l of stdout.split("\n")) {
+    if (!l.startsWith("{")) continue;
+    try {
+      const j = JSON.parse(l) as { archivo?: unknown };
+      if (typeof j.archivo === "string") hechos.add(j.archivo);
+    } catch {
+      /* línea que no es JSON completo */
+    }
+  }
+  return hechos;
+}
+
+/**
+ * Dice de una vez, con una sola carga del modelo, las frases que todavía no están adelantadas. Con una
+ * sola frase no hay nada que ganar: la dice `sintetizarVoxcpm` como siempre. Sólo cuenta lo que VoxCPM2
+ * confirma; lo demás lo vuelve a intentar `sintetizarVoxcpm`, escena por escena.
+ */
+export async function adelantarVoxcpm(ctx: Contexto & { signal?: AbortSignal }, textos: readonly string[], vozId: string): Promise<{ dichas: number; fallidas: number }> {
+  const v = await leerVoz(vozId);
+  await fs.mkdir(dirAdelantadas(), { recursive: true });
+  const ahora = Date.now();
+  for (const f of await fs.readdir(dirAdelantadas())) {
+    const ruta = path.join(dirAdelantadas(), f);
+    const st = await fs.stat(ruta).catch(() => null);
+    if (st && ahora - st.mtimeMs > VIDA_ADELANTADA_MS) await fs.rm(ruta, { force: true });
+  }
+  const frases: { texto: string; salida: string; final: string }[] = [];
+  for (const texto of new Set(textos.map((t) => t.trim()).filter(Boolean))) {
+    const final = await rutaAdelantada(v, texto);
+    if (!existsSync(final) && !frases.some((f) => f.final === final)) frases.push({ texto, salida: `${final}.tmp.wav`, final });
+  }
+  if (frases.length < 2) return { dichas: 0, fallidas: 0 };
+  await Promise.all(frases.map((f) => fs.rm(f.salida, { force: true })));
+  const stdout = await correrVoxcpm(
+    { modo: "decir", referencia: v.referencia, texto_referencia: v.texto, frases: frases.map(({ texto, salida }) => ({ texto, salida })) },
+    ctx,
+    `Voz de ${frases.length} escenas`,
+  );
+  const hechos = archivosConfirmados(stdout);
+  let dichas = 0;
+  for (const f of frases) {
+    if (hechos.has(f.salida) && existsSync(f.salida)) {
+      await fs.rename(f.salida, f.final);
+      dichas++;
+    } else await fs.rm(f.salida, { force: true });
+  }
+  if (dichas < frases.length) ctx.log(`VoxCPM2 no dejó ${frases.length - dichas} de ${frases.length} frases: esas se dicen escena por escena.`);
+  return { dichas, fallidas: frases.length - dichas };
+}
+
+/**
  * Dice `texto` con una voz guardada y deja un WAV en `salida`. VoxCPM2 habla a ~17–18 car./s (más que el
  * tope de 17 de los subtítulos): la velocidad del proyecto se aplica con `atempo`, que conserva el tono.
  */
@@ -222,7 +295,12 @@ export async function sintetizarVoxcpm(ctx: Contexto & { signal?: AbortSignal },
   const v = await leerVoz(vozId);
   const crudo = `${salida}.voxcpm.wav`;
   try {
-    await correrVoxcpm({ modo: "decir", referencia: v.referencia, texto_referencia: v.texto, texto, salida: crudo }, ctx, "Voz");
+    const adelantada = await rutaAdelantada(v, texto);
+    if (existsSync(adelantada)) {
+      ctx.log("Voz: ya estaba dicha junto con las otras escenas (una sola carga de VoxCPM2).");
+      await fs.copyFile(adelantada, crudo); // copiar: el proyecto puede estar en otro disco
+      await fs.rm(adelantada, { force: true });
+    } else await correrVoxcpm({ modo: "decir", referencia: v.referencia, texto_referencia: v.texto, texto, salida: crudo }, ctx, "Voz");
     const filtro = Math.abs(velocidad - 1) > 1e-3 ? ["-af", `atempo=${velocidad}`] : [];
     await correr(FFMPEG, ["-hide_banner", "-nostdin", "-y", "-i", crudo, ...filtro, "-ac", "1", "-ar", "48000", salida]);
   } finally {

@@ -68,11 +68,51 @@ async function tieneFinal(taskId: string): Promise<boolean> {
   return r.codigo === 0;
 }
 
+/**
+ * TER-06: de una tarea, Geeper usa sólo el guion (script.json), la voz (audio.mp3) y los clips; el video
+ * final que MPT arma después (57–101 s, con NVENC) no lo usa. En task.py el avance llega a 50 cuando
+ * terminan los materiales, pero el avance de la descarga también toca 50 justo antes de que se escriba
+ * `material_sources`: por eso hace falta pasar de 50 y, además, ver los archivos en disco.
+ */
+export const PROGRESO_MATERIALES = 50;
+
+/** Los archivos de la tarea que Geeper necesita, según su script.json; null si aún no están (función pura). */
+export function archivosParaGeeper(scriptJson: string): string[] | null {
+  let s: { script?: unknown; material_sources?: unknown };
+  try {
+    s = JSON.parse(scriptJson) as typeof s;
+  } catch {
+    return null;
+  }
+  if (typeof s.script !== "string" || !s.script.trim() || !Array.isArray(s.material_sources) || !s.material_sources.length) return null;
+  const clips = s.material_sources.map((f) => (f && typeof f === "object" ? (f as { local_file?: unknown }).local_file : undefined));
+  // MPT guarda el nombre del archivo (Path.name): nada de rutas.
+  if (!clips.every((c): c is string => typeof c === "string" && /^[^/\\]+$/.test(c) && c !== "." && c !== "..")) return null;
+  return ["script.json", "audio.mp3", ...clips];
+}
+
+/** El guion, la voz y todos los clips de la tarea ya están escritos en el contenedor de MPT (TER-06). */
+export async function materialesListos(taskId: string): Promise<boolean> {
+  const dir = `${MPT_TAREAS}/${taskId}`;
+  const s = await correr("docker", ["exec", MPT_CONTENEDOR, "cat", `${dir}/script.json`], { permitirFallo: true, signal: null });
+  if (s.codigo !== 0) return false;
+  const archivos = archivosParaGeeper(s.stdout);
+  if (!archivos) return false;
+  const r = await correr(
+    "docker",
+    ["exec", "-w", dir, MPT_CONTENEDOR, "sh", "-c", 'for f in "$@"; do test -s "$f" || exit 1; done', "sh", ...archivos],
+    { permitirFallo: true, signal: null },
+  );
+  return r.codigo === 0;
+}
+
 export async function estadoTarea(taskId: string): Promise<EstadoMpt> {
   const r = await pedir(`/tasks/${taskId}`);
   if (r.status === 404) {
-    // La API de MPT guarda el estado en memoria: si se reinició, mira si el video quedó en disco.
-    return (await tieneFinal(taskId)) ? { estado: "completa", progreso: 100 } : { estado: "perdida", progreso: 0, detalle: "MPT no conoce la tarea" };
+    // La API de MPT guarda el estado en memoria: si se reinició, mira si quedó en disco lo que Geeper usa.
+    return (await tieneFinal(taskId)) || (await materialesListos(taskId))
+      ? { estado: "completa", progreso: 100 }
+      : { estado: "perdida", progreso: 0, detalle: "MPT no conoce la tarea" };
   }
   const d = (r.json as { data?: { state?: number; progress?: number; videos?: string[] } } | null)?.data ?? {};
   const progreso = Number(d.progress ?? 0);
