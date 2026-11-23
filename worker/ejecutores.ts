@@ -168,7 +168,7 @@ async function proyectoImportar(t: Trabajo, h: Herramientas): Promise<Salida> {
 async function clipMomentos(t: Trabajo, h: Herramientas): Promise<Salida> {
   const pl = t.payload;
   const n = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x : undefined);
-  await h.etapa("Trayendo la fuente y midiendo el sonido", 0.1);
+  // UX-34: buscarMomentos avisa cada paso («Bajando el video…» o «Abriendo tu video…», «Midiendo…»…).
   const r = await buscarMomentos(
     {
       src: String(pl.src ?? ""),
@@ -177,6 +177,7 @@ async function clipMomentos(t: Trabajo, h: Herramientas): Promise<Salida> {
     },
     h.log,
     h.signal,
+    (e, p) => void h.etapa(e, p).catch(() => undefined),
   );
   return { resultado: { fuente: r.fuente, candidatos: r.candidatos.length } };
 }
