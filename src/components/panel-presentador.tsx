@@ -130,7 +130,9 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
     return () => clearTimeout(t);
   }, [opciones]);
   const url = `/api/proyectos/${proyectoId}/presentador${pedidas ? `?opciones=${encodeURIComponent(JSON.stringify(pedidas))}` : ""}`;
-  const { datos: d, recargar } = useSondeo<Datos>(url, abierto ? 4000 : 15_000);
+  // Como «Animar» y «Rehacer la toma»: cerrado sólo pide mientras hay un presentador en curso.
+  const { datos: d, recargar } = useSondeo<Datos>(url, (x) =>
+    abierto ? 4000 : x?.trabajos.some((t) => t.estado === "pendiente" || t.estado === "corriendo") ? 10_000 : Infinity);
   const motorVivo = useMotorVivo();
   const trabajo = d?.trabajos[0] ?? null;
   if (d && base !== d && !base) {
@@ -203,7 +205,11 @@ export function PanelPresentador({ proyectoId, escenas, ocupado, alCambiar, usar
   const resumen = trabajo ? ` · ${trabajo.estado === "pendiente" ? "en espera" : trabajo.etapa || "generando"}` : d?.estado.viejo ? " · hay que actualizarlo" : d?.estado.burbuja || d?.estado.escenas.length ? " · en el video" : "";
   return (
     <section className="tarjeta p-4">
-      <details open={abierto} onToggle={(ev) => setAbierto((ev.target as HTMLDetailsElement).open)}>
+      <details open={abierto} onToggle={(ev) => {
+        const abre = (ev.target as HTMLDetailsElement).open;
+        setAbierto(abre);
+        if (abre) void recargar(); // al abrir, datos frescos y vuelve el ritmo de 4 s
+      }}>
         <summary className="cursor-pointer font-medium">
           Presentador <span className="text-xs font-normal text-tenue">(un avatar que dice la voz del video{resumen})</span>
         </summary>
