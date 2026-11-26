@@ -42,8 +42,15 @@ export interface AppCraft {
   archivo?: string;
   /** Carpeta dentro de ~/dev/video-tools (por defecto, `app`). */
   carpeta?: string;
-  /** Formato del archivo (por defecto, tar.gz). */
-  extraer?: "tar" | "zip";
+  /**
+   * Formato del archivo (por defecto, tar.gz). «tar-auto»: tar decide (.tar.xz; en Windows su tar también
+   * abre .zip sin cargarlo entero en memoria). «dmg»: imagen de macOS (se monta y se copia lo de adentro).
+   */
+  extraer?: "tar" | "zip" | "tar-auto" | "dmg";
+  /** Dónde está la release (por defecto, la de GitHub de storytold para esa versión). */
+  base?: string;
+  /** Archivo con las sumas SHA-256 dentro de `base` (por defecto, SHA256SUMS.txt). */
+  sumas?: string;
   /** Carpeta de primer nivel dentro del archivo a la que apunta `actual` (por defecto, el nombre del tarball sin extensión). */
   raiz?: string;
   /** Ajustes después de descomprimir, sobre la carpeta a la que apuntará `actual`. */
@@ -134,6 +141,19 @@ export async function apuntar(dir: string, actual: string, destino: string): Pro
  * PhotoCraft trae los archivos sueltos; el de VectorCraft, dentro de una carpeta): si la esperada no
  * está, se usa la única carpeta de primer nivel, o la raíz si los archivos vienen sueltos.
  */
+/** Copia lo que trae una imagen .dmg de macOS (montada sólo para leer) y la desmonta. */
+async function copiarDeDmg(dmg: string, destino: string, montaje: string): Promise<void> {
+  await fs.mkdir(montaje, { recursive: true });
+  await correr("hdiutil", ["attach", "-nobrowse", "-readonly", "-mountpoint", montaje, dmg], { timeout: 300_000 });
+  try {
+    for (const n of await fs.readdir(montaje)) {
+      if (n.endsWith(".app")) await correr("cp", ["-R", path.join(montaje, n), destino], { timeout: 600_000 });
+    }
+  } finally {
+    await correr("hdiutil", ["detach", montaje, "-force"], { permitirFallo: true, timeout: 120_000 });
+  }
+}
+
 export async function carpetaRaiz(extraido: string, esperada: string): Promise<string> {
   if (esperada && (await fs.stat(path.join(extraido, esperada)).then((s) => s.isDirectory(), () => false))) return esperada;
   const entradas = await fs.readdir(extraido, { withFileTypes: true });
@@ -141,13 +161,14 @@ export async function carpetaRaiz(extraido: string, esperada: string): Promise<s
 }
 
 export function crearInstalador(c: AppCraft) {
-  const base = `https://github.com/storytold/${c.app}/releases/download/v${c.version}`;
+  const base = c.base ?? `https://github.com/storytold/${c.app}/releases/download/v${c.version}`;
+  const sumas = c.sumas ?? "SHA256SUMS.txt";
   // Por defecto, el CLI de este sistema (plataforma.ts): tarball de Linux, zip portable de Windows o zip del CLI de macOS.
   const propio = archivoCraft(c.app, c.version);
   const tarball = c.archivo ?? propio.archivo;
   const raiz = c.raiz ?? propio.raiz;
   const extraer = c.extraer ?? (c.archivo ? "tar" : propio.extraer);
-  const dir = path.join(ESTUDIO, c.carpeta ?? c.app);
+  const dir = path.resolve(ESTUDIO, c.carpeta ?? c.app);
   let estado: EstadoInstalacion = { fase: "inactiva", progreso: 0, detalle: "" };
   let enCurso: Promise<void> | null = null;
 
@@ -159,13 +180,13 @@ export function crearInstalador(c: AppCraft) {
     const tmp = await fs.mkdtemp(path.join(dir, ".instalando-"));
     try {
       estado = { fase: "descargando", progreso: 0, detalle: "Buscando la versión verificada…" };
-      const rs = await bajar(`${base}/SHA256SUMS.txt`);
-      if (!rs.ok) throw new Error(`GitHub respondió ${rs.status} al pedir las sumas de verificación`);
+      const rs = await bajar(`${base}/${sumas}`);
+      if (!rs.ok) throw new Error(`El servidor respondió ${rs.status} al pedir las sumas de verificación`);
       const esperada = sumaEsperada(await rs.text(), tarball);
       if (!esperada) throw new Error("La release no publica la suma de ese archivo");
 
       const r = await bajar(`${base}/${tarball}`);
-      if (!r.ok || !r.body) throw new Error(`GitHub respondió ${r.status} al descargar`);
+      if (!r.ok || !r.body) throw new Error(`El servidor respondió ${r.status} al descargar`);
       const total = Number(r.headers.get("content-length")) || 0;
       const hash = createHash("sha256");
       let bajado = 0;
@@ -187,6 +208,8 @@ export function crearInstalador(c: AppCraft) {
       await fs.mkdir(extraido);
       // zipfile de Python descarta rutas absolutas y «..» al extraer.
       if (extraer === "zip") await extraerZip(archivo, extraido);
+      else if (extraer === "tar-auto") await correr("tar", ["-xf", archivo, "-C", extraido], { timeout: 900_000 });
+      else if (extraer === "dmg") await copiarDeDmg(archivo, extraido, path.join(tmp, "montaje"));
       // tar viene con Windows 10+ y macOS; en Linux siempre está.
       else await correr("tar", ["-xzf", archivo, "-C", extraido], { timeout: 300_000 });
       const raizReal = await carpetaRaiz(extraido, raiz);

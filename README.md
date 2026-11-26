@@ -81,6 +81,10 @@ pnpm run dev:up       # web en http://localhost:3300 + worker, en una terminal. 
   clic en la misma página; cada receta baja sus modelos al usarla. Las de pago aparecen bloqueadas; las que
   usan código de la comunidad piden tu permiso y sólo instalan la versión revisada. Lo que sale se pone en
   una escena de tus videos con «Usar en un video».
+- **Escenas 3D** (`/escenas-3d`): títulos, logos, productos en un pedestal, fondos en movimiento y una caja
+  sorpresa en 3D, hechos con Blender (se instala con un clic). Eliges la plantilla viéndola moverse, cambias
+  texto, foto o logo y colores, o la describes con tus palabras y el modelo local elige los ajustes. También en
+  cada escena del editor («Escena 3D aquí»): al terminar se pone sola en esa escena (`src/lib/escenas3d.ts`).
 - **Trabajos** (`/trabajos`): avance en vivo, log, relanzar o cancelar.
 - **Anuncios** (`/anuncios`): campañas con brief, conceptos (cada uno genera su video con el guion
   exacto), revisión pass/fail/sin saber por ubicación, diseño de prueba A/B y exportación. Geeper no

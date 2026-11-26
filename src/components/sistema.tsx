@@ -27,6 +27,9 @@ export function Sistema() {
             {c.arreglo && (!c.ok || c.aviso) && <p className="mt-1 font-mono text-xs text-amber-200">→ {c.arreglo}</p>}
             {c.nombre.startsWith("PhotoCraft") && !c.ok && <InstalarPhotocraft />}
             {c.nombre.startsWith("Wan2GP") && !c.ok && <InstalarWan2gp alTerminar={() => void recargar()} />}
+            {c.nombre.startsWith("Blender") && !c.ok && (
+              <InstalarHerramienta api="/api/sistema/blender" paraQue="Sirve para hacer escenas 3D (títulos, logos y productos en 3D). Es gratuito y de código abierto; se baja de blender.org (unos 400 MB)." />
+            )}
             {c.nombre.startsWith("VectorCraft") && !c.ok && (
               <InstalarHerramienta api="/api/sistema/vectorcraft" paraQue="Sirve para usar logos de Illustrator, PDF, EPS o Affinity (los convierte a SVG nítido) y para vectorizar un logo PNG. Es gratuita y de código abierto; ocupa unos 160 MB." />
             )}

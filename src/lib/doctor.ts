@@ -5,7 +5,9 @@ import { correr } from "./proceso";
 import { apiViva } from "./mpt";
 import { CACHE_HF, FFMPEG, GPU_LOCK_BIN, GPU_LOCK_FILE, HYPERFRAMES_VERSION, MPT_API, PHOTOCRAFT_CLI, PHOTOCRAFT_VERSION, PYTHON_VOZ, RAIZ_REPO, VECTORCRAFT_CLI, VECTORCRAFT_VERSION, dirDatos } from "./rutas";
 import { correrHf } from "./hyperframes";
+import { existsSync } from "node:fs";
 import { ESCRITORIO, PYTHON_SISTEMA, SISTEMA } from "./plataforma";
+import { BLENDER_VERSION, binBlender, rutaHdri, versionBlender } from "./blender";
 import { MODELO_WHISPER } from "./voz";
 import { versionPhotocraft } from "./photocraft";
 import { versionVectorcraft } from "./vectorcraft";
@@ -105,6 +107,13 @@ export async function diagnosticar(): Promise<Chequeo[]> {
     nombre: `VectorCraft ${VECTORCRAFT_VERSION} (logos vectoriales)`, ok: !!vc?.includes(VECTORCRAFT_VERSION), aviso: !vc?.includes(VECTORCRAFT_VERSION),
     detalle: vc ?? `no está ${VECTORCRAFT_CLI}`,
     arreglo: vc?.includes(VECTORCRAFT_VERSION) ? undefined : "Botón «Instalar con un clic» aquí abajo. Sin ella, los logos se suben como SVG o PNG (no .ai, .pdf ni .eps).",
+  });
+  // Blender (escenas 3D, opcional): se instala con un clic (instalar-blender.ts).
+  const bl = await versionBlender();
+  c.push({
+    nombre: `Blender ${BLENDER_VERSION} (escenas 3D, opcional)`, ok: !!bl?.includes(BLENDER_VERSION), aviso: !bl?.includes(BLENDER_VERSION),
+    detalle: bl ? `${bl}${existsSync(rutaHdri()) ? " · luz de estudio lista" : ""}` : `no está ${binBlender()}`,
+    arreglo: bl?.includes(BLENDER_VERSION) ? undefined : "Sólo si quieres escenas 3D: botón «Instalar con un clic» aquí abajo (o en la página Escenas 3D).",
   });
   // Wan2GP (planos generativos, opcional): lo instala la persona; Geeper sólo lo llama (wan2gp.ts).
   const wan = instalacionWan2gp();

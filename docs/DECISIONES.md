@@ -352,3 +352,29 @@ a otra persona. Qwen3-TTS necesitaría dos modelos (VoiceDesign y Base).
   (`TORCHDYNAMO_DISABLE=1`). Cargar el modelo tarda 60–95 s la primera vez, por eso regenerar el guion
   completo (una carga) conviene más que escena por escena.
 - Toma el gpu-lock y espera su turno (~6 GB). Venv `~/dev/video-tools/venvs/voxcpm`.
+
+## 26. Escenas 3D: plantillas de Blender, el modelo local sólo elige ajustes
+
+El dueño pidió (2026-11-25) poder hacer videos con Blender, con UI para quien no sabe nada, a partir de
+`ahujasid/mcp-for-blender`. Ese repo es un puente MCP para que un asistente maneje un Blender **abierto**
+(el complemento no arranca en `blender -b`); sirve para trabajar con Claude Code en el estudio
+(`~/dev/video-tools/LEEME-BLENDER.md`), no dentro de la app. Decisiones del dueño (las recomendadas):
+
+- **Plantillas + «Descríbelo y lo armo».** Cinco plantillas hechas con código en `py/blender/escena3d.py`
+  (título, logo, producto en pedestal, fondo en bucle, caja sorpresa), sin modelos bajados. Al describir,
+  el modelo local (llama.cpp) **no escribe Python**: devuelve plantilla, texto, estilo, movimiento y colores
+  en JSON, que se validan; sin modelo o con la tarjeta ocupada, se eligen por palabras clave. Lo que la
+  persona puso entre comillas manda sobre lo que proponga el modelo.
+- **Sección «Escenas 3D» y «Escena 3D aquí» en cada escena del editor**; pedida desde el editor, al
+  terminar se pone sola (versión nueva, se deshace en el historial).
+- **Blender 5.2.5 LTS con un clic** (Windows zip, Linux tar.xz, macOS arm64 dmg), verificado con el
+  `.sha256` de blender.org; GPL, se baja al instalar (no viaja dentro de Geeper). Siempre `blender -b
+  --factory-startup`: no toca un Blender que la persona use aparte.
+- **Generadores 3D de pago bloqueados** (Meshy, Tripo, Rodin, World Labs): se muestran con aviso de costo.
+  De Poly Haven sólo se usa un HDRI de estudio CC0 (1,6 MB, sha256 fijo) para los reflejos; sin él, luz gris.
+- Render con **Cycles en la GPU** (OptiX → CUDA → HIP → Metal; si no hay, CPU), con el candado de GPU y en la
+  fila `mpt` (`escena3d.crear`). Cycles y no EEVEE porque corre igual sin pantalla en Windows, Linux/WSL y
+  macOS. Cuadros PNG → MP4 H.264 con ffmpeg. Vista transform «Standard» para que el fondo salga del color
+  exacto de la marca; la luz se ajustó para que no queme colores con fondos claros.
+- Muestras de cada plantilla (`py/blender/previas/`) hechas en CPU con `scripts/previas-escenas3d.sh`.
+

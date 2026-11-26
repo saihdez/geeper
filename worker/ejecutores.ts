@@ -23,6 +23,7 @@ import { animarEscenasDelVideo } from "@/lib/animar-escenas";
 import { actuarEscena, leerAvatarDelVideo, PedidoActuar, PedidoStreamer, streamerAvatar } from "@/lib/actuar";
 import { protagonizarVideo } from "@/lib/protagonista";
 import { correrWorkflow, PedidoWorkflow } from "@/lib/workflows";
+import { crearEscena3d, usarEscena3d } from "@/lib/escenas3d";
 import { disenarVoz } from "@/lib/voces";
 import { regenerarVoz } from "@/lib/regenerar";
 import type { Avance } from "@/lib/wan2gp";
@@ -358,6 +359,23 @@ async function workflowCorrer(t: Trabajo, h: Herramientas): Promise<Salida> {
   return { resultado: { corrida: c.id, salidas: c.salidas.length } };
 }
 
+async function escena3dCrear(t: Trabajo, h: Herramientas): Promise<Salida> {
+  let ultima = "";
+  const c = await crearEscena3d(
+    { log: h.log, signal: h.signal, avanzar: (a) => { if (a.etapa !== ultima) void h.etapa((ultima = a.etapa), a.avance); } },
+    String(t.payload.corrida ?? ""),
+  );
+  h.log(`Escena 3D lista en ${c.segundos} s (${c.dispositivo ?? "?"})`);
+  // Pedida desde una escena del editor: se pone sola ahí (versión nueva; se deshace desde el historial).
+  const escena = typeof t.payload.escena === "string" ? t.payload.escena : null;
+  if (t.proyectoId && escena) {
+    const version = await usarEscena3d(c.id, t.proyectoId, escena);
+    h.log(`Puesta en la escena ${escena} → versión ${version}`);
+    return { resultado: { corrida: c.id, version } };
+  }
+  return { resultado: { corrida: c.id } };
+}
+
 async function renderEntregarEj(t: Trabajo, h: Herramientas): Promise<Salida> {
   const version = typeof t.payload.version === "number" ? t.payload.version : undefined;
   const r = await renderEntregar(h, t.proyectoId!, t.id, version);
@@ -394,6 +412,7 @@ export const EJECUTORES: Record<TipoTrabajo, (t: Trabajo, h: Herramientas) => Pr
   "escenas.animar": escenasAnimar,
   "escena.rehacer": escenaRehacer,
   "workflow.correr": workflowCorrer,
+  "escena3d.crear": escena3dCrear,
   "voz.regenerar": vozRegenerar,
   "voz.disenar": vozDisenar,
   "render.entregar": renderEntregarEj,

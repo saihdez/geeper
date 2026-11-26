@@ -12,6 +12,7 @@ import { ElegirVoz, type MotorVoz } from "./elegir-voz";
 import { PanelPresentador } from "./panel-presentador";
 import { PanelRehacer } from "./panel-rehacer";
 import { PanelAvatarEscena, PanelAvatarVideo } from "./panel-avatar";
+import { PanelEscena3d } from "./panel-escena3d";
 import { SelectorEncuadre, type EncuadreV } from "./selector-encuadre";
 import { PanelOtroEditor } from "./panel-otro-editor";
 import { useAccionesProyecto } from "./acciones-proyecto";
@@ -234,6 +235,7 @@ function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, 
           imgA={anterior ? miniatura(slug, anterior) : undefined} imgB={miniatura(slug, e)} editar={editar} ocupado={ocupado} />
         <PanelAnimar proyectoId={proyectoId} escena={e.id} numero={e.indice + 1} ocupado={ocupado} animar={animar} />
         <PanelAvatarEscena proyectoId={proyectoId} escena={e.id} numero={e.indice + 1} ocupado={ocupado} />
+        <PanelEscena3d proyectoId={proyectoId} escena={e.id} numero={e.indice + 1} ocupado={ocupado} formato={formato} duracion={e.duracion} />
         {e.visual.tipo === "video" && <PanelRehacer proyectoId={proyectoId} escena={e.id} numero={e.indice + 1} ocupado={ocupado} miniatura={miniatura(slug, e)} />}
       </div>
     </li>

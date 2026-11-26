@@ -33,6 +33,8 @@ export const TIPOS = {
   "escena.rehacer": { motor: "mpt", usaGpu: true, nombre: "Rehacer la toma" },
   // ComfyUI (sección Workflows): toda la GPU, en la misma fila.
   "workflow.correr": { motor: "mpt", usaGpu: true, nombre: "Workflow de ComfyUI" },
+  // Escenas 3D (Blender, Cycles en la GPU): en la misma fila que lo que usa toda la tarjeta.
+  "escena3d.crear": { motor: "mpt", usaGpu: true, nombre: "Escena 3D" },
   "render.entregar": { motor: "render", usaGpu: true, nombre: "Render y QC" },
   "publicar.subir": { motor: "red", usaGpu: false, nombre: "Publicar en red" },
   "avatar.actuar": { motor: "mpt", usaGpu: true, nombre: "Tu avatar en una escena" },
