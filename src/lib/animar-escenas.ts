@@ -2,7 +2,9 @@
  * Paso «escenas.animar» de un video nuevo con estilo «Equilibrado» o «Máxima calidad»
  * (estilos-generacion.ts): después de importar lo de MPT (y de que el avatar entre en sus escenas), cada
  * escena que sigue siendo la imagen de MPT pasa a un plano de video con plano.ts, con el prompt del estilo.
- * Las que ya rehízo el avatar no se tocan. Una escena que falla queda como estaba (se reintenta desde el
+ * Las que ya rehízo el avatar no se tocan. Con un estilo que no anima («Rápido»), cada foto pasa por la
+ * cámara 3D (camara3d.ts) en vez del zoom plano; y si Wan falla en una escena, esa escena usa la cámara 3D
+ * (decisión del dueño, 2026-11-25). Una escena que falla igual queda como estaba (se reintenta desde el
  * editor) y no tumba el video.
  *
  * El estilo elegido en «Nuevo» se guarda en la carpeta del proyecto (`generacion.json`), porque la cadena
@@ -15,6 +17,7 @@ import { guardarProyecto } from "./almacen";
 import { EstiloGeneracion, ESTILOS_GENERACION } from "./estilos-generacion";
 import type { Proyecto } from "./esquema";
 import { escenasEnLinea } from "./linea";
+import { faltaCamara3d, generarCamara3dEscena } from "./camara3d";
 import { generarPlanoEscena, planearPlano, type ContextoPlano } from "./plano";
 import { versionDeProyecto } from "./render";
 import { dirProyecto } from "./rutas";
@@ -70,9 +73,30 @@ export async function animarEscenasDelVideo(ctx: ContextoPlano, proyectoId: stri
     ({ p } = await versionDeProyecto(proyectoId));
   }
   const animar = animarDe(g.setup);
-  if (!animar) return { estilo: g.estilo, hechas: [] };
   const lista = escenasParaAnimar(p);
   const hechas: number[] = [];
+  // Sin Blender no hay cámara 3D: las escenas quedan con el zoom de siempre (y Wan, si el estilo anima).
+  const conCamara3d = !(await faltaCamara3d());
+  const camara3d = async (x: { escena: string; numero: number }, motivo: string) => {
+    if (!conCamara3d) return false;
+    try {
+      await generarCamara3dEscena({ ...ctx, avanzar: undefined }, proyectoId, p, x.escena, { nota: `Escena ${x.numero} con cámara 3D (${motivo})` });
+      ({ p } = await versionDeProyecto(proyectoId));
+      return true;
+    } catch (e) {
+      if (ctx.signal?.aborted) throw e;
+      ctx.log(`Escena ${x.numero}: tampoco salió la cámara 3D (${e instanceof Error ? e.message.split("\n")[0] : e}).`);
+      return false;
+    }
+  };
+  if (!animar) {
+    if (!conCamara3d) ctx.log("Sin Blender: las escenas quedan con el zoom de siempre (instálalo en Sistema para la cámara 3D).");
+    for (const [i, x] of lista.entries()) {
+      await alEmpezar({ numero: x.numero, indice: i, total: lista.length });
+      if (await camara3d(x, `«${nombre}»`)) hechas.push(x.numero);
+    }
+    return { estilo: g.estilo, hechas };
+  }
   for (const [i, x] of lista.entries()) {
     await alEmpezar({ numero: x.numero, indice: i, total: lista.length });
     try {
@@ -85,7 +109,8 @@ export async function animarEscenasDelVideo(ctx: ContextoPlano, proyectoId: stri
       ({ p } = await versionDeProyecto(proyectoId));
     } catch (e) {
       if (ctx.signal?.aborted) throw e;
-      ctx.log(`Escena ${x.numero}: no se pudo animar (${e instanceof Error ? e.message.split("\n")[0] : e}); queda como estaba.`);
+      ctx.log(`Escena ${x.numero}: no se pudo animar (${e instanceof Error ? e.message.split("\n")[0] : e}); pruebo con la cámara 3D.`);
+      if (await camara3d(x, "plan B: Wan no pudo")) hechas.push(x.numero);
     }
   }
   return { estilo: g.estilo, hechas };

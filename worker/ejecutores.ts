@@ -24,6 +24,7 @@ import { actuarEscena, leerAvatarDelVideo, PedidoActuar, PedidoStreamer, streame
 import { protagonizarVideo } from "@/lib/protagonista";
 import { correrWorkflow, PedidoWorkflow } from "@/lib/workflows";
 import { crearEscena3d, usarEscena3d } from "@/lib/escenas3d";
+import { generarCamara3dEscena, type OpcionesCamara3d } from "@/lib/camara3d";
 import { disenarVoz } from "@/lib/voces";
 import { regenerarVoz } from "@/lib/regenerar";
 import type { Avance } from "@/lib/wan2gp";
@@ -359,6 +360,17 @@ async function workflowCorrer(t: Trabajo, h: Herramientas): Promise<Salida> {
   return { resultado: { corrida: c.id, salidas: c.salidas.length } };
 }
 
+async function camara3dGenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
+  const { p } = await versionDeProyecto(t.proyectoId!);
+  let ultima = "";
+  const r = await generarCamara3dEscena(
+    { ...h, avanzar: (e, a) => { if (e !== ultima) void h.etapa((ultima = e), a); } },
+    t.proyectoId!, p, String(t.payload.escena ?? ""), (t.payload.opciones ?? {}) as OpcionesCamara3d,
+  );
+  h.log(`Cámara 3D (${r.movimiento}) en ${r.segundos} s → versión ${r.version}`);
+  return { resultado: r, siguiente: siguienteDe(t.payload, { version: r.version }) };
+}
+
 async function escena3dCrear(t: Trabajo, h: Herramientas): Promise<Salida> {
   let ultima = "";
   const c = await crearEscena3d(
@@ -413,6 +425,7 @@ export const EJECUTORES: Record<TipoTrabajo, (t: Trabajo, h: Herramientas) => Pr
   "escena.rehacer": escenaRehacer,
   "workflow.correr": workflowCorrer,
   "escena3d.crear": escena3dCrear,
+  "camara3d.generar": camara3dGenerar,
   "voz.regenerar": vozRegenerar,
   "voz.disenar": vozDisenar,
   "render.entregar": renderEntregarEj,

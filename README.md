@@ -85,6 +85,9 @@ pnpm run dev:up       # web en http://localhost:3300 + worker, en una terminal. 
   sorpresa en 3D, hechos con Blender (se instala con un clic). Eliges la plantilla viéndola moverse, cambias
   texto, foto o logo y colores, o la describes con tus palabras y el modelo local elige los ajustes. También en
   cada escena del editor («Escena 3D aquí»): al terminar se pone sola en esa escena (`src/lib/escenas3d.ts`).
+- **Cámara 3D**: cada foto de escena gana profundidad (Depth Anything V2 Small) y una cámara de verdad se mueve en
+  Blender, con paralaje y desenfoque; reemplaza el zoom plano en «Rápido», es el plan B si Wan falla y está en
+  cada escena con foto del editor (`src/lib/camara3d.ts`).
 - **Trabajos** (`/trabajos`): avance en vivo, log, relanzar o cancelar.
 - **Anuncios** (`/anuncios`): campañas con brief, conceptos (cada uno genera su video con el guion
   exacto), revisión pass/fail/sin saber por ubicación, diseño de prueba A/B y exportación. Geeper no

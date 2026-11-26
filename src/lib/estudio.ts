@@ -19,6 +19,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { asegurarYunet, PYTHON_CARAS } from "./caras";
+import { asegurarModeloProfundidad, DEPTH_ANYTHING, rutaModeloProfundidad } from "./profundidad";
 import { correrHf } from "./hyperframes";
 import { estadoInstalacion as estadoPhotocraft, iniciarInstalacion as iniciarPhotocraft, type EstadoInstalacion } from "./instalar-photocraft";
 import { estadoInstalacionVectorcraft, iniciarInstalacionVectorcraft } from "./instalar-vectorcraft";
@@ -35,7 +36,8 @@ export const PYTHON_VERSION = "3.12";
 /** Paquetes fijados, los mismos que usa el estudio de desarrollo. */
 export const PAQUETES = {
   voz: ["kokoro-onnx==0.6.1", "soundfile==0.14.0"],
-  clips: ["numpy==2.5.5", "opencv-python-headless==4.14.0.94", "yt-dlp[default]==2026.10.26"],
+  // onnxruntime: la profundidad de las fotos para la cámara 3D (profundidad.ts).
+  clips: ["numpy==2.5.5", "opencv-python-headless==4.14.0.94", "yt-dlp[default]==2026.10.26", "onnxruntime==1.31.1"],
 } as const;
 
 const VOZ_PRUEBA = { texto: "Hola, esto es una prueba de voz de Geeper.", voz: "ef_dora", idioma: "es" };
@@ -188,20 +190,26 @@ function pasos(): Paso[] {
     {
       id: "clips",
       nombre: "Clips de material largo",
-      paraQue: "Bajar VODs y videos (yt-dlp) y encuadrar la cara al pasar a vertical (OpenCV + YuNet).",
+      paraQue: "Bajar VODs y videos (yt-dlp), encuadrar la cara al pasar a vertical (OpenCV + YuNet) y medir la profundidad de las fotos para la cámara 3D (Depth Anything).",
       comprobar: async () => {
-        const v = await pythonCon(PYTHON_CARAS, "cv2, numpy, yt_dlp");
+        const v = await pythonCon(PYTHON_CARAS, "cv2, numpy, yt_dlp, onnxruntime");
         if (!v) return null;
         try {
           await asegurarYunet();
-          return `Python ${v} con OpenCV y yt-dlp, modelo YuNet verificado`;
+          const prof = await fs.stat(rutaModeloProfundidad()).then((s) => s.size === DEPTH_ANYTHING.tamano, () => false);
+          return prof ? `Python ${v} con OpenCV, yt-dlp y onnxruntime; modelos YuNet y de profundidad listos` : null;
         } catch {
           return null;
         }
       },
       instalar: async (log) => {
         if (!(await pythonCon(PYTHON_CARAS, "cv2, numpy, yt_dlp"))) await crearVenv(VENV_CLIPS, PAQUETES.clips, log);
+        else if (!(await pythonCon(PYTHON_CARAS, "onnxruntime"))) {
+          // Venv de antes de la cámara 3D: sólo se le suma onnxruntime (no se rehace).
+          await correr(UV, ["pip", "install", "--python", PYTHON_CARAS, PAQUETES.clips.find((x) => x.startsWith("onnxruntime"))!], { env: entornoUv(), log, timeout: 30 * 60_000 });
+        }
         await asegurarYunet(log);
+        await asegurarModeloProfundidad(log);
       },
     },
     {

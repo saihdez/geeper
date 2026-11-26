@@ -35,6 +35,8 @@ export const TIPOS = {
   "workflow.correr": { motor: "mpt", usaGpu: true, nombre: "Workflow de ComfyUI" },
   // Escenas 3D (Blender, Cycles en la GPU): en la misma fila que lo que usa toda la tarjeta.
   "escena3d.crear": { motor: "mpt", usaGpu: true, nombre: "Escena 3D" },
+  // Cámara 3D sobre la foto de una escena (Blender, Cycles en la GPU).
+  "camara3d.generar": { motor: "mpt", usaGpu: true, nombre: "Cámara 3D" },
   "render.entregar": { motor: "render", usaGpu: true, nombre: "Render y QC" },
   "publicar.subir": { motor: "red", usaGpu: false, nombre: "Publicar en red" },
   "avatar.actuar": { motor: "mpt", usaGpu: true, nombre: "Tu avatar en una escena" },

@@ -13,6 +13,7 @@ import { PanelPresentador } from "./panel-presentador";
 import { PanelRehacer } from "./panel-rehacer";
 import { PanelAvatarEscena, PanelAvatarVideo } from "./panel-avatar";
 import { PanelEscena3d } from "./panel-escena3d";
+import { PanelCamara3d } from "./panel-camara3d";
 import { SelectorEncuadre, type EncuadreV } from "./selector-encuadre";
 import { PanelOtroEditor } from "./panel-otro-editor";
 import { useAccionesProyecto } from "./acciones-proyecto";
@@ -234,6 +235,7 @@ function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, 
         <EfectosEscena escena={e.id} indice={e.indice} efectos={e.efectos} estilo={estilo} formato={formato}
           imgA={anterior ? miniatura(slug, anterior) : undefined} imgB={miniatura(slug, e)} editar={editar} ocupado={ocupado} />
         <PanelAnimar proyectoId={proyectoId} escena={e.id} numero={e.indice + 1} ocupado={ocupado} animar={animar} />
+        {(e.visual.tipo === "imagen" || e.visual.source === "mpt") && <PanelCamara3d proyectoId={proyectoId} escena={e.id} numero={e.indice + 1} ocupado={ocupado} />}
         <PanelAvatarEscena proyectoId={proyectoId} escena={e.id} numero={e.indice + 1} ocupado={ocupado} />
         <PanelEscena3d proyectoId={proyectoId} escena={e.id} numero={e.indice + 1} ocupado={ocupado} formato={formato} duracion={e.duracion} />
         {e.visual.tipo === "video" && <PanelRehacer proyectoId={proyectoId} escena={e.id} numero={e.indice + 1} ocupado={ocupado} miniatura={miniatura(slug, e)} />}

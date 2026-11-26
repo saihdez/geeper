@@ -56,7 +56,7 @@ describe("setup del video («Personalizar el setup» de «Nuevo»)", () => {
     expect(mismoSetup(real, { ...real, camara: { ...real.camara, lente: undefined } })).toBe(true);
     expect(mismoSetup(real, { ...real, grano: "35mm" })).toBe(false);
     expect(tiempoEstimado({ ...real, modelo: "rapido" })).toMatch(/^2 minutos por escena/);
-    expect(tiempoEstimado({ ...real, modelo: "zoom" })).toBe("Unos 3 minutos por tema.");
+    expect(tiempoEstimado({ ...real, modelo: "zoom" })).toBe("Estimado: medio minuto por escena, unos 5 minutos en un video de 6 escenas.");
   });
 
   it("con avatar, del setup sólo se muestra el acabado", () => {

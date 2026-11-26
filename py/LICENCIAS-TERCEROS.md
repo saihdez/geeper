@@ -33,3 +33,9 @@ quien los hace (la licencia de Blender no alcanza a lo que se crea con él).
 CC0. HDRI de 1k para la luz y los reflejos de las escenas 3D; se baja al instalar Blender y se verifica por
 sha256 (`src/lib/blender.ts`). `py/blender/muestras/` (frasco y logo de ejemplo) son propios.
 
+## Depth Anything V2 Small (cámara 3D)
+
+Apache-2.0 (Lihe Yang y otros; ONNX de `onnx-community/depth-anything-v2-small`, revisión fijada). Lo corre
+`py/profundidad.py` con onnxruntime (MIT, Microsoft) en CPU; se baja una vez a la carpeta de modelos y se verifica
+por SHA-256 (`src/lib/profundidad.ts`). Sólo la versión Small: Base y Large no permiten uso comercial.
+

@@ -49,7 +49,7 @@ describe("estilos de generación de «Nuevo»", () => {
   });
 
   it("dice cuánto tarda, y si es estimado", () => {
-    expect(tiempoEstimado("rapido")).toBe("Unos 3 minutos por tema.");
+    expect(tiempoEstimado("rapido")).toBe("Estimado: medio minuto por escena, unos 5 minutos en un video de 6 escenas.");
     expect(tiempoEstimado("equilibrado", 6)).toBe("2 minutos por escena, unos 15 minutos en un video de 6 escenas.");
     expect(tiempoEstimado("real", 6)).toBe("Estimado: 6 minutos por escena, unos 40 minutos en un video de 6 escenas.");
   });

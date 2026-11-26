@@ -36,7 +36,8 @@ export const CamaraZ = z.object({
 
 /** Los modelos que se pueden elegir (LTX no: su licencia no permite uso comercial sin revisarla). */
 export const MODELOS_VIDEO = {
-  zoom: { nombre: "Sin animar: zoom suave sobre la imagen", workflow: "Zoom suave sobre cada imagen", plano: null, minutos: null, medido: true, fps: null },
+  // Sin Wan: cada foto con la cámara 3D de Blender (camara3d.ts); si Blender no está, el zoom suave de siempre.
+  zoom: { nombre: "Cámara 3D sobre la foto (Blender)", workflow: "Profundidad de la foto + cámara 3D en Blender (sin Blender: zoom suave)", plano: null, minutos: 0.5, medido: false, fps: null },
   rapido: { nombre: "Wan 2.2 TI2V-5B + FastWan (3 pasos)", workflow: "Wan 2.2 TI2V-5B + FastWan (3 pasos)", plano: "rapido", minutos: 2, medido: true, fps: 24 },
   ti2v: { nombre: "Wan 2.2 TI2V-5B completo (50 pasos)", workflow: "Wan 2.2 TI2V-5B (50 pasos)", plano: "ti2v", minutos: 8, medido: false, fps: 24 },
   i2v: { nombre: "Wan 2.2 I2V 14B + Lightning (4 pasos)", workflow: "Wan 2.2 I2V 14B + Lightning (4 pasos)", plano: "i2v", minutos: 6, medido: false, fps: 16 },

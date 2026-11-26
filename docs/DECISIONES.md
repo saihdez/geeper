@@ -378,3 +378,22 @@ El dueño pidió (2026-11-25) poder hacer videos con Blender, con UI para quien 
   exacto de la marca; la luz se ajustó para que no queme colores con fondos claros.
 - Muestras de cada plantilla (`py/blender/previas/`) hechas en CPU con `scripts/previas-escenas3d.sh`.
 
+## 27. Cámara 3D sobre las fotos: profundidad + Blender en vez del zoom plano
+
+El dueño pidió (2026-11-25) que Blender ayude a que **toda** la plataforma se vea lo más real posible. Orden
+elegido: 1) cámara 3D en fotos, 2) producto en escenas reales, 3) demos dentro de celular/laptop 3D, 4) intro y
+cierre 3D con la marca.
+
+- **Cómo:** Depth Anything V2 **Small** (Apache-2.0; Base y Large son CC-BY-NC, no sirven) en ONNX con
+  onnxruntime en CPU (~0,6 s por foto; OpenCV DNN no acepta sus formas dinámicas) → `py/blender/camara3d.py`:
+  malla con la profundidad, **reproyectada desde la posición inicial de la cámara** para que el primer cuadro
+  sea la foto exacta (sin eso, el primer plano salía agrandado y deformado) → la cámara se mueve (acercarse,
+  pasar de lado, rodear, alejarse, subir) con desenfoque de lente enfocado en la cara o en lo más cercano, y
+  desenfoque de movimiento. Emisión sin luces: los colores no cambian. Cycles sin denoiser (borraba la textura).
+  Cada movimiento se limita al margen que sobra de la foto (si no alcanza, pasa a «acercarse»).
+- **Dónde:** en «Rápido» reemplaza el zoom de cada escena de MPT; en «Equilibrado» y «Lo más real posible» es
+  el plan B cuando Wan falla en una escena; a mano, «Cámara 3D» en cada escena con foto del editor. Sin Blender,
+  todo queda como antes (zoom). Un video de verdad no se congela: sólo fotos y los clips de zoom de MPT.
+- `onnxruntime==1.31.1` entra al venv `geeper-clips` («Preparar el estudio» se lo suma a un venv existente sin
+  rehacerlo) y el modelo (99 MB, revisión y SHA-256 fijos) se baja ahí mismo.
+

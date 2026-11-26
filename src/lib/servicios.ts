@@ -67,8 +67,10 @@ const CADENA_CON_AVATAR: TipoTrabajo[] = ["proyecto.importar", "avatar.escenas",
 export async function crearProyecto(n: NuevoProyecto) {
   const p = await crearFila(n);
   const base = n.avatar ? CADENA_CON_AVATAR : CADENA_FABRICA;
-  // Con un setup que anima o suma acabado, las escenas pasan a video antes del render (después del avatar).
-  const anima = !!n.estilo && necesitaPasoAnimar(n.setup ?? ESTILOS_GENERACION[n.estilo].setup);
+  // Con un estilo, las escenas pasan a video antes del render (después del avatar): con Wan o, si el estilo no
+  // anima («Rápido»), con la cámara 3D de Blender (animar-escenas.ts).
+  const setupElegido = n.estilo ? (n.setup ?? ESTILOS_GENERACION[n.estilo].setup) : null;
+  const anima = !!setupElegido && (necesitaPasoAnimar(setupElegido) || setupElegido.modelo === "zoom");
   const cadena: TipoTrabajo[] = anima ? [...base.slice(0, -1), "escenas.animar", base[base.length - 1]!] : base;
   if (n.avatar) await guardarAvatarDelVideo(p.slug, { avatar: n.avatar, cuerpo: n.cuerpo ?? "medio" });
   if (anima) await guardarEstiloGeneracion(p.slug, n.estilo!, n.setup);

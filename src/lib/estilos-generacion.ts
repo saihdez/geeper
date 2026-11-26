@@ -3,7 +3,8 @@
  * imágenes (Z-Image Turbo, fotos realistas) y la voz. Para quien no sabe de video: tres opciones con lo
  * que tarda cada una, y «Lo más real posible» para que no se note que es IA.
  *
- * - **Rápido**: lo de siempre, cada imagen con un zoom suave. Unos 3 minutos por tema.
+ * - **Rápido**: cada foto con la cámara 3D de Blender (profundidad, paralaje y desenfoque; camara3d.ts) en
+ *   vez del zoom plano. Unos 30 s más por escena; sin Blender, el zoom de siempre.
  * - **Equilibrado**: cada escena pasa a video con Wan 2.2 TI2V-5B + FastWan (3 pasos, medido ~100 s).
  * - **Máxima calidad** (id `real`): lo mejor que cabe en 16 GB (decisión del dueño, 2026-11-23). Cada
  *   escena con Wan 2.2 I2V-A14B (el más fiel a la foto y con el movimiento más natural) con Lightning (4
@@ -80,7 +81,7 @@ export const ESTILOS_GENERACION: Record<EstiloGeneracion, DefinicionEstilo> = {
   rapido: preset({
     id: "rapido",
     nombre: "Rápido",
-    descripcion: "Fotos con un movimiento suave. Para probar ideas.",
+    descripcion: "Fotos con una cámara de verdad: se mueve entre lo de adelante y el fondo, con desenfoque. Para probar ideas.",
     setup: { modelo: "zoom", fluidez: false, camara: {}, desenfoqueMovimiento: false, grano: "no", vineta: false, realista: false },
   }),
   equilibrado: preset({
@@ -111,7 +112,8 @@ export function tiempoEstimado(estilo: EstiloGeneracion | SetupVideo, escenas = 
   if (t.minutos === null) return "Unos 3 minutos por tema.";
   const total = 3 + t.minutos * escenas;
   const texto = total >= 90 ? `unas ${Math.round(total / 60)} horas` : total >= 60 ? "una hora" : `unos ${Math.round(total / 5) * 5} minutos`;
-  return `${t.medido ? "" : "Estimado: "}${t.minutos} minutos por escena, ${texto} en un video de ${escenas} escenas.`;
+  const porEscena = t.minutos < 1 ? "medio minuto" : `${t.minutos} minutos`;
+  return `${t.medido ? "" : "Estimado: "}${porEscena} por escena, ${texto} en un video de ${escenas} escenas.`;
 }
 
 /**
