@@ -88,6 +88,9 @@ pnpm run dev:up       # web en http://localhost:3300 + worker, en una terminal. 
 - **Cámara 3D**: cada foto de escena gana profundidad (Depth Anything V2 Small) y una cámara de verdad se mueve en
   Blender, con paralaje y desenfoque; reemplaza el zoom plano en «Rápido», es el plan B si Wan falla y está en
   cada escena con foto del editor (`src/lib/camara3d.ts`).
+- **Asistente** (arriba en cada proyecto): lo que mejoraría el video, de lo que bloquea la descarga a las
+  ideas, con «Hacerlo» cuando es una edición (queda como versión nueva) o «Ir ahí» cuando hay que decidir.
+  En Claude Code, el agente `geeper-experto` hace la revisión completa (`.claude/agents/geeper-experto.md`).
 - **Trabajos** (`/trabajos`): avance en vivo, log, relanzar o cancelar.
 - **Anuncios** (`/anuncios`): campañas con brief, conceptos (cada uno genera su video con el guion
   exacto), revisión pass/fail/sin saber por ubicación, diseño de prueba A/B y exportación. Geeper no
@@ -115,6 +118,7 @@ pnpm tsx scripts/importar-mpt.ts <task_id> "<tema>" [9:16|16:9|1:1] [plantilla]
 pnpm tsx scripts/proponer.ts <slug> propuesta.json [--aplicar] [--informe]   # valida y muestra diferencias
 pnpm tsx scripts/encolar.ts <slug> render.entregar
 pnpm tsx scripts/revisar-subtitulos.ts <slug>                       # QC de subtítulos sin renderizar
+pnpm tsx scripts/recomendar.ts <slug> [--json]                     # lo que el «Asistente» recomienda mejorar (sin GPU)
 pnpm tsx scripts/exportar-otio.ts <slug>                           # .otio con rutas de Linux (en la web: «Terminar en otro editor», con rutas de Windows y guía)
 pnpm tsx scripts/analizar-caras.ts <slug> [--aplicar]             # busca caras para el reencuadre (lo nuevo lo hace solo)
 pnpm tsx scripts/plano.ts <slug> <escena> [--probar]              # animar una escena con Wan2GP (usa la GPU; en la web: «Animar esta escena con IA»)

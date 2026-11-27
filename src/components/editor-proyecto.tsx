@@ -13,6 +13,7 @@ import { PanelPresentador } from "./panel-presentador";
 import { PanelRehacer } from "./panel-rehacer";
 import { PanelAvatarEscena, PanelAvatarVideo } from "./panel-avatar";
 import { PanelEscena3d } from "./panel-escena3d";
+import { PanelAsistente } from "./panel-asistente";
 import { PanelCamara3d } from "./panel-camara3d";
 import { SelectorEncuadre, type EncuadreV } from "./selector-encuadre";
 import { PanelOtroEditor } from "./panel-otro-editor";
@@ -372,6 +373,8 @@ export function EditorProyecto({ id }: { id: string }) {
       )}
       {activos.length > 0 && <Aviso tipo="info">Hay {activos.length} trabajo(s) en curso para este proyecto; abajo ves su avance y su log.</Aviso>}
       {!p && <Aviso tipo="info">Todavía no hay geeper.json: el proyecto se está generando o importando.</Aviso>}
+      {p && <PanelAsistente proyectoId={id} version={fila.versionActual} ocupado={ocupado} editarVarias={editarVarias} renderizar={renderizar} alinearMusica={alinearMusica}
+        volverA={(numero) => hacer(() => postJson(`/api/proyectos/${id}/version`, { numero }), `Volviste a como estaba antes (versión ${numero}, guardada como versión nueva).`)} />}
 
       {p && (
         <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
@@ -482,14 +485,14 @@ export function EditorProyecto({ id }: { id: string }) {
       {p && <PanelOtroEditor proyectoId={id} version={fila.versionActual} />}
 
       {render?.informeQc && (
-        <section className="tarjeta p-4">
+        <section id="qc" className="tarjeta scroll-mt-4 p-4">
           <h2 className="mb-3 font-medium">¿Está listo para publicar?</h2>
           <InformeQc r={render} slug={fila.slug} vectorizar={{ hacer: vectorizarImagen, sigue: (a) => !!v && (v.escenas.some((e) => e.visual.asset === a) || !!v.extras?.libres.some((pi) => pi.clips.some((c) => c.asset === a))), ocupado }} />
         </section>
       )}
 
       {escenas.length > 0 && (
-        <section>
+        <section id="escenas" className="scroll-mt-4">
           <h2 className="mb-3 font-medium">Escenas</h2>
           <ol className="space-y-3">
             {escenas.map((e, i) => (
@@ -530,7 +533,7 @@ export function EditorProyecto({ id }: { id: string }) {
             </>
           )}
         </div>
-        <div>
+        <div id="trabajos" className="scroll-mt-4">
           <h2 className="mb-2 font-medium">Trabajos de este proyecto</h2>
           <ListaTrabajos proyectoId={id} />
         </div>

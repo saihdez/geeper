@@ -65,6 +65,9 @@ Los subtítulos no se guardan: se calculan (grupos de hasta 4 palabras, ≤ 2 l�
 
 1. Mira el estado: `cat ~/geeper-data/<slug>/geeper.json` o la página del proyecto. Para ver los
    subtítulos actuales con sus índices, `curl -s localhost:3300/api/proyectos/<id> | jq '.escenas[] | {id, grupos}'`.
+   Qué conviene mejorar (lo mismo que el panel «Asistente» del editor, sin GPU):
+   `pnpm tsx scripts/recomendar.ts <slug> --json`; sus `ediciones` se pasan tal cual a `proponer.ts`.
+   Para una revisión completa con recomendaciones, delega en el agente `geeper-experto`.
 2. Escribe una lista de ediciones en un archivo temporal. Tipos (ver `src/lib/ediciones.ts`):
    - `{"tipo":"corregirSubtitulo","escena":"e02","desde":3,"hasta":6,"texto":"nuevo texto"}`
    - `{"tipo":"quitarEscena","escena":"e05"}` (también quita lo que se oye en ella)

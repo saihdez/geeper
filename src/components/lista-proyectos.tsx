@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Barra, Estado, pedir, useSondeo } from "./comun";
+import { LoSiguiente } from "./lo-siguiente";
 
 interface Fila {
   id: string;
@@ -46,6 +47,7 @@ export function ListaProyectos() {
         <h1 className="text-xl font-semibold">Proyectos</h1>
         <Link href="/nuevo" className="boton boton-primario">Nuevo proyecto o lote</Link>
       </div>
+      {proyectos && proyectos.length > 0 && <LoSiguiente />}
       {error && <p className="text-red-300">{error}</p>}
       {aviso && <p className="mb-3 text-sm text-amber-200" role="status">{aviso}</p>}
       {proyectos && proyectos.length === 0 && (

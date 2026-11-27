@@ -435,7 +435,7 @@ export function PanelAvanzado({ extras, formato, total, editar, alinearMusica, s
   const conPlataformas = (pl: string, on: boolean) => editar({ tipo: "cambiarDestino", plataformas: on ? [...d.plataformas, pl] : d.plataformas.filter((x) => x !== pl) });
   return (
     <section className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] [&>*]:min-w-0">
-      <div className="tarjeta space-y-3 p-4">
+      <div id="destino" className="tarjeta scroll-mt-4 space-y-3 p-4">
         <h2 className="font-medium">Destino y entrega</h2>
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" checked={d.comercial} disabled={ocupado} onChange={(e) => void editar({ tipo: "cambiarDestino", comercial: e.target.checked })} />
@@ -478,7 +478,7 @@ export function PanelAvanzado({ extras, formato, total, editar, alinearMusica, s
         )}
       </div>
 
-      <div className="tarjeta space-y-3 p-4">
+      <div id="textos" className="tarjeta scroll-mt-4 space-y-3 p-4">
         <h2 className="font-medium">Textos en pantalla</h2>
         {extras.textos.length > 0 && (
           <ul className="space-y-1 text-sm">
@@ -505,7 +505,7 @@ export function PanelAvanzado({ extras, formato, total, editar, alinearMusica, s
         </form>
       </div>
 
-      <div className="tarjeta space-y-3 p-4">
+      <div id="superposiciones" className="tarjeta scroll-mt-4 space-y-3 p-4">
         <h2 className="font-medium">Superposiciones y efectos de sonido</h2>
         {extras.libres.length > 0 && (
           <ul className="space-y-1 text-sm">

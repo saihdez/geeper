@@ -397,3 +397,17 @@ cierre 3D con la marca.
 - `onnxruntime==1.31.1` entra al venv `geeper-clips` («Preparar el estudio» se lo suma a un venv existente sin
   rehacerlo) y el modelo (99 MB, revisión y SHA-256 fijos) se baja ahí mismo.
 
+## 28. Asistente: recomendaciones calculadas primero, el modelo local después
+
+- **Qué:** un panel «Asistente» arriba del editor del proyecto con lo que mejoraría el video, de lo que
+  bloquea la descarga a las ideas (`src/lib/recomendaciones.ts`), y el agente `geeper-experto` de Claude
+  Code (`.claude/agents/geeper-experto.md`) que parte de lo mismo (`scripts/recomendar.ts <slug> --json`)
+  y suma su criterio (gancho, ritmo, qué herramienta del estudio usar).
+- **Por qué así:** las reglas (silencios, muletillas, tiempos dudosos, licencias, subtítulos que no caben,
+  gancho, fotos fijas largas, QC del último render, cambios sin renderizar, plataformas) se calculan sin
+  GPU en milisegundos y son repetibles. Cada recomendación con ediciones se prueba antes con
+  `aplicarPasos`: si no aplica, no se ofrece, y lo que ahorra se mide aplicándola (no se estima). Lo que
+  pide criterio (qué texto poner, qué escena quitar) lleva a su lugar de la página; nunca se aplica solo.
+- **Descartado por ahora:** un chat con el modelo local dentro de la app. Cargar Gemma usa la GPU en cada
+  pregunta y esta PC se cuelga con carga pesada; queda como segunda fase, por la cola y sólo a pedido,
+  proponiendo ediciones que pasen por el mismo `aplicarPasos` y se muestren como diferencias.
