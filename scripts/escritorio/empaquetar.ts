@@ -210,6 +210,16 @@ async function main() {
   } else {
     correr("pnpm", ["exec", "electron-rebuild", "--version", ELECTRON, "--module-dir", APP, "--only", "better-sqlite3", "--force"]);
   }
+  // Turbopack también pide better-sqlite3 con un nombre con hash (alias de npm, ver arriba): npm le pone el
+  // binario para Node, no el de Electron, y la base no abre («compiled against a different Node.js version»).
+  // Todas las copias llevan el mismo binario recién armado.
+  const binario = path.join(sqlite, "build", "Release", "better_sqlite3.node");
+  for (const n of fs.readdirSync(path.join(APP, "node_modules")).filter((x) => /^better-sqlite3-[0-9a-f]+$/.test(x))) {
+    const destinoAlias = path.join(APP, "node_modules", n, "build", "Release");
+    fs.mkdirSync(destinoAlias, { recursive: true });
+    fs.copyFileSync(binario, path.join(destinoAlias, "better_sqlite3.node"));
+    console.log(`better-sqlite3 para Electron también en ${n}`);
+  }
   // Lo que no se usa al correr (compilador de Next, sharp, Prisma de otras bases, fuentes de SQLite): ESC-04.
   const nm = path.join(APP, "node_modules");
   const antes = tamanoCarpeta(nm);
