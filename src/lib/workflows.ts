@@ -5,7 +5,7 @@
  * `~/geeper-data/workflows/<corrida>/` → apagar ComfyUI. Lógica de ComfyUI en comfyui.ts.
  */
 import { randomBytes } from "node:crypto";
-import { createWriteStream, existsSync } from "node:fs";
+import { createWriteStream, existsSync, statSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -15,9 +15,15 @@ import {
   aFormatoApi, aplicarCambios, arrancarComfyui, COMFYUI_DIR, dirResultados, estadoModelos, leerCatalogo, leerWorkflowJson, modelosDeWorkflow, PUERTO_TRABAJOS, salidasDeHistorial, textosDeWorkflow,
   type Workflow,
 } from "./comfyui";
+import { tomarGpu } from "./gpu";
 import { resolverArchivo } from "./hub-comfy";
 import { argsNodos, fijadoDe, infoNodos, instalarNodo } from "./nodos-comfy";
 import type { Contexto } from "./pasos";
+import { GPU_SOLO_BIN } from "./rutas";
+import { bytesPorBajar } from "./workflows-texto";
+import { exigirEspacio } from "./espacio";
+
+export { entradasSinArchivo, hayEjemplo, REINTENTABLES, textoFaltaArchivo, trabajoPorCorrida, tuArchivo } from "./workflows-texto";
 
 export const PedidoWorkflow = z.object({
   workflow: z.string().regex(/^[\w.-]+$/),
@@ -75,6 +81,13 @@ export function aviso(w: Workflow): string | null {
   return null;
 }
 
+/** La corrida que terminó bien (función pura): sin el error de un intento anterior (retoque de UX-30). */
+export function corridaHecha(base: Corrida, salidas: Corrida["salidas"], segundos: number): Corrida {
+  const { error: _viejo, ...resto } = base;
+  void _viejo;
+  return { ...resto, estado: "hecha", salidas, segundos };
+}
+
 export async function escribirCorrida(c: Corrida) {
   const dir = dirCorrida(c.id);
   await fs.mkdir(dir, { recursive: true });
@@ -109,13 +122,35 @@ export interface AvanceWorkflow {
   avance: number;
 }
 
+/** Bytes libres en el disco de `dir` (o del primer padre que exista); null si no se puede saber. */
+export async function espacioLibre(dir: string): Promise<number | null> {
+  let d = path.resolve(dir);
+  while (!existsSync(d) && path.dirname(d) !== d) d = path.dirname(d);
+  try {
+    const s = await fs.statfs(d);
+    return s.bavail * s.bsize;
+  } catch {
+    return null;
+  }
+}
+
 /** Baja un archivo a `destino` (vía .part, para no dejar uno a medias con el nombre bueno). */
-async function bajarModelo(url: string, destino: string, alAvanzar: (bajado: number, total: number) => void, signal?: AbortSignal) {
+export async function bajarModelo(url: string, destino: string, alAvanzar: (bajado: number, total: number) => void, signal?: AbortSignal) {
   await fs.mkdir(path.dirname(destino), { recursive: true });
   const parte = `${destino}.part`;
   const r = await fetch(url, { signal, redirect: "follow" });
   if (!r.ok || !r.body) throw new Error(`No se pudo bajar ${path.basename(destino)} (${r.status}). Si es un modelo que pide aceptar términos en Hugging Face, ábrelo en el editor de ComfyUI.`);
   const total = Number(r.headers.get("content-length") ?? 0);
+  // Antes de llenar el disco (UX-36, DSC-05): con el tamaño a la vista, si no cabe (con la reserva y, en
+  // WSL, mirando lo libre en C:) se dice y no se baja nada.
+  if (total > 0) {
+    try {
+      await exigirEspacio(path.dirname(destino), total, `bajar ${path.basename(destino)}`);
+    } catch (e) {
+      await r.body.cancel().catch(() => {});
+      throw e;
+    }
+  }
   let bajado = 0;
   let ultimo = 0;
   const flujo = Readable.fromWeb(r.body as import("node:stream/web").ReadableStream<Uint8Array>);
@@ -126,8 +161,14 @@ async function bajarModelo(url: string, destino: string, alAvanzar: (bajado: num
       alAvanzar(bajado, total);
     }
   });
-  await pipeline(flujo, createWriteStream(parte), { signal });
-  await fs.rename(parte, destino);
+  try {
+    await pipeline(flujo, createWriteStream(parte), { signal });
+    await fs.rename(parte, destino);
+  } catch (e) {
+    // Una bajada cortada (red, disco lleno, cancelada) no deja el .part ocupando lugar (DSC-05).
+    await fs.rm(parte, { force: true }).catch(() => {});
+    throw e;
+  }
 }
 
 /** Pasos del muestreo en la salida de ComfyUI (barras de tqdm: « 12/20 [00:10<…»). */
@@ -176,7 +217,12 @@ export async function correrWorkflow(ctx: ContextoWorkflow, id: string, pedido: 
       await instalarNodo(n.id, { log: ctx.log, signal: ctx.signal });
     }
     // 1. Modelos que falten.
-    const faltan = estadoModelos(modelosDeWorkflow(grafo)).filter((m) => !m.listo);
+    const modelos = estadoModelos(modelosDeWorkflow(grafo));
+    const faltan = modelos.filter((m) => !m.listo);
+    // Antes de la primera bajada, lo que pesa toda la receta (DSC-05): no empezar algo que no va a caber.
+    const yaBajados = modelos.filter((m) => m.listo).reduce((s, m) => s + (statSync(m.ruta, { throwIfNoEntry: false })?.size ?? 0), 0);
+    const porBajar = bytesPorBajar(wf.tamano, faltan.length, yaBajados);
+    if (porBajar > 0) await exigirEspacio(path.dirname(faltan[0]!.ruta), porBajar, "bajar los modelos de esta receta");
     for (const [k, m] of faltan.entries()) {
       ctx.log(`Bajando ${m.nombre} (${m.carpeta})`);
       await bajarModelo(m.url, m.ruta, (b, t) => avanzar(`Bajando modelos (${k + 1} de ${faltan.length}): ${(b / 1024 ** 3).toFixed(1)}${t ? ` de ${(t / 1024 ** 3).toFixed(1)}` : ""} GB`, 0.02 + 0.3 * ((k + (t ? b / t : 0)) / faltan.length)), ctx.signal);
@@ -207,6 +253,14 @@ export async function correrWorkflow(ctx: ContextoWorkflow, id: string, pedido: 
     // 3. ComfyUI, conversión y ejecución.
     avanzar("Arrancando ComfyUI (pausa la IA de MPT mientras trabaja)", 0.33);
     let ultimo = "";
+    // Sin gpu-solo (Windows, macOS, la app), el turno de la tarjeta lo da el candado de gpu.ts (GPU-08).
+    const candado = existsSync(GPU_SOLO_BIN)
+      ? null
+      : await tomarGpu(`comfyui ${wf.id}`, {
+          esperar: true,
+          signal: ctx.signal,
+          alEsperar: (quien) => avanzar(`Esperando la tarjeta (la tiene: ${quien.slice(0, 80)})`, 0.33),
+        });
     const srv = await arrancarComfyui({
       puerto: PUERTO_TRABAJOS,
       signal: ctx.signal,
@@ -219,6 +273,9 @@ export async function correrWorkflow(ctx: ContextoWorkflow, id: string, pedido: 
           if (e !== ultimo) avanzar((ultimo = e), 0.4 + 0.55 * (p.paso / Math.max(1, p.pasos)));
         } else if (/Requested to load|loaded completely|Loading/.test(l) && ultimo !== "Cargando el modelo") avanzar((ultimo = "Cargando el modelo"), 0.38);
       },
+    }).catch((e: unknown) => {
+      candado?.liberar();
+      throw e;
     });
     const cancelar = () => void srv.detener();
     ctx.signal?.addEventListener("abort", cancelar, { once: true });
@@ -253,12 +310,13 @@ export async function correrWorkflow(ctx: ContextoWorkflow, id: string, pedido: 
         salidas.push({ archivo: nombre, tipo: tipoDeArchivo(nombre) });
       }
       if (!salidas.length) throw new Error("El workflow terminó pero no dejó ningún archivo.");
-      const c: Corrida = { ...base, estado: "hecha", salidas, segundos: Math.round((Date.now() - t0) / 1000) };
+      const c = corridaHecha(base, salidas, Math.round((Date.now() - t0) / 1000));
       await escribirCorrida(c);
       return c;
     } finally {
       ctx.signal?.removeEventListener("abort", cancelar);
       await srv.detener();
+      candado?.liberar();
     }
   } catch (e) {
     await escribirCorrida({ ...base, estado: "fallida", error: (e instanceof Error ? e.message : String(e)).slice(0, 1000) }).catch(() => {});

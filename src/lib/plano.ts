@@ -5,10 +5,10 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { describirAsset, guardarProyecto, registrarAssetsEnDb } from "./almacen";
+import { describirAsset, guardarEncima, leerGuardado, registrarAssetsEnDb } from "./almacen";
 import { sha256Archivo } from "./archivos";
 import { reemplazarVisual } from "./ediciones";
-import { pista, validarProyecto, type Proyecto } from "./esquema";
+import { pista, validarProyecto, type Asset, type Proyecto } from "./esquema";
 import { escenasEnLinea, type EscenaEnLinea } from "./linea";
 import type { Contexto } from "./pasos";
 import { correr } from "./proceso";
@@ -152,6 +152,29 @@ export async function probarPlanoEscena(dir: string, p: Proyecto, escena: string
   return { plan, ajustes, ...(await probarWan2gp(instalacionWan2gp(), ajustes, corrida)) };
 }
 
+/**
+ * Pone el plano generado como el visual de la escena sobre `base` (la versión de ahora). Lanza si la
+ * escena ya no está o si su visual ya no es `visualDe` (la persona puso otra imagen mientras tanto). Se
+ * comprueba siempre, también al animar desde el texto: el video nuevo reemplaza el visual que haya.
+ */
+export function ponerPlano(base: Proyecto, plan: Pick<PlanPlano, "escena" | "numero" | "modelo">, asset: Asset, visualDe: string): { p: Proyecto; velocidad: number | null } {
+  const es = escenasEnLinea(base).find((x) => x.escena.id === plan.escena);
+  if (!es) throw new Error(`Mientras se animaba se quitó la escena ${plan.numero}: el video nuevo no se puso (queda en la carpeta del proyecto).`);
+  if (es.visual.asset !== visualDe) {
+    throw new Error(`Mientras se animaba cambiaste la imagen de la escena ${plan.numero}: el video nuevo no se puso para no borrar tu cambio.`);
+  }
+  const nuevo = structuredClone(reemplazarVisual(base, plan.escena, asset));
+  const clip = pista(nuevo, "visual").clips[es.indice]!;
+  const salto = CUADROS_DESCARTADOS / plan.modelo.fps;
+  clip.rango = { ...clip.rango, inicio: salto };
+  // Un poco más corto que la escena: se pasa más lento en vez de repetirse (se cambia en «Efectos del plano»).
+  // Lo que tiene que cubrir se mide en la versión de ahora (la escena pudo cambiar de largo).
+  const largo = es.duracion + (es.indice === 0 ? es.inicio : 0);
+  const v = asset.duracion ? velocidadParaLlenar(asset.duracion - salto, largo) : null;
+  if (v) clip.velocidad = v;
+  return { p: validarProyecto(nuevo), velocidad: v };
+}
+
 export interface ContextoPlano extends Contexto {
   signal?: AbortSignal;
   alAvanzar?: (a: Avance) => void;
@@ -159,10 +182,16 @@ export interface ContextoPlano extends Contexto {
 
 /** Genera el plano (usa toda la GPU) y lo guarda como el clip visual de la escena, en una versión nueva. */
 export async function generarPlanoEscena(ctx: ContextoPlano, proyectoId: string, p: Proyecto, escena: string, op: OpcionesPlano = {}) {
+  // Lo guardado al empezar: al terminar se compara para saber si alguien editó mientras tanto.
+  const guardada = await leerGuardado(proyectoId);
   const plan = planearPlano(p, escena, op);
   const corrida = dirCorrida(ctx.dir, plan.escena);
   const ajustes = ajustesDe(p, plan, op, await imagenDeInicio(ctx.dir, p, plan, corrida, op.imagen));
   ctx.log(`Escena ${plan.numero}: ${plan.modelo.nombre}, ${ajustes.resolution}, ${ajustes.video_length} cuadros. Prompt: ${plan.prompt}`);
+  // El visual que había al empezar: si la persona lo cambia mientras se anima, no se pisa su cambio
+  // (haya imagen de partida o no). imagenDe sólo queda en los datos para rehacer el plano.
+  const visualDe = buscarEscena(p, plan.escena).visual.asset;
+  const imagenDe = plan.conImagen ? visualDe : null;
   const t0 = Date.now();
   const video = await generarPlano({ instalacion: instalacionWan2gp(), ajustes, dirCorrida: corrida, signal: ctx.signal, log: ctx.log, alAvanzar: ctx.alAvanzar });
   const hash = await sha256Archivo(video);
@@ -175,17 +204,16 @@ export async function generarPlanoEscena(ctx: ContextoPlano, proyectoId: string,
     tipo: "video",
     source: "wan",
     licencia: `${plan.modelo.licencia}; generado con WanGP (citar a WanGP si se vende el video)`,
-    regenerar: { motor: "wan2gp", modelo: plan.modelo.modelType, ajustes, imagenDe: plan.conImagen ? p.assets[buscarEscena(p, plan.escena).visual.asset]!.id : null, segundos },
+    regenerar: { motor: "wan2gp", modelo: plan.modelo.modelType, ajustes, imagenDe, segundos },
   });
-  const nuevo = structuredClone(reemplazarVisual(p, plan.escena, asset));
-  const clip = pista(nuevo, "visual").clips[buscarEscena(nuevo, plan.escena).indice]!;
-  const salto = CUADROS_DESCARTADOS / plan.modelo.fps;
-  clip.rango = { ...clip.rango, inicio: salto };
-  // Un poco más corto que la escena: se pasa más lento en vez de repetirse (se cambia en «Efectos del plano»).
-  const v = asset.duracion ? velocidadParaLlenar(asset.duracion - salto, plan.largo) : null;
-  if (v) clip.velocidad = v;
-  validarProyecto(nuevo);
-  const version = await guardarProyecto(proyectoId, nuevo, op.nota ?? `Escena ${plan.numero} animada (${plan.modelo.nombre})`);
-  await registrarAssetsEnDb(proyectoId, nuevo);
-  return { version, asset: id, ruta, segundos, escena: plan.escena, velocidad: v };
+  let final: { p: Proyecto; velocidad: number | null } = { p, velocidad: null };
+  // Sobre la versión de AHORA (SEG-05): lo editado mientras se animaba (minutos) no se pierde.
+  const version = await guardarEncima(
+    proyectoId,
+    op.nota ?? `Escena ${plan.numero} animada (${plan.modelo.nombre})`,
+    (base) => (final = ponerPlano(base, plan, asset, visualDe)).p,
+    { guardada, copia: p },
+  );
+  await registrarAssetsEnDb(proyectoId, final.p);
+  return { version, asset: id, ruta, segundos, escena: plan.escena, velocidad: final.velocidad };
 }

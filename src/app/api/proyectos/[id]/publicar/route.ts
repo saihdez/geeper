@@ -1,7 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { TIPOS } from "@/lib/cola";
+import type { Prisma } from "@/generated/prisma/client";
+import { conReintentos } from "@/lib/almacen";
+import { MAX_INTENTOS, TIPOS } from "@/lib/cola";
 import { db } from "@/lib/db";
 import { rutaPortadaElegida } from "@/lib/portada";
 import { dirProyecto } from "@/lib/rutas";
@@ -69,7 +71,22 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     }
 
     const t = TIPOS["publicar.subir"];
-    const publicaciones = await db.$transaction(async (tx) => {
+    // SEG-04: la transacción empieza ESCRIBIENDO. En SQLite con WAL, una que empieza leyendo y después
+    // escribe falla si otro proceso (el worker) escribió entretanto. Con un UPDATE que no cambia nada, la
+    // base espera su turno (busy_timeout, 10 s) y desde ahí nadie más escribe hasta el final. El plazo de la
+    // transacción tiene que dejar caber esa espera: si se corta antes, la conexión queda a medias.
+    const publicaciones = await conReintentos(() =>
+      db.$transaction(
+        async (tx) => {
+          await tx.$executeRaw`UPDATE "Proyecto" SET "id" = "id" WHERE "id" = ${id}`;
+          return crearPublicaciones(tx);
+        },
+        { maxWait: 30_000, timeout: 30_000 },
+      ),
+    );
+    return json({ publicaciones }, 201);
+
+    async function crearPublicaciones(tx: Prisma.TransactionClient) {
       const out = [];
       for (const d of destinos) {
         const previa = await tx.publicacion.findUnique({ where: { renderId_cuentaId: { renderId, cuentaId: d.cuentaId } } });
@@ -97,12 +114,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         });
         // Igual que encolar() de la cola, pero dentro de la transacción.
         const trabajo = await tx.trabajo.create({
-          data: { proyectoId: id, tipo: "publicar.subir", motor: t.motor, usaGpu: t.usaGpu, payload: { publicacionId: pub.id, ...(d.portada && miniatura ? { miniatura } : {}) }, maxIntentos: 1 },
+          data: { proyectoId: id, tipo: "publicar.subir", motor: t.motor, usaGpu: t.usaGpu, payload: { publicacionId: pub.id, ...(d.portada && miniatura ? { miniatura } : {}) }, maxIntentos: MAX_INTENTOS },
         });
         out.push(await tx.publicacion.update({ where: { id: pub.id }, data: { trabajoId: trabajo.id } }));
       }
       return out;
-    });
-    return json({ publicaciones }, 201);
+    }
   });
 }

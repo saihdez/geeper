@@ -106,3 +106,23 @@ export async function paso<T>(
     for (const t of temporales) await fs.rm(t, { force: true, recursive: true });
   }
 }
+
+/**
+ * Paso que envuelve a otros (REN-08): `fn` corre sus propios pasos y deja el resultado en `salida`
+ * (su ruta real, no un temporal); este paso guarda un manifiesto con la clave de todo lo que entra.
+ * Así, si alguna vez ya se produjo esa misma salida y sigue en disco, se reutiliza aunque los pasos
+ * de adentro ya no valgan (por ejemplo, porque su archivo intermedio se sobrescribió con otro render).
+ */
+export async function pasoQueEnvuelve<T>(
+  ctx: Contexto,
+  nombre: string,
+  entradas: Entradas,
+  salida: string,
+  fn: () => Promise<T>,
+): Promise<{ saltado: boolean; resultado: T; inputHash: string }> {
+  return paso(ctx, nombre, entradas, [salida], async ([tmp]) => {
+    const resultado = await fn();
+    await fs.copyFile(salida, tmp!);
+    return resultado;
+  });
+}

@@ -45,4 +45,20 @@ describe("candado de GPU por archivo (Windows, macOS, app)", () => {
     b!.liberar();
     await fs.rm(dir, { recursive: true, force: true });
   });
+
+  it("un candado ilegible recién creado cuenta como ocupado; viejo, como abandonado (GPU-11)", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "gpu-"));
+    const archivo = path.join(dir, ".gpu.lock");
+    await fs.writeFile(archivo, ""); // otro lo acaba de crear y todavía no escribió
+    expect(await candadoArchivo(archivo, "b", { esperar: false })).toBeNull();
+    const viejo = new Date(Date.now() - 10_000);
+    await fs.utimes(archivo, viejo, viejo);
+    const c = await candadoArchivo(archivo, "c", { esperar: false });
+    expect(c).not.toBeNull();
+    // Soltarlo con el archivo roto no deja un error sin atender.
+    await fs.writeFile(archivo, "{roto");
+    c!.liberar();
+    await new Promise((r) => setTimeout(r, 50));
+    await fs.rm(dir, { recursive: true, force: true });
+  });
 });

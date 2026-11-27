@@ -37,7 +37,7 @@ export function ampliaciones(p: Proyecto, W: number, H: number): Ampliacion[] {
       const zoom = Math.max(1, c.movimiento?.desde.escala ?? 1, c.movimiento?.hasta.escala ?? 1);
       const donde = pi.id === "visual"
         ? `Escena ${numero.get(c.escena ?? "") ?? "?"}`
-        : `Superposición a los ${(c.inicio ?? 0).toFixed(1).replace(".", ",")} s`;
+        : `Superposición a los ${(c.inicio ?? 0).toFixed(1)} s`;
       out.push({ clip: c.id, asset: a.id, donde, ancho: a.ancho, alto: a.alto, factor: base * zoom, imagen: a.tipo === "imagen" });
     }
   }

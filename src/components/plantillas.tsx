@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import type { EstiloPlantilla } from "@/lib/estilos-plantilla";
-import { Aviso, postJson, useSondeo } from "./comun";
+import { Aviso, Cargando, postJson, useSondeo } from "./comun";
 import { EditorPlantilla, EstilosDePartida, MarcaDeWeb, type FilaPlantilla, type RespuestaMarcaWeb } from "./editor-plantilla";
 import { AparienciaPlantilla } from "./apariencia-plantilla";
 
@@ -25,6 +25,12 @@ function Resumen({ p, abierta, alEditar, alDuplicar, alColor }: { p: FilaPlantil
   );
 }
 
+/** Nombre propuesto para la copia: «<nombre> (copia)», sin pasar de las 80 letras que acepta la API. */
+export function nombreCopia(nombre: string): string {
+  const sufijo = " (copia)";
+  return nombre.trim().slice(0, 80 - sufijo.length) + sufijo;
+}
+
 type Camino = "web" | "estilo" | "copia";
 
 const CAMINOS: { id: Camino; titulo: string; detalle: string; recomendado?: boolean }[] = [
@@ -33,7 +39,7 @@ const CAMINOS: { id: Camino; titulo: string; detalle: string; recomendado?: bool
   { id: "copia", titulo: "Copiar una que ya tengo", detalle: "Para probar cambios sin tocar los videos que ya la usan." },
 ];
 
-/** «Nueva plantilla» en dos pasos: cómo empezar → crear. Al crearla se abre el editor para revisarla. */
+/** «Nuevo estilo» en dos pasos: cómo empezar → crear. Al crearla se abre el editor para revisarla. */
 function NuevaPlantilla({ plantillas, alCrear, alCerrar }: { plantillas: FilaPlantilla[]; alCrear: (slug: string) => void; alCerrar: () => void }) {
   const [camino, setCamino] = useState<Camino | null>(null);
   const [nombre, setNombre] = useState("");
@@ -64,7 +70,7 @@ function NuevaPlantilla({ plantillas, alCrear, alCerrar }: { plantillas: FilaPla
     <div className="tarjeta space-y-4 border-cyan-900 p-4">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h2 className="font-semibold">Nueva plantilla</h2>
+          <h2 className="font-semibold">Nuevo estilo</h2>
           <p className="text-sm text-tenue">{camino ? "Paso 2 de 2." : "Paso 1 de 2: ¿cómo quieres empezar?"} Después podrás cambiar todo.</p>
         </div>
         <button type="button" className="boton" onClick={alCerrar}>Cancelar</button>
@@ -83,13 +89,13 @@ function NuevaPlantilla({ plantillas, alCrear, alCerrar }: { plantillas: FilaPla
         <div className="space-y-3">
           <button type="button" className="text-sm text-tenue underline" onClick={() => { setCamino(null); setFallo(null); }}>← Elegir otra forma</button>
           <label className="block text-sm">
-            <span className="etiqueta">Nombre de la plantilla (opcional)</span>
+            <span className="etiqueta">Nombre del estilo (opcional)</span>
             <input className="campo" value={nombre} maxLength={80} onChange={(e) => setNombre(e.target.value)} placeholder={camino === "web" ? "Se usa el nombre de tu marca" : camino === "estilo" ? "Se usa el nombre del estilo" : "Copia de…"} />
           </label>
-          {camino === "web" && <MarcaDeWeb alUsar={desdeWeb} textoUsar={creando ? "Creando…" : "Crear mi plantilla con esto"} />}
+          {camino === "web" && <MarcaDeWeb alUsar={desdeWeb} textoUsar={creando ? "Creando…" : "Crear mi estilo con esto"} />}
           {camino === "estilo" && (
             <>
-              <p className="text-sm text-tenue">Toca el que más te guste: se crea la plantilla y se abre para que la revises.</p>
+              <p className="text-sm text-tenue">Toca el que más te guste: se crea el estilo y se abre para que la revises.</p>
               <EstilosDePartida alElegir={desdeEstilo} />
             </>
           )}
@@ -101,12 +107,12 @@ function NuevaPlantilla({ plantillas, alCrear, alCerrar }: { plantillas: FilaPla
                   {plantillas.map((p) => <option key={p.slug} value={p.slug}>{p.nombre}</option>)}
                 </select>
               </label>
-              <button type="button" className="boton boton-primario" disabled={!copia || creando} onClick={() => void crear({ base: copia }, `${plantillas.find((p) => p.slug === copia)?.nombre ?? "Plantilla"} (copia)`)}>
+              <button type="button" className="boton boton-primario" disabled={!copia || creando} onClick={() => void crear({ base: copia }, `${plantillas.find((p) => p.slug === copia)?.nombre ?? "Estilo"} (copia)`)}>
                 {creando ? "Creando…" : "Crear la copia"}
               </button>
             </div>
           )}
-          {creando && camino === "estilo" && <p className="text-sm text-tenue">Creando la plantilla…</p>}
+          {creando && camino === "estilo" && <p className="text-sm text-tenue">Creando el estilo…</p>}
           {fallo && <Aviso tipo="error">{fallo}</Aviso>}
         </div>
       )}
@@ -123,16 +129,25 @@ export function Plantillas({ abrirNueva = false }: { abrirNueva?: boolean }) {
   // «Nuevo» enlaza a /plantillas?nueva=1 para abrir «Nueva plantilla» directo.
   const [nueva, setNueva] = useState(abrirNueva);
 
-  async function duplicar(p: FilaPlantilla) {
-    const nombre = prompt("Nombre de la copia:", `${p.nombre} (copia)`);
-    if (!nombre?.trim()) return;
+  // «Duplicar» abre un campo en la tarjeta: la ventanita del navegador para pedir un texto no existe en la app de escritorio (el botón no hacía nada).
+  const [copia, setCopia] = useState<{ base: string; nombre: string } | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+
+  async function duplicar() {
+    const nombre = copia?.nombre.trim();
+    if (!copia || !nombre) return;
     setError(null);
+    setOcupado(true);
     try {
-      const r = await postJson<{ plantilla: { slug: string } }>("/api/plantillas", { nombre: nombre.trim(), base: p.slug });
+      const r = await postJson<{ plantilla: { slug: string } }>("/api/plantillas", { nombre, base: copia.base });
       await recargar();
+      setCopia(null);
+      setColor(null);
       setAbierta(r.plantilla.slug);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOcupado(false);
     }
   }
 
@@ -140,20 +155,32 @@ export function Plantillas({ abrirNueva = false }: { abrirNueva?: boolean }) {
     <section className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <h1 className="text-xl font-semibold">Plantillas de canal</h1>
-          <p className="text-sm text-tenue">El aspecto de tus videos: marca, logo, colores, letra y cierre. Cambiar una plantilla no toca los videos ya hechos; se aplica cuando vuelves a renderizarlos.</p>
+          <h1 className="text-xl font-semibold">Estilos del canal</h1>
+          <p className="text-sm text-tenue">El aspecto de tus videos: marca, logo, colores, letra y cierre. Cambiar un estilo no toca los videos ya hechos; se aplica cuando los vuelves a crear.</p>
         </div>
-        {!nueva && <button type="button" className="boton boton-primario" onClick={() => { setAbierta(null); setColor(null); setNueva(true); }}>Nueva plantilla</button>}
+        {!nueva && <button type="button" className="boton boton-primario" onClick={() => { setAbierta(null); setColor(null); setNueva(true); }}>Nuevo estilo</button>}
       </div>
       {nueva && datos && (
         <NuevaPlantilla plantillas={datos.plantillas} alCerrar={() => setNueva(false)}
           alCrear={async (slug) => { setNueva(false); await recargar(); setAbierta(slug); setTimeout(() => document.getElementById(`plantilla-${slug}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 300); }} />
       )}
       {error && <Aviso tipo="error">{error}</Aviso>}
-      {!datos && <p className="text-sm text-tenue">Cargando…</p>}
+      {!datos && <Cargando>Cargando tus estilos…</Cargando>}
+      {datos?.plantillas.length === 0 && <p className="text-sm text-tenue">No hay plantillas todavía.</p>}
       {datos?.plantillas.map((p) => (
         <div key={p.slug} id={`plantilla-${p.slug}`} className="tarjeta space-y-4 p-4">
-          <Resumen p={p} abierta={abierta === p.slug} alEditar={() => { setColor(null); setAbierta(p.slug); }} alDuplicar={() => void duplicar(p)} alColor={() => { setAbierta(null); setColor(color === p.slug ? null : p.slug); }} />
+          <Resumen p={p} abierta={abierta === p.slug} alEditar={() => { setColor(null); setAbierta(p.slug); }} alDuplicar={() => setCopia({ base: p.slug, nombre: nombreCopia(p.nombre) })} alColor={() => { setAbierta(null); setColor(color === p.slug ? null : p.slug); }} />
+          {copia?.base === p.slug && (
+            <form className="flex flex-wrap items-end gap-2 border-t border-borde pt-4" onSubmit={(e) => { e.preventDefault(); void duplicar(); }}>
+              <label className="min-w-0 flex-1">
+                <span className="etiqueta">Nombre de la copia</span>
+                <input autoFocus className="campo" value={copia.nombre} maxLength={80} onChange={(e) => setCopia({ ...copia, nombre: e.target.value })} />
+              </label>
+              <button type="submit" className="boton boton-primario" disabled={ocupado || !copia.nombre.trim()}>{ocupado ? "Creando…" : "Crear copia"}</button>
+              <button type="button" className="boton" onClick={() => setCopia(null)}>Cancelar</button>
+              {!copia.nombre.trim() && <p className="w-full text-xs text-tenue">Escribe un nombre para la copia.</p>}
+            </form>
+          )}
           {abierta === p.slug && <EditorPlantilla key={p.slug} fila={p} alGuardar={() => void recargar()} alCerrar={() => setAbierta(null)} />}
           {color === p.slug && (
             <div className="space-y-3 border-t border-borde pt-4">

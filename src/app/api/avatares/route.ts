@@ -3,6 +3,7 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { z } from "zod";
 import { crearPropuesta, ESTILOS, FONDOS, listarAvatares, MAX_DESCRIPCION, Pedido, TEXTO_CONSENTIMIENTO, vistaAvatar } from "@/lib/avatares";
+import { retoquesVisibles } from "@/lib/asistente-avatar";
 import { encolar } from "@/lib/cola";
 import { db } from "@/lib/db";
 import { json, manejar } from "@/lib/http";
@@ -18,20 +19,25 @@ const FOTOS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 export async function GET() {
   return manejar(async () => {
     const w = revisarWan2gp();
-    const trabajos = await db.trabajo.findMany({
-      where: { tipo: { in: ["avatar.proponer", "avatar.retocar"] }, estado: { in: ["pendiente", "corriendo"] } },
-      select: { id: true, tipo: true, estado: true, etapa: true, progreso: true, payload: true },
-    });
+    const sel = { id: true, tipo: true, estado: true, etapa: true, progreso: true, error: true, payload: true, creado: true } as const;
+    const avatares = await listarAvatares();
+    const proponer = await db.trabajo.findMany({ where: { tipo: "avatar.proponer", estado: { in: ["pendiente", "corriendo"] } }, orderBy: { creado: "desc" }, select: sel });
+    // Retoques: el más nuevo de cada avatar, también si falló después de su último cambio (UX-13).
+    const retocar = retoquesVisibles(
+      await db.trabajo.findMany({ where: { tipo: "avatar.retocar", estado: { in: ["pendiente", "corriendo", "fallido"] } }, orderBy: { creado: "desc" }, take: 100, select: sel }),
+      Object.fromEntries(avatares.map((a) => [a.id, a.actualizado])),
+    );
+    const trabajos = [...proponer, ...retocar];
     return json({
       wan2gp: { listo: !w.falta, falta: w.falta, instalando: w.corriendo },
-      avatares: (await listarAvatares()).map(vistaAvatar),
+      avatares: avatares.map(vistaAvatar),
       estilos: Object.entries(ESTILOS).map(([id, e]) => ({ id, nombre: e.nombre, detalle: e.detalle })),
       fondos: Object.entries(FONDOS).map(([id, f]) => ({ id, nombre: f.nombre })),
       luces: Object.keys(LUCES).map((id) => ({ id, nombre: NOMBRES.luz[id as keyof typeof LUCES] })),
       looks: Object.keys(LOOKS).map((id) => ({ id, nombre: NOMBRES.look[id as keyof typeof LOOKS] })),
       consentimiento: TEXTO_CONSENTIMIENTO,
       maxDescripcion: MAX_DESCRIPCION,
-      trabajos: trabajos.map((t) => ({ id: t.id, tipo: t.tipo, estado: t.estado, etapa: t.etapa, progreso: t.progreso, avatar: (t.payload as { avatar?: string }).avatar ?? null, propuesta: (t.payload as { propuesta?: string }).propuesta ?? null })),
+      trabajos: trabajos.map((t) => ({ id: t.id, tipo: t.tipo, estado: t.estado, etapa: t.etapa, progreso: t.progreso, error: t.estado === "fallido" ? (t.error ?? "").split("\n")[0]!.slice(0, 300) : null, avatar: (t.payload as { avatar?: string }).avatar ?? null, propuesta: (t.payload as { propuesta?: string }).propuesta ?? null })),
     });
   });
 }

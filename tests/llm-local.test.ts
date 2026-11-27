@@ -1,122 +1,117 @@
-import fs from "node:fs";
-import net from "node:net";
-import os from "node:os";
-import path from "node:path";
-import { beforeEach, describe, expect, it } from "vitest";
+/** GPU-09: el cliente único del modelo local, con ejecutor, candado y encendido falsos (sin Ollama ni tarjeta). */
+import { describe, expect, it } from "vitest";
+import { z } from "zod";
+import { preguntarModeloLocal, RespuestaGanchos, sugerirGanchos } from "@/lib/ganchos";
+import { AVISO_DESPERTANDO, causaDeFallo, ErrorLlm, esquemaParaOllama, pedirJson, TOPE_LLM_MS, type EjecutorLlm } from "@/lib/llm-local";
+import { preguntarLlm } from "@/lib/traducir";
 
-// llama-server simulado: un script de Node que atiende /health y /v1/chat/completions en el puerto que le
-// pasan. FAKE_LLAMA_MODO: ok | muere | http500. Anota los argumentos y el cuerpo en FAKE_LLAMA_REG.
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), "geeper-llama-"));
-const servidor = path.join(dir, "llama-server");
-const modelo = path.join(dir, "gemma4-26b.gguf");
-const reg = path.join(dir, "registro.json");
-fs.writeFileSync(modelo, "GGUF");
-fs.writeFileSync(
-  servidor,
-  `#!/usr/bin/env node
-const http = require("node:http");
-const fs = require("node:fs");
-const args = process.argv.slice(2);
-const modo = process.env.FAKE_LLAMA_MODO;
-if (modo === "muere") { process.stderr.write("error: no se pudo cargar el modelo\\n"); process.exit(1); }
-const puerto = Number(args[args.indexOf("--port") + 1]);
-let listo = false;
-setTimeout(() => (listo = true), 300);
-http.createServer((req, res) => {
-  if (req.url === "/health") { res.writeHead(listo ? 200 : 503); return res.end(); }
-  let cuerpo = "";
-  req.on("data", (d) => (cuerpo += d));
-  req.on("end", () => {
-    fs.writeFileSync(process.env.FAKE_LLAMA_REG, JSON.stringify({ args, cuerpo: JSON.parse(cuerpo) }));
-    if (modo === "http500") { res.writeHead(500); return res.end("fallo"); }
-    res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ choices: [{ message: { content: '{"titulos":["Uno"]}' } }] }));
-  });
-}).listen(puerto, "127.0.0.1");
-process.on("SIGTERM", () => { fs.appendFileSync(process.env.FAKE_LLAMA_REG + ".fin", "cerrado"); process.exit(0); });
-`,
-  { mode: 0o755 },
-);
+const libre = async () => ({ liberar: () => {} });
+const ocupada = async () => null;
+const encendida = async () => ({ encendidos: [], faltan: [] });
 
-const puertoLibre = () =>
-  new Promise<number>((ok) => {
-    const s = net.createServer().listen(0, "127.0.0.1", () => {
-      const p = (s.address() as net.AddressInfo).port;
-      s.close(() => ok(p));
-    });
+/** Ejecutor falso: guarda el pedido y responde como Ollama. */
+function ollama(contenido: unknown, extra: Record<string, unknown> = {}) {
+  const pedidos: Record<string, unknown>[] = [];
+  const topes: number[] = [];
+  const ejecutar: EjecutorLlm = async (cuerpo, tope) => {
+    pedidos.push(JSON.parse(cuerpo));
+    topes.push(tope);
+    return { codigo: 0, stdout: JSON.stringify({ message: { content: typeof contenido === "string" ? contenido : JSON.stringify(contenido) }, prompt_eval_count: 120, eval_count: 40, ...extra }), stderr: "" };
+  };
+  return { ejecutar, pedidos, topes };
+}
+const fallo = (stderr: string): EjecutorLlm => async () => ({ codigo: 1, stdout: "", stderr });
+
+const Esquema = z.object({ titulos: z.array(z.string().max(10)) });
+
+describe("pedirJson (GPU-09)", () => {
+  it("manda el JSON Schema en `format`, descarga el modelo, valida con Zod y suelta la tarjeta", async () => {
+    const o = ollama({ titulos: ["Uno", "Dos"] });
+    let liberado = false;
+    const r = await pedirJson("gemma4:12b", "hola", Esquema, { tarea: "t", ejecutar: o.ejecutar, encender: encendida, candado: async () => ({ liberar: () => (liberado = true) }), sistema: "sé breve" });
+    expect(r.datos.titulos).toEqual(["Uno", "Dos"]);
+    expect(r.tokensSalida).toBe(40);
+    expect(liberado).toBe(true);
+    const p = o.pedidos[0]!;
+    expect(p).toMatchObject({ keep_alive: 0, think: false, stream: false });
+    expect((p.format as { type: string }).type).toBe("object");
+    expect((p.messages as { role: string }[]).map((m) => m.role)).toEqual(["system", "user"]);
   });
 
-process.env.GEEPER_LLAMA_SERVER = servidor;
-process.env.GEEPER_LLAMA_MODELO = modelo;
-process.env.GEEPER_LLAMA_PUERTO = String(await puertoLibre());
-process.env.FAKE_LLAMA_REG = reg;
-const m = await import("@/lib/llm-local");
+  it("el tope por defecto deja cargar el modelo en frío (300 s) y avisa que la IA está despertando", async () => {
+    const o = ollama({ titulos: ["a"] });
+    const avisos: string[] = [];
+    await pedirJson("m", "p", Esquema, { tarea: "t", ejecutar: o.ejecutar, encender: encendida, candado: libre, avisar: (t) => avisos.push(t) });
+    expect(TOPE_LLM_MS).toBe(300_000);
+    expect(o.topes).toEqual([300_000]);
+    expect(avisos).toContain(AVISO_DESPERTANDO);
+  });
 
-beforeEach(() => {
-  process.env.GEEPER_LLM = "llama";
-  process.env.FAKE_LLAMA_MODO = "ok";
-  fs.rmSync(reg, { force: true });
-  fs.rmSync(`${reg}.fin`, { force: true });
+  it("con la tarjeta tomada enciende Ollama si quedó apagado; si no existe, lo dice", async () => {
+    let encendio = 0;
+    await pedirJson("m", "p", Esquema, { tarea: "t", ejecutar: ollama({ titulos: ["a"] }).ejecutar, candado: libre, encender: async () => (encendio++, { encendidos: ["mpt-ollama"], faltan: [] }) });
+    expect(encendio).toBe(1);
+    await expect(pedirJson("m", "p", Esquema, { tarea: "t", ejecutar: ollama({}).ejecutar, candado: libre, encender: async () => ({ encendidos: [], faltan: ["mpt-ollama"] }) })).rejects.toMatchObject({ causa: "mpt-apagado" });
+    await expect(pedirJson("m", "p", Esquema, { tarea: "t", ejecutar: ollama({}).ejecutar, candado: libre, encender: async () => ({ encendidos: [], faltan: [], sinDocker: true }) })).rejects.toThrow(/Docker Desktop/);
+  });
+
+  it("respuesta que no cumple Zod o cortada → respuesta-invalida (y libera la tarjeta)", async () => {
+    let liberado = false;
+    const p = pedirJson("m", "p", Esquema, { tarea: "t", ejecutar: ollama({ titulos: ["demasiado largo para diez"] }).ejecutar, encender: encendida, candado: async () => ({ liberar: () => (liberado = true) }) });
+    await expect(p).rejects.toMatchObject({ causa: "respuesta-invalida" });
+    expect(liberado).toBe(true);
+    const corta = ollama('{"titulos":["a"', { done_reason: "length", eval_count: 3808 });
+    await expect(pedirJson("m", "p", Esquema, { tarea: "t", ejecutar: corta.ejecutar, encender: encendida, candado: libre })).rejects.toMatchObject({ causa: "respuesta-invalida", detalle: expect.stringMatching(/cortada.*3808/) });
+  });
+
+  it("acepta JSON con cercas de Markdown; formato json no manda esquema", async () => {
+    const r = await pedirJson("m", "p", Esquema, { tarea: "t", ejecutar: ollama('```json\n{"titulos":["a"]}\n```').ejecutar, encender: encendida, candado: libre });
+    expect(r.datos.titulos).toEqual(["a"]);
+    const o = ollama({ titulos: ["a"] });
+    await pedirJson("m", "p", Esquema, { tarea: "t", ejecutar: o.ejecutar, encender: encendida, candado: libre, formato: "json" });
+    expect(o.pedidos[0]!.format).toBe("json");
+  });
+
+  it("Docker apagado, MPT apagado, modelo que falta, tope y tarjeta ocupada se dicen en palabras", async () => {
+    await expect(pedirJson("m", "p", Esquema, { tarea: "t", ejecutar: fallo("failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine"), encender: encendida, candado: libre })).rejects.toThrow(/Docker Desktop/);
+    expect(causaDeFallo({ codigo: 1, stdout: "", stderr: "Error response from daemon: No such container: moneyprinterturbo-api" })).toBe("mpt-apagado");
+    expect(causaDeFallo({ codigo: 3, stdout: "", stderr: 'HTTP 404: {"error":"model \'x\' not found"}' })).toBe("modelo-falta");
+    expect(causaDeFallo({ codigo: 1, stdout: "", stderr: "TimeoutError: timed out" })).toBe("tiempo");
+    await expect(pedirJson("m", "p", Esquema, { tarea: "t", ejecutar: ollama({}).ejecutar, candado: ocupada })).rejects.toMatchObject({ causa: "gpu-ocupada" });
+    expect(new ErrorLlm("tiempo").message).toMatch(/tardó/);
+  });
+
+  it("el esquema de ganchos se puede pasar a Ollama (sin $ref ni $schema)", () => {
+    const j = esquemaParaOllama(RespuestaGanchos);
+    expect(j.$schema).toBeUndefined();
+    expect(JSON.stringify(j)).not.toContain("$ref");
+  });
 });
 
-describe("texto local con llama.cpp", () => {
-  it("abre el servidor, pide JSON sin razonamiento y lo cierra antes de devolver", async () => {
-    const log: string[] = [];
-    expect(await m.preguntarLlama("Hola", { timeout: 20_000, log: (l) => log.push(l) })).toBe('{"titulos":["Uno"]}');
-    const r = JSON.parse(fs.readFileSync(reg, "utf8"));
-    expect(r.cuerpo.response_format).toEqual({ type: "json_object" });
-    expect(r.cuerpo.messages[0].content).toBe("Hola");
-    expect(r.args).toEqual(expect.arrayContaining(["-m", modelo, "--host", "127.0.0.1", "--reasoning", "off", "-fa", "on"]));
-    // Cerrado (la VRAM se libera antes de soltar el candado de GPU).
-    expect(fs.readFileSync(`${reg}.fin`, "utf8")).toBe("cerrado");
-    expect(log[0]).toMatch(/Cargando llama\.cpp \(gemma4-26b\)/);
+describe("llamadores que pasan por el cliente único", () => {
+  it("ganchos: filtra lo que devuelve el modelo", async () => {
+    const o = ollama({ ganchos: ["Nadie vio esto venir", "nadie vio esto venir"], titulo: "Kai REACCIONA" });
+    const s = await sugerirGanchos({ texto: "algo pasó", canal: null, idioma: "es", react: true }, { ejecutar: o.ejecutar, candado: libre, encender: encendida });
+    expect(s).toEqual({ ganchos: ["Nadie vio esto venir"], titulo: "Kai REACCIONA" });
   });
 
-  it("si llama-server se cae al cargar, devuelve null y dice el motivo (sigue Ollama)", async () => {
-    process.env.FAKE_LLAMA_MODO = "muere";
-    const log: string[] = [];
-    expect(await m.preguntarLlama("Hola", { timeout: 20_000, log: (l) => log.push(l) })).toBeNull();
-    expect(log.at(-1)).toMatch(/no se pudo cargar el modelo.*sigo con Ollama/);
+  it("ganchos: Docker apagado da un error claro con qué hacer", async () => {
+    await expect(sugerirGanchos({ texto: "x", canal: null, idioma: "es", react: false }, { ejecutar: fallo("docker API daemon"), candado: libre, encender: encendida })).rejects.toThrow(/Docker Desktop.*a mano/);
   });
 
-  it("si la API responde con error, devuelve null", async () => {
-    process.env.FAKE_LLAMA_MODO = "http500";
-    expect(await m.preguntarLlama("Hola", { timeout: 20_000 })).toBeNull();
-    expect(fs.readFileSync(`${reg}.fin`, "utf8")).toBe("cerrado");
+  it("sugerir texto: devuelve el JSON crudo", async () => {
+    const crudo = await preguntarModeloLocal("p", "sugerir texto", "escribirlo a mano", { ejecutar: ollama({ titulo: "Hola" }).ejecutar, candado: libre, encender: encendida });
+    expect(JSON.parse(crudo)).toEqual({ titulo: "Hola" });
   });
 
-  it("la cancelación de la persona no cae a Ollama: se propaga", async () => {
-    const c = new AbortController();
-    setTimeout(() => c.abort(new Error("cancelado")), 100);
-    await expect(m.preguntarLlama("Hola", { timeout: 20_000, signal: c.signal })).rejects.toThrow("cancelado");
-  });
-
-  it("GEEPER_LLM=ollama o sin modelo: no se usa", async () => {
-    process.env.GEEPER_LLM = "ollama";
-    expect(m.llamaDisponible()).toBe(false);
-    expect(await m.preguntarLlama("Hola", { timeout: 1000 })).toBeNull();
-    expect(fs.existsSync(reg)).toBe(false);
-  });
-
-  it("en las pruebas no se usa salvo que se pida (nunca el llama-server real)", () => {
-    delete process.env.GEEPER_LLM;
-    expect(m.llamaDisponible()).toBe(false);
-  });
-
-  it("usa el borrador para la decodificación especulativa sólo si existe y no está apagado", () => {
-    expect(m.argsServidor(8192)).not.toContain("-md");
-    fs.writeFileSync(m.LLAMA_BORRADOR, "GGUF");
-    try {
-      expect(m.argsServidor(8192)).toEqual(expect.arrayContaining(["-md", path.join(dir, "gemma4-26b-borrador.gguf")]));
-      process.env.GEEPER_LLAMA_BORRADOR = "0";
-      expect(m.argsServidor(8192)).not.toContain("-md");
-    } finally {
-      delete process.env.GEEPER_LLAMA_BORRADOR;
-      fs.rmSync(m.LLAMA_BORRADOR);
-    }
-  });
-
-  it("un solo pedido a la vez, con el contexto indicado", () => {
-    expect(m.argsServidor(8192)).toEqual(expect.arrayContaining(["-c", "8192", "-np", "1"]));
+  it("traducir: espera la tarjeta, usa un tope largo y el modelo que se pida", async () => {
+    const o = ollama({ escenas: [] });
+    let espero: boolean | undefined;
+    const ctx = { dir: "/tmp/proy", log: () => undefined };
+    const crudo = await preguntarLlm("p", "Traducción", ctx, { modelo: "gemma4:12b", ejecutar: o.ejecutar, encender: encendida, candado: async (_t, esperar) => ((espero = esperar), { liberar: () => {} }) });
+    expect(JSON.parse(crudo)).toEqual({ escenas: [] });
+    expect(espero).toBe(true);
+    expect(o.pedidos[0]!.model).toBe("gemma4:12b");
+    expect(o.topes[0]).toBe(600_000);
   });
 });

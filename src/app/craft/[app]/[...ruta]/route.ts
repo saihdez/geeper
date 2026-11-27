@@ -2,6 +2,7 @@ import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import { Readable } from "node:stream";
 import { appCraft, archivoWeb, sinCache, tipoDe } from "@/lib/craft-web";
+import { cabecerasValidador, noModificado, sinCambios } from "@/lib/etag";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
  * Sirve el sitio web de una app Craft instalada (/craft/<app>/index.html y sus archivos), con el
  * tipo correcto para el .wasm y las partes tal cual (ya vienen en gzip). Sólo lee dentro de su carpeta.
  */
-export async function GET(_req: Request, ctx: { params: Promise<{ app: string; ruta: string[] }> }) {
+export async function GET(req: Request, ctx: { params: Promise<{ app: string; ruta: string[] }> }) {
   const { app, ruta } = await ctx.params;
   if (!appCraft(app)) return new Response("No existe", { status: 404 });
   const partes = ruta.map((p) => decodeURIComponent(p));
@@ -21,12 +22,14 @@ export async function GET(_req: Request, ctx: { params: Promise<{ app: string; r
   }
   const st = await fs.stat(abs);
   const rel = partes.join("/");
+  const cabeceras = {
+    "content-type": tipoDe(abs),
+    "cache-control": sinCache(rel) ? "no-cache" : "public, max-age=31536000, immutable",
+    "x-content-type-options": "nosniff",
+  };
+  // WEB-07: con ETag/Last-Modified, lo que va con `no-cache` (index.html, parts.txt…) contesta 304 si no cambió.
+  if (sinCambios(req, st)) return noModificado(st, cabeceras);
   return new Response(Readable.toWeb(createReadStream(abs)) as ReadableStream, {
-    headers: {
-      "content-type": tipoDe(abs),
-      "content-length": String(st.size),
-      "cache-control": sinCache(rel) ? "no-cache" : "public, max-age=31536000, immutable",
-      "x-content-type-options": "nosniff",
-    },
+    headers: { ...cabeceras, "content-length": String(st.size), ...cabecerasValidador(st) },
   });
 }

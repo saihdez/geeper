@@ -59,7 +59,7 @@ export interface DefinicionEstilo {
 const BASE: DefinicionEstilo["pasos"] = [
   { paso: "Guion", workflow: "IA local de MoneyPrinterTurbo" },
   { paso: "Imágenes", workflow: "Z-Image Turbo" },
-  { paso: "Voz", workflow: "Kokoro (o la voz de tu avatar)" },
+  { paso: "Voz", workflow: "Voz de la PC, gratis (o la de tu avatar)" },
 ];
 
 /** Lo que se suma con tu avatar de protagonista (protagonista.ts), muestre el preset que muestre. */

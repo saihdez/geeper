@@ -52,8 +52,17 @@ export const WAN2GP_DIR = process.env.GEEPER_WAN2GP ?? path.join(ESTUDIO, "Wan2G
 export const WAN2GP_PYTHON = process.env.GEEPER_WAN2GP_PYTHON ?? pythonDeVenv(path.join(WAN2GP_DIR, "venv"));
 /** gpu-solo del estudio: toma el candado y pausa los contenedores de MPT que ocupan VRAM. */
 export const GPU_SOLO_BIN = path.join(ESTUDIO, "bin", "gpu-solo");
-/** Python con kokoro-onnx para `hyperframes tts` (el venv del estudio). */
-export const PYTHON_VOZ = process.env.HYPERFRAMES_PYTHON ?? (ESCRITORIO ? pythonDeVenv(path.join(ESTUDIO, "venvs", "voz")) : path.join(ESTUDIO, "OpenMontage", ".venv", "bin", "python"));
+/**
+ * Python con kokoro-onnx para `hyperframes tts`: el venv propio `venvs/voz` (kokoro-onnx y soundfile,
+ * unos cientos de MB). En desarrollo, mientras ese venv no exista, el de OpenMontage (7,5 GB con
+ * PyTorch), que es de donde salía antes (TER-04). Función pura para las pruebas.
+ */
+export function pythonVoz(estudio: string, escritorio: boolean, existe: (ruta: string) => boolean = fs.existsSync): string {
+  const propio = pythonDeVenv(path.join(estudio, "venvs", "voz"));
+  if (escritorio || existe(propio)) return propio;
+  return path.join(estudio, "OpenMontage", ".venv", "bin", "python");
+}
+export const PYTHON_VOZ = process.env.HYPERFRAMES_PYTHON ?? pythonVoz(ESTUDIO, ESCRITORIO);
 /** uv (crea los Python del estudio): el del instalador o, en desarrollo, el del PATH. */
 export const UV = process.env.GEEPER_UV ?? (RECURSOS ? path.join(RECURSOS, "uv", exe("uv")) : "uv");
 /**

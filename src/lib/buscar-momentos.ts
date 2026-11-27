@@ -6,7 +6,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { escribirAtomico, existe } from "./archivos";
 import type { Palabra } from "./esquema";
-import { dirFuentes, traerFuente, type InfoFuente } from "./fuentes";
+import { dirFuentes, esUrl, traerFuente, type InfoFuente } from "./fuentes";
 import { dirDatos } from "./rutas";
 import { ffmpeg } from "./media";
 import {
@@ -31,7 +31,17 @@ export interface ResultadoMomentos {
   opciones: OpcionesMomentos;
   idioma: string;
   candidatos: Candidato[];
+  /** Segundos que se revisaron: menos que la duración si el video pasa del tope (UX-24). */
+  revisado?: number;
   creado: string;
+}
+
+/** Tope por omisión de lo que se baja y se revisa de un video largo (minutos). */
+export const MAX_MINUTOS = 90;
+
+/** Hasta dónde se revisó una fuente: lo guardado o, en análisis viejos, el tope de entonces. */
+export function revisadoDe(duracion: number, revisado?: number | null): number {
+  return revisado ?? Math.min(duracion, MAX_MINUTOS * 60);
 }
 
 /** Aire alrededor de cada momento en la vista previa (s). */
@@ -39,12 +49,31 @@ export const AIRE = 10;
 
 const mmss = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
 
-export async function buscarMomentos(pe: PedidoMomentos, log: Registro = () => {}, signal?: AbortSignal): Promise<ResultadoMomentos> {
+/** Los pasos que ve la persona mientras se buscan momentos (UX-34); la página Clips los reconoce. */
+export const PASOS_MOMENTOS = {
+  bajando: "Bajando el video",
+  abriendo: "Abriendo tu video",
+  midiendo: "Midiendo dónde hay más reacción",
+  escuchando: "Escuchando lo que se dice",
+  vistas: "Preparando las vistas previas",
+} as const;
+
+/** Avisa un paso con su avance (0–1). El worker lo pasa a la etapa del trabajo. */
+export type AvanceMomentos = (etapa: string, progreso: number) => void;
+
+export async function buscarMomentos(
+  pe: PedidoMomentos,
+  log: Registro = () => {},
+  signal?: AbortSignal,
+  avance: AvanceMomentos = () => {},
+): Promise<ResultadoMomentos> {
   const o: OpcionesMomentos = { top: pe.top ?? OPCIONES_MOMENTOS.top, min: pe.min ?? OPCIONES_MOMENTOS.min, max: pe.max ?? OPCIONES_MOMENTOS.max };
   if (!(o.max >= o.min && o.min >= 3)) throw new Error("Duración inválida: min ≥ 3 s y max ≥ min");
   const idioma = pe.idioma ?? "es";
-  const maxMinutos = pe.maxMinutos ?? 90;
+  const maxMinutos = pe.maxMinutos ?? MAX_MINUTOS;
+  avance(esUrl(pe.src) ? `${PASOS_MOMENTOS.bajando}…` : `${PASOS_MOMENTOS.abriendo}…`, 0.05);
   const f = await traerFuente(pe.src, { maxMinutos, log, signal });
+  avance(`${PASOS_MOMENTOS.midiendo}…`, 0.3);
   log(`Fuente ${f.id}: «${f.info.titulo}» de ${f.info.canal ?? "?"} (${(f.info.duracion / 60).toFixed(1)} min)`);
   const db = await dbPorSegundo(f.video, maxMinutos * 60);
   const n = db.length;
@@ -57,8 +86,9 @@ export async function buscarMomentos(pe: PedidoMomentos, log: Registro = () => {
   if (pe.transcribir !== false) {
     const dir = path.join(f.dir, "candidatos");
     await fs.mkdir(dir, { recursive: true });
-    for (const c of cands) {
+    for (const [i, c] of cands.entries()) {
       signal?.throwIfAborted();
+      avance(`${PASOS_MOMENTOS.escuchando} (momento ${i + 1} de ${cands.length})…`, 0.4 + (0.4 * i) / Math.max(1, cands.length));
       const a0 = Math.max(0, c.inicio - 2);
       const a1 = Math.min(n, c.fin + 2);
       const wav = path.join(dir, `c${c.n}-${a0.toFixed(0)}.wav`);
@@ -76,8 +106,9 @@ export async function buscarMomentos(pe: PedidoMomentos, log: Registro = () => {
   // Vistas previas: 10 s de aire a cada lado para poder correr los bordes desde la web.
   const dirVistas = path.join(f.dir, "candidatos");
   await fs.mkdir(dirVistas, { recursive: true });
-  for (const c of cands) {
+  for (const [i, c] of cands.entries()) {
     signal?.throwIfAborted();
+    avance(`${PASOS_MOMENTOS.vistas} (${i + 1} de ${cands.length})…`, 0.82 + (0.16 * i) / Math.max(1, cands.length));
     const desde = Math.max(0, c.inicio - AIRE);
     const hasta = Math.min(n, c.fin + AIRE);
     const base = `vista-${c.inicio.toFixed(1)}-${c.fin.toFixed(1)}`;
@@ -95,7 +126,7 @@ export async function buscarMomentos(pe: PedidoMomentos, log: Registro = () => {
   log(`Vistas previas listas (${cands.length}).`);
 
   const r: ResultadoMomentos = {
-    fuente: f.id, info: f.info, opciones: o, idioma,
+    fuente: f.id, info: f.info, opciones: o, idioma, revisado: n,
     candidatos: [...cands].sort((a, b) => b.puntaje - a.puntaje),
     creado: new Date().toISOString(),
   };
@@ -124,6 +155,10 @@ export interface FuenteListada {
   info: InfoFuente;
   candidatos: Candidato[] | null;
   idioma: string | null;
+  /** Segundos revisados (ver `revisadoDe`). */
+  revisado: number;
+  /** Con qué opciones se buscó, para volver a pedir lo mismo (UX-24). */
+  opciones: OpcionesMomentos | null;
   creado: string | null;
 }
 
@@ -139,7 +174,7 @@ export async function listarFuentes(): Promise<FuenteListada[]> {
       const rc = path.join(base, id, "candidatos.json");
       const r = (await existe(rc)) ? (JSON.parse(await fs.readFile(rc, "utf8")) as ResultadoMomentos) : null;
       const t = (await fs.stat(r ? rc : path.join(base, id, "info.json"))).mtimeMs;
-      out.push({ id, info, candidatos: r?.candidatos ?? null, idioma: r?.idioma ?? null, creado: r?.creado ?? null, t });
+      out.push({ id, info, candidatos: r?.candidatos ?? null, idioma: r?.idioma ?? null, revisado: revisadoDe(info.duracion, r?.revisado), opciones: r?.opciones ?? null, creado: r?.creado ?? null, t });
     } catch {
       /* fuente a medias: se ignora */
     }

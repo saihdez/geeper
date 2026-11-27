@@ -1,0 +1,15 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "worker/index.ts",
+    "scripts/**/*.ts",
+    "escritorio/main.ts",
+    "escritorio/preparar-db.ts",
+    "tests/**/*.test.ts",
+    "tests/ayudas/pasos-hijo.ts",
+    "prisma/seed.ts"
+  ],
+  "project": ["src/**/*.{ts,tsx}", "worker/**/*.ts", "scripts/**/*.ts", "escritorio/**/*.ts", "tests/**/*.ts", "prisma/**/*.ts"],
+  "ignoreExportsUsedInFile": true,
+  "ignoreDependencies": ["@hyperframes/core", "@prisma/client", "@electron/rebuild", "electron-builder", "tailwindcss", "postcss"]
+}

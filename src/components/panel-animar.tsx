@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { Aviso, useSondeo } from "./comun";
+import { Aviso, AvisoTarjeta, LineaFalta, faltanConGuardar, numero as cifra, useGuardeAntes, useSondeo } from "./comun";
 import { NOMBRES, type Camara } from "@/lib/prompt-camara";
 
 interface ModeloV { id: string; nombre: string; nota: string; descripcion: string; simple: boolean; maxSegundos: number; necesitaImagen: boolean; licencia: string; estado: string | null }
@@ -41,6 +41,9 @@ const ESTADO_PESOS: Record<string, string> = {
   "no-existe": "no está en esta versión de Wan2GP",
 };
 
+/** Cada cuánto se consulta /plano: abierto, 3 s; cerrado y animando, 10 s; cerrado y quieto, nunca. */
+export const intervaloAnimar = (abierto: boolean, animando: boolean) => (abierto ? 3000 : animando ? 10_000 : Infinity);
+
 /**
  * «Animar esta escena»: convierte la imagen de la escena en un video corto con Wan2GP (en la GPU de este
  * equipo). Lo simple a la vista (movimiento, duración, rápido o calidad); lo demás en «Más opciones».
@@ -50,15 +53,25 @@ export function PanelAnimar({ proyectoId, escena, numero, ocupado, animar }: {
   animar: (escena: string, opciones: OpcionesAnimar) => Promise<void>;
 }) {
   const [abierto, setAbierto] = useState(false);
-  // Sondeo liviano siempre (para mostrar el avance aunque esté cerrado); el detalle sólo al abrir.
-  const { datos } = useSondeo<Datos>(`/api/proyectos/${proyectoId}/plano?escena=${encodeURIComponent(escena)}`, abierto ? 3000 : 10_000);
+  // Abierto: cada 3 s. Cerrado: sólo mientras esta escena se anima (para mostrar el avance en el título);
+  // si no, una consulta al abrir la página y nada más (la animación sólo se lanza desde aquí).
+  const { datos, recargar } = useSondeo<Datos>(`/api/proyectos/${proyectoId}/plano?escena=${encodeURIComponent(escena)}`,
+    (d) => intervaloAnimar(abierto, d?.trabajos.some((t) => t.escena === escena) ?? false));
   const trabajo = datos?.trabajos.find((t) => t.escena === escena) ?? null;
+  const animarYVer = async (e: string, o: OpcionesAnimar) => {
+    await animar(e, o);
+    await recargar();
+  };
   return (
-    <details className="text-sm" open={abierto} onToggle={(ev) => setAbierto((ev.target as HTMLDetailsElement).open)}>
+    <details className="text-sm" open={abierto} onToggle={(ev) => {
+      const abre = (ev.target as HTMLDetailsElement).open;
+      setAbierto(abre);
+      if (abre) void recargar(); // al abrir, datos frescos y vuelve el ritmo de 3 s
+    }}>
       <summary className="cursor-pointer text-tenue">
         Animar esta escena con IA <span className="text-xs">(convierte la imagen en video{trabajo ? ` · ${trabajo.estado === "pendiente" ? "en espera" : trabajo.etapa || "animando"}` : ""})</span>
       </summary>
-      {abierto && <Contenido proyectoId={proyectoId} escena={escena} numero={numero} ocupado={ocupado} animar={animar} trabajo={trabajo} base={datos} />}
+      {abierto && <Contenido proyectoId={proyectoId} escena={escena} numero={numero} ocupado={ocupado} animar={animarYVer} trabajo={trabajo} base={datos} />}
     </details>
   );
 }
@@ -80,6 +93,7 @@ function Contenido({ proyectoId, escena, numero, ocupado, animar, trabajo, base 
   const [camara, setCamara] = useState<Camara["camara"]>();
   const [sinImagen, setSinImagen] = useState(false);
   const [semilla, setSemilla] = useState("");
+  const guarde = useGuardeAntes();
 
   const opciones: OpcionesAnimar = useMemo(() => {
     const cam: Camara = { movimiento: mov, lente, focal, apertura, camara, plano, luz, look };
@@ -136,10 +150,10 @@ function Contenido({ proyectoId, escena, numero, ocupado, animar, trabajo, base 
   }
 
   async function lanzar() {
-    if (!confirm(`Animar la escena ${numero} usa toda la tarjeta de video durante varios minutos (la primera vez, además, baja el modelo) y pausa la IA de MoneyPrinterTurbo mientras tanto.\n\nGuarda lo que tengas abierto en Windows antes de seguir.\n\n¿Animar ahora?`)) return;
     // Las opciones de este momento, no las de la última consulta (puede faltar la espera de 400 ms).
     await animar(escena, opciones);
   }
+  const faltan = faltanConGuardar(guarde);
 
   const simples = d.modelos.filter((m) => m.simple);
   return (
@@ -147,9 +161,9 @@ function Contenido({ proyectoId, escena, numero, ocupado, animar, trabajo, base 
       <fieldset>
         <legend className="etiqueta mb-1">Cómo se mueve la cámara en el video nuevo</legend>
         <div className="flex flex-wrap gap-1.5" role="radiogroup">
-          <button type="button" role="radio" aria-checked={!mov} className={`boton py-1 ${!mov ? "boton-primario" : ""}`} onClick={() => setMov(undefined)}>Que decida la IA</button>
+          <button type="button" role="radio" aria-checked={!mov} className="opcion py-1" onClick={() => setMov(undefined)}>Que decida la IA</button>
           {MOVS.map((m) => (
-            <button key={m.id} type="button" role="radio" aria-checked={mov === m.id} className={`boton py-1 ${mov === m.id ? "boton-primario" : ""}`} onClick={() => setMov(m.id)}>
+            <button key={m.id} type="button" role="radio" aria-checked={mov === m.id} className="opcion py-1" onClick={() => setMov(m.id)}>
               <span aria-hidden="true" className="mr-1">{m.icono}</span>{NOMBRES.movimiento[m.id]}
             </button>
           ))}
@@ -157,7 +171,7 @@ function Contenido({ proyectoId, escena, numero, ocupado, animar, trabajo, base 
       </fieldset>
 
       <label className="etiqueta block">
-        Duración del video nuevo: {valorSeg.toFixed(1)} s{plan ? <span className="text-tenue"> (la escena dura {plan.largo.toFixed(1)} s; como mucho {max} s)</span> : null}
+        Duración del video nuevo: {cifra(valorSeg, 1)} s{plan ? <span className="text-tenue"> (la escena dura {cifra(plan.largo, 1)} s; como mucho {max} s)</span> : null}
         <input type="range" className="mt-1 block w-72 max-w-full" min={1} max={max} step={0.5} value={valorSeg} onChange={(ev) => setSegundos(Number(ev.target.value))} />
       </label>
 
@@ -222,10 +236,15 @@ function Contenido({ proyectoId, escena, numero, ocupado, animar, trabajo, base 
       {d.error && <Aviso tipo="error">{d.error}</Aviso>}
       {plan?.notas.map((a) => <p key={a} className="text-xs text-tenue">{a}</p>)}
       {plan?.avisos.map((a) => <Aviso key={a} tipo="alerta">{a}</Aviso>)}
+      <AvisoTarjeta g={guarde}>
+        Animar la escena {numero} tarda varios minutos (la primera vez, además, baja el modelo) y pausa la IA de MoneyPrinterTurbo mientras tanto.
+      </AvisoTarjeta>
       <div className="flex flex-wrap items-center gap-3">
-        <button type="button" className="boton boton-primario" disabled={ocupado || !plan} onClick={() => void lanzar()}>Animar la escena {numero}</button>
+        <button type="button" className="boton boton-primario" disabled={ocupado || !plan || faltan.length > 0} aria-describedby={faltan.length ? guarde.idFalta : undefined}
+          onClick={() => void lanzar()}>Animar la escena {numero}</button>
         <span className="text-xs text-tenue">Queda como versión nueva: si no te gusta, vuelves atrás en «Historial».</span>
       </div>
+      <LineaFalta id={guarde.idFalta} faltan={faltan} />
     </div>
   );
 }

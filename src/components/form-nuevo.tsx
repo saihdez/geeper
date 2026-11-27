@@ -2,10 +2,13 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { SugerenciasBusqueda, cambiarUltimaLinea, ultimaLinea } from "./sugerencias-busqueda";
-import { Aviso, postJson, useSondeo } from "./comun";
+import { Aviso, AvisoTarjeta, FALTA_GUARDAR, LineaFalta, postJson, useGuardeAntes, useSondeo } from "./comun";
 import { ESTILOS_GENERACION, pasosDe, tiempoEstimado, type EstiloGeneracion } from "@/lib/estilos-generacion";
 import { mismoSetup, type SetupVideo } from "@/lib/setup-video";
 import { PanelSetup } from "./panel-setup";
+import { FORMAS } from "@/lib/glosario";
+import { leerTabla, pareceTabla } from "@/lib/tabla-videos";
+import { TablaVideos } from "./tabla-videos";
 
 interface Plantilla {
   slug: string;
@@ -13,15 +16,29 @@ interface Plantilla {
   datos: { descripcion: string };
 }
 
+/** El código (task_id) de un video de MoneyPrinterTurbo, como lo valida el servidor (servicios.ts). */
+export const CODIGO_MPT = /^[0-9a-f-]{36}$/;
+
+/** Lo que falta para poder enviar, en palabras de la persona (UX-31): va debajo del botón apagado. */
+export function faltaNuevo(o: { temas: number; necesitaGpu: boolean; aceptoGpu: boolean }): string[] {
+  const falta: string[] = [];
+  if (o.temas === 0) falta.push("escribir el tema");
+  if (o.necesitaGpu && !o.aceptoGpu) falta.push(FALTA_GUARDAR);
+  return falta;
+}
+
 export function FormNuevo() {
   const router = useRouter();
   const { datos } = useSondeo<{ plantillas: Plantilla[] }>("/api/plantillas", 60_000);
   const [temas, setTemas] = useState("");
+  // Varios videos desde una tabla (tabla-videos.ts): si hay tabla, manda ella.
+  const [tabla, setTabla] = useState("");
+  const [verTabla, setVerTabla] = useState(false);
   const [formato, setFormato] = useState("9:16");
   const [plantilla, setPlantilla] = useState("gta-vi-shorts");
   const [mptTaskId, setMpt] = useState("");
   const [rehacerVoz, setRehacerVoz] = useState(true);
-  const [aceptoGpu, setAcepto] = useState(false);
+  const guarde = useGuardeAntes();
   // Tu avatar en el video (protagonista.ts): protagoniza cada escena, dentro de su fondo, y es la única persona.
   const { datos: lib } = useSondeo<{ avatares: { id: string; nombre: string; retrato: string }[] }>("/api/avatares", 60_000);
   const [avatar, setAvatar] = useState<string | null>(null);
@@ -34,16 +51,19 @@ export function FormNuevo() {
   const [cuerpo, setCuerpo] = useState<"medio" | "completo">("medio");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const lista = temas.split("\n").map((t) => t.trim()).filter(Boolean);
   const importa = mptTaskId.trim().length > 0;
+  const filas = tabla.trim() && !importa ? leerTabla(tabla).filas : [];
+  const lista = filas.length ? filas.map((f) => f.tema) : temas.split("\n").map((t) => t.trim()).filter(Boolean);
+  const codigoMal = importa && !CODIGO_MPT.test(mptTaskId.trim());
   const necesitaGpu = !importa;
+  const faltan = [...faltaNuevo({ temas: lista.length, necesitaGpu, aceptoGpu: guarde.guardado }), ...(codigoMal ? ["un código de video completo"] : [])];
 
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
     setEnviando(true);
     setError(null);
     try {
-      const r = await postJson<{ proyectos: { id: string }[] }>("/api/proyectos", { temas, formato, plantilla, mptTaskId: mptTaskId || undefined, rehacerVoz, avatar: !importa && avatar ? avatar : undefined, estilo: importa ? undefined : estilo, setup: !importa && personalizado ? setup : undefined, cuerpo: !importa && avatar ? cuerpo : undefined });
+      const r = await postJson<{ proyectos: { id: string }[] }>("/api/proyectos", { temas: filas.length ? lista.join("\n") : temas, filas: filas.length ? filas : undefined, formato, plantilla, mptTaskId: mptTaskId.trim() || undefined, rehacerVoz, avatar: !importa && avatar ? avatar : undefined, estilo: importa ? undefined : estilo, setup: !importa && personalizado ? setup : undefined, cuerpo: !importa && avatar ? cuerpo : undefined });
       router.push(r.proyectos.length === 1 ? `/proyectos/${r.proyectos[0]!.id}` : "/");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -52,44 +72,61 @@ export function FormNuevo() {
   }
 
   return (
-    <form onSubmit={enviar} className="mx-auto max-w-2xl space-y-5">
-      <h1 className="text-xl font-semibold">Nuevo proyecto o lote</h1>
+    <form onSubmit={enviar} className="space-y-5">
       <div>
-        <label className="etiqueta" htmlFor="temas">Tema (uno por línea: varias líneas crean un lote)</label>
-        <textarea id="temas" className="campo min-h-36 font-mono" value={temas} onChange={(e) => setTemas(e.target.value)}
-          placeholder={"Por qué los faros siguen siendo importantes\nFaros que se convirtieron en hoteles"} required />
-        <p className="mt-1 text-xs text-tenue">{lista.length === 0 ? "Sin temas todavía" : lista.length === 1 ? "1 proyecto" : `Lote de ${lista.length} proyectos (si se corta, se retoma sin repetir los terminados)`}</p>
-        <SugerenciasBusqueda consulta={ultimaLinea(temas)} alElegir={(s) => setTemas(cambiarUltimaLinea(temas, s))} texto="Toca una para usarla como tema." />
+        <label className="etiqueta" htmlFor="temas">Tema (uno por línea: cada línea es un video)</label>
+        {filas.length > 0 ? (
+          <p className="campo text-sm text-tenue">Los temas salen de la tabla de abajo ({filas.length === 1 ? "1 video" : `${filas.length} videos`}).</p>
+        ) : (
+          <textarea id="temas" className="campo min-h-36 font-mono" value={temas}
+            onChange={(e) => {
+              // Una tabla pegada aquí (con tabuladores, desde Excel o Sheets) va a la tabla.
+              if (pareceTabla(e.target.value) && e.target.value.includes("\n")) {
+                setTabla(e.target.value);
+                setVerTabla(true);
+              } else setTemas(e.target.value);
+            }}
+            placeholder={"Por qué los faros siguen siendo importantes\nFaros que se convirtieron en hoteles"} required={!filas.length} />
+        )}
+        <p className="mt-1 text-xs text-tenue">{lista.length === 0 ? "Sin temas todavía" : lista.length === 1 ? "1 video" : `${lista.length} videos (si se corta, se retoma sin repetir los terminados)`}</p>
+        {!filas.length && <SugerenciasBusqueda consulta={ultimaLinea(temas)} alElegir={(s) => setTemas(cambiarUltimaLinea(temas, s))} texto="Toca una para usarla como tema." />}
+        {!importa && (
+          <details className="mt-2 rounded-lg border border-borde p-3" open={verTabla || !!tabla} onToggle={(e) => setVerTabla((e.target as HTMLDetailsElement).open)}>
+            <summary className="cursor-pointer text-sm font-medium">¿Muchos videos con su propio título o guion? Úsalos desde una tabla (Excel o Google Sheets)</summary>
+            <div className="mt-2"><TablaVideos texto={tabla} alCambiar={setTabla} /></div>
+          </details>
+        )}
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <fieldset>
-          <legend className="etiqueta">Formato</legend>
+          <legend className="etiqueta">Forma del video</legend>
           <div className="flex gap-2">
-            {["9:16", "16:9", "1:1"].map((f) => (
-              <label key={f} className={`boton cursor-pointer ${formato === f ? "boton-primario" : ""}`}>
+            {(["9:16", "16:9", "1:1"] as const).map((f) => (
+              <label key={f} className="opcion">
                 <input type="radio" name="formato" value={f} checked={formato === f} onChange={() => setFormato(f)} className="sr-only" />
-                {f}
+                {FORMAS[f].nombre} <span className="text-xs text-tenue">{f}</span>
               </label>
             ))}
           </div>
         </fieldset>
         <div>
-          <label className="etiqueta" htmlFor="plantilla">Plantilla de canal</label>
+          <label className="etiqueta" htmlFor="plantilla">Estilo del canal</label>
           <select id="plantilla" className="campo" value={plantilla} onChange={(e) => setPlantilla(e.target.value)}>
             {datos?.plantillas.map((p) => <option key={p.slug} value={p.slug}>{p.nombre}</option>)}
           </select>
           <p className="mt-1 text-xs text-tenue">{datos?.plantillas.find((p) => p.slug === plantilla)?.datos.descripcion}</p>
-          <a href="/plantillas?nueva=1" className="mt-1 inline-block text-xs text-cyan-300 underline">¿Ninguna es tuya? Crea una con tu marca</a>
+          <a href="/plantillas?nueva=1" className="mt-1 inline-block text-xs text-cyan-300 underline">¿Ninguno es tuyo? Crea uno con tu marca</a>
         </div>
+      </div>
       {!!lib?.avatares.length && !importa && (
         <fieldset className="space-y-2">
           <legend className="etiqueta">¿Tu avatar protagoniza el video? (opcional)</legend>
           <div className="flex flex-wrap gap-2">
             <button type="button" aria-pressed={!avatar} onClick={() => setAvatar(null)}
-              className={`flex h-24 w-20 items-center justify-center rounded border text-center text-xs ${!avatar ? "border-acento ring-2 ring-acento" : "border-borde"}`}>Sin avatar</button>
+              className="opcion-tarjeta flex h-24 w-20 items-center justify-center text-center text-xs">Sin avatar</button>
             {lib.avatares.map((a) => (
               <button key={a.id} type="button" aria-pressed={avatar === a.id} onClick={() => setAvatar(a.id)}
-                className={`w-20 overflow-hidden rounded border text-left ${avatar === a.id ? "border-acento ring-2 ring-acento" : "border-borde"}`}>
+                className="opcion-tarjeta w-20 overflow-hidden">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={a.retrato} alt="" className="h-[4.5rem] w-full object-cover" />
                 <span className="block truncate px-1 text-xs">{a.nombre}</span>
@@ -101,7 +138,7 @@ export function FormNuevo() {
               <span className="text-xs text-tenue">¿Cómo sale?</span>
               {([["medio", "De la cintura para arriba"], ["completo", "Cuerpo completo"]] as const).map(([id, nombre]) => (
                 <button key={id} type="button" role="radio" aria-checked={cuerpo === id} onClick={() => setCuerpo(id)}
-                  className={`boton ${cuerpo === id ? "boton-primario" : ""}`}>{nombre}</button>
+                  className="opcion">{nombre}</button>
               ))}
             </div>
           )}
@@ -109,14 +146,13 @@ export function FormNuevo() {
           {avatar && <p className="text-xs text-tenue">Sale en todas las escenas, dentro del fondo que se genera para cada una, y es la única persona del video: habla a cámara con su voz y gesticula como un humano. Suma unos 35 minutos en un short de 30 segundos y unos 55 en uno de un minuto. Para que comente en una ventana encima del video, usa «Presentador» en el editor.</p>}
         </fieldset>
       )}
-      </div>
       {!importa && (
         <fieldset className="space-y-2">
           <legend className="etiqueta">¿Qué tan real?</legend>
           <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="¿Qué tan real?">
             {Object.values(ESTILOS_GENERACION).map((d) => (
               <button key={d.id} type="button" role="radio" aria-checked={estilo === d.id} onClick={() => elegirEstilo(d.id)}
-                className={`tarjeta p-3 text-left ${estilo === d.id ? "ring-2 ring-cyan-600" : "hover:bg-white/5"}`}>
+                className="opcion-tarjeta p-3">
                 <span className="block text-sm font-medium">
                   {d.nombre}
                   {d.recomendado && <span className="ml-1 rounded bg-cyan-900/60 px-1.5 py-0.5 text-[10px] font-normal text-cyan-200">Recomendado</span>}
@@ -138,30 +174,35 @@ export function FormNuevo() {
           <p className="text-xs text-tenue">{estilo === "3d" ? `${tiempoEstimado("3d")} Necesita Blender (se instala con un clic en Sistema).` : avatar ? "Con tu avatar de protagonista el video ya es video de verdad: esto sólo cambia el acabado (grano, viñeta) y no suma tiempo." : tiempoEstimado(setup)}</p>
         </fieldset>
       )}
-      <details className="tarjeta p-3">
-        <summary className="cursor-pointer text-sm">Importar un short que MPT ya generó (sin usar la GPU)</summary>
-        <label className="etiqueta mt-3" htmlFor="mpt">task_id de MoneyPrinterTurbo</label>
-        <input id="mpt" className="campo font-mono" value={mptTaskId} onChange={(e) => setMpt(e.target.value)} placeholder="c721927b-353e-4dce-9bbb-8ce7d33ed5f2" />
-        <p className="mt-1 text-xs text-tenue">Usa la primera línea de «Tema» como nombre.</p>
+      {/* Para quien instaló MoneyPrinterTurbo (UX-39): queda guardado en «Más opciones». */}
+      <details className="tarjeta p-3" open={importa || undefined}>
+        <summary className="cursor-pointer text-sm">Más opciones</summary>
+        <p className="mt-3 text-sm font-medium">Usar un video que ya hice con MoneyPrinterTurbo</p>
+        <p className="text-xs text-tenue">No usa la tarjeta de video: Geeper toma ese video y lo deja listo para editar.</p>
+        <label className="etiqueta mt-2" htmlFor="mpt">Código del video (como el de ejemplo, con guiones)</label>
+        <input id="mpt" className="campo font-mono" value={mptTaskId} onChange={(e) => setMpt(e.target.value)} placeholder="c721927b-353e-4dce-9bbb-8ce7d33ed5f2"
+          aria-invalid={codigoMal || undefined} aria-describedby="mpt-ayuda" autoComplete="off" spellCheck={false} />
+        <p id="mpt-ayuda" className={`mt-1 text-xs ${codigoMal ? "text-red-400" : "text-tenue"}`}>
+          {codigoMal ? "Ese código no está completo: son 32 letras y números en 5 partes separadas por guiones, como el de ejemplo. " : ""}
+          Lo ves en MoneyPrinterTurbo al terminar un video, y es el nombre de su carpeta dentro de storage/tasks. El nombre del proyecto sale de la primera línea de «Tema».
+        </p>
         <label className="mt-2 flex items-center gap-2 text-sm">
           <input type="checkbox" checked={rehacerVoz} onChange={(e) => setRehacerVoz(e.target.checked)} />
-          Rehacer la voz con la de la plantilla (Kokoro en CPU; los shorts viejos de MPT van muy rápido para el QC)
+          Rehacer la voz con la del estilo del canal (sin la tarjeta de video; las voces viejas de MoneyPrinterTurbo hablan muy rápido para la revisión)
         </label>
       </details>
       {necesitaGpu && (
-        <Aviso tipo="alerta">
-          <p className="font-medium">Generar usa la GPU (guion, imágenes y voz con MPT, unos 3 min por tema).</p>
-          <p className="mt-1">Windows se ha reiniciado sin aviso durante generaciones: guarda tu trabajo antes. Si se reinicia, el trabajo queda «interrumpido» y lo relanzas tú desde Trabajos; nunca se reintenta solo.</p>
-          <label className="mt-2 flex items-center gap-2">
-            <input type="checkbox" checked={aceptoGpu} onChange={(e) => setAcepto(e.target.checked)} />
-            Guardé mi trabajo; puedo generar.
-          </label>
-        </Aviso>
+        <AvisoTarjeta g={guarde}>
+          Crear el video tarda unos 3 min por tema. Si se corta, queda «interrumpido» y lo vuelves a empezar tú desde Trabajos con «Volver a intentar»; nunca empieza solo otra vez.
+        </AvisoTarjeta>
       )}
       {error && <Aviso tipo="error">{error}</Aviso>}
-      <button className="boton boton-primario" disabled={enviando || lista.length === 0 || (necesitaGpu && !aceptoGpu)}>
-        {enviando ? "Creando…" : importa ? "Importar" : lista.length > 1 ? `Crear lote de ${lista.length}` : "Crear y generar"}
-      </button>
+      <div className="space-y-1">
+        <button className="boton boton-primario" disabled={enviando || faltan.length > 0} aria-describedby={faltan.length ? guarde.idFalta : undefined}>
+          {enviando ? "Creando…" : importa ? "Importar" : lista.length > 1 ? `Crear ${lista.length} videos` : "Crear el video"}
+        </button>
+        <LineaFalta id={guarde.idFalta} faltan={faltan} />
+      </div>
     </form>
   );
 }

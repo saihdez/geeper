@@ -1,7 +1,8 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { Barra, Estado, pedir, useSondeo } from "./comun";
+import { AvisoEstudio } from "./aviso-estudio";
+import { Aviso, Barra, Cargando, Estado, pedir, useSondeo } from "./comun";
 import { LoSiguiente } from "./lo-siguiente";
 
 interface Fila {
@@ -19,8 +20,15 @@ interface Fila {
   trabajos: { tipo: string; estado: string; etapa: string; progreso: number }[];
 }
 
+/** El formato en palabras: quien no sabe de video no reconoce «9:16». */
+export function nombreFormato(formato: string): string {
+  return { "9:16": "Vertical (TikTok, Reels, Shorts)", "16:9": "Horizontal (YouTube)", "1:1": "Cuadrado" }[formato] ?? formato;
+}
+
+const VIDEO: Record<string, string> = { renderizado: "hecho, falta mirarlo", aprobado: "aprobado", rechazado: "descartado" };
+
 export function ListaProyectos() {
-  const { datos, error } = useSondeo<{ proyectos: Fila[] }>("/api/proyectos", 3000);
+  const { datos, error } = useSondeo<{ proyectos: Fila[] }>("/api/proyectos", 3000, ["proyecto", "trabajos"]);
   // Los eliminados se quitan al instante (el sondeo los saca en la próxima vuelta).
   const [eliminados, setEliminados] = useState<string[]>([]);
   const [borrando, setBorrando] = useState<string | null>(null);
@@ -44,19 +52,27 @@ export function ListaProyectos() {
   return (
     <section>
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold">Proyectos</h1>
-        <Link href="/nuevo" className="boton boton-primario">Nuevo proyecto o lote</Link>
+        <h1 className="text-xl font-semibold">Mis videos</h1>
+        <Link href="/nuevo" className="boton boton-primario">Nuevo video</Link>
       </div>
+      <AvisoEstudio />
       {proyectos && proyectos.length > 0 && <LoSiguiente />}
-      {error && <p className="text-red-300">{error}</p>}
+      {error && (
+        <Aviso tipo="error">
+          No se pudo traer la lista de tus videos. Geeper lo vuelve a intentar solo en unos segundos.
+          <details className="mt-1 text-xs text-tenue"><summary className="cursor-pointer">Detalle técnico</summary>{error}</details>
+        </Aviso>
+      )}
       {aviso && <p className="mb-3 text-sm text-amber-200" role="status">{aviso}</p>}
+      {!datos && !error && <Cargando>Cargando tus videos…</Cargando>}
       {proyectos && proyectos.length === 0 && (
         <div className="tarjeta p-6 text-center text-tenue">
-          Todavía no hay proyectos. <Link className="text-acento underline" href="/nuevo">Crea el primero</Link>.
+          <p>Todavía no tienes videos.</p>
+          <p className="mt-1">Eliges un tema y Geeper arma el video por ti. <Link className="text-acento underline" href="/nuevo">Haz el primero</Link>.</p>
         </div>
       )}
-      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {proyectos?.map((p) => {
+      {proyectos && proyectos.length > 0 && <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {proyectos.map((p) => {
           const t = p.trabajos[0];
           const activo = t && (t.estado === "corriendo" || t.estado === "pendiente");
           const r = p.renders[0];
@@ -68,19 +84,19 @@ export function ListaProyectos() {
                   <Estado valor={p.estado} />
                 </div>
                 <p className="text-xs text-tenue">
-                  {p.formato} · {p.plantilla} · v{p.versionActual}
+                  {nombreFormato(p.formato)}
                   {p.lote ? ` · ${p.lote.nombre}` : ""}
                 </p>
                 {activo && (
                   <div className="mt-3 space-y-1">
-                    <p className="truncate text-xs text-sky-200">{t.estado === "pendiente" ? "En cola" : t.etapa}</p>
-                    <Barra valor={t.progreso} />
+                    <p className="truncate text-xs text-sky-200">{t.estado === "pendiente" ? "En la fila, esperando su turno" : t.etapa}</p>
+                    <Barra valor={t.progreso} etiqueta={`Avance de «${p.nombre}»`} />
                   </div>
                 )}
                 {!activo && t && (t.estado === "fallido" || t.estado === "interrumpido") && (
-                  <p className="mt-3 text-xs text-amber-300">Último trabajo {t.estado}: ábrelo para ver el log y relanzarlo.</p>
+                  <p className="mt-3 text-xs text-amber-300">{t.estado === "fallido" ? "No se pudo terminar" : "Se cortó a la mitad"}: ábrelo para ver qué pasó y volver a intentarlo.</p>
                 )}
-                {r && <p className="mt-3 text-xs text-tenue">Último render: <Estado valor={r.estado} /></p>}
+                {r && <p className="mt-3 text-xs text-tenue">Último video: {VIDEO[r.estado] ?? r.estado}</p>}
               </Link>
               <button type="button" className="absolute bottom-3 right-3 rounded px-2 py-1 text-xs text-tenue hover:bg-red-950 hover:text-red-200 disabled:opacity-50"
                 disabled={borrando === p.id || activo} title={activo ? "Tiene un trabajo en curso: espera o cancélalo en Trabajos" : undefined}
@@ -90,7 +106,7 @@ export function ListaProyectos() {
             </li>
           );
         })}
-      </ul>
+      </ul>}
     </section>
   );
 }

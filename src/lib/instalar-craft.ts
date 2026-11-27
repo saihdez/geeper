@@ -32,6 +32,12 @@ export function sumaEsperada(sumas: string, archivo: string): string | null {
   return null;
 }
 
+/** Estado de «descargando» con lo que va y cuánto falta, en MB (función pura). */
+export function estadoDescarga(bajado: number, total: number): EstadoInstalacion {
+  const mb = (n: number) => Math.round(n / 1e6);
+  return { fase: "descargando", progreso: total ? Math.min(1, bajado / total) : 0, detalle: `Descargando ${mb(bajado)}${total ? ` de ${mb(total)}` : ""} MB…` };
+}
+
 export interface AppCraft {
   /** Nombre del repo y de la carpeta (p. ej. «vectorcraft»). */
   app: string;
@@ -62,16 +68,30 @@ export interface AppCraft {
 /**
  * Descarga con reintentos: GitHub a veces tarda en conectar con su servidor de archivos (Node corta con
  * «fetch failed») o corta a mitad («terminated»). Tres intentos con pausa creciente y, si no, curl, que
- * espera más. Un error de HTTP no se reintenta.
+ * espera más. Un error de HTTP no se reintenta. `alAvanzar` recibe lo bajado y el total (0 si GitHub
+ * no lo dice) a cada trozo, para mostrar «Descargando 40 de 158 MB» (TER-03); en un reintento vuelve a 0.
  */
-export async function bajar(url: string, intentos = 3, espera = 2000): Promise<Response> {
+export async function bajar(url: string, intentos = 3, espera = 2000, alAvanzar?: (bajado: number, total: number) => void): Promise<Response> {
   for (let i = 1; ; i++) {
     try {
       // Se baja entero aquí para que un corte a mitad de la descarga también se reintente.
       const r = await fetch(url);
       if (!r.ok) return r;
-      const datos = Buffer.from(await r.arrayBuffer());
-      return new Response(datos, { status: r.status, headers: { "content-length": String(datos.length) } });
+      const total = Number(r.headers.get("content-length")) || 0;
+      let datos: Buffer;
+      if (!r.body) datos = Buffer.from(await r.arrayBuffer());
+      else {
+        const partes: Uint8Array[] = [];
+        let bajado = 0;
+        alAvanzar?.(0, total);
+        for await (const parte of r.body as unknown as AsyncIterable<Uint8Array>) {
+          partes.push(parte);
+          bajado += parte.length;
+          alAvanzar?.(bajado, total);
+        }
+        datos = Buffer.concat(partes);
+      }
+      return new Response(new Uint8Array(datos), { status: r.status, headers: { "content-length": String(datos.length) } });
     } catch (e) {
       if (i < intentos) {
         await new Promise((r) => setTimeout(r, espera * i));
@@ -85,6 +105,7 @@ export async function bajar(url: string, intentos = 3, espera = 2000): Promise<R
         const r = await correr("curl", ["-fsSL", "--retry", "3", "--connect-timeout", "90", "--max-time", "1800", "-o", destino, url], { permitirFallo: true, timeout: 1_900_000 });
         if (r.codigo !== 0) throw new Error(`No se pudo conectar con GitHub (${e instanceof Error ? e.message : String(e)}). Revisa la conexión y vuelve a intentar.`);
         const datos = await fs.readFile(destino);
+        alAvanzar?.(datos.length, datos.length);
         return new Response(datos, { headers: { "content-length": String(datos.length) } });
       } finally {
         await fs.rm(tmp, { recursive: true, force: true });
@@ -190,19 +211,14 @@ export function crearInstalador(c: AppCraft) {
       }
       if (!esperada) throw new Error("La release no publica la suma de ese archivo");
 
-      const r = await bajar(`${base}/${tarball}`);
+      const r = await bajar(`${base}/${tarball}`, 3, 2000, (bajado, total) => {
+        estado = estadoDescarga(bajado, total);
+      });
       if (!r.ok || !r.body) throw new Error(`El servidor respondió ${r.status} al descargar`);
-      const total = Number(r.headers.get("content-length")) || 0;
       const hash = createHash("sha256");
-      let bajado = 0;
       const archivo = path.join(tmp, tarball);
       const cuerpo = Readable.fromWeb(r.body as import("node:stream/web").ReadableStream<Uint8Array>);
-      cuerpo.on("data", (d: Buffer) => {
-        hash.update(d);
-        bajado += d.length;
-        const mb = (n: number) => Math.round(n / 1e6);
-        estado = { fase: "descargando", progreso: total ? bajado / total : 0, detalle: `Descargando ${mb(bajado)}${total ? ` de ${mb(total)}` : ""} MB…` };
-      });
+      cuerpo.on("data", (d: Buffer) => hash.update(d));
       await pipeline(cuerpo, createWriteStream(archivo));
 
       estado = { fase: "verificando", progreso: 1, detalle: "Verificando que el archivo sea el oficial…" };

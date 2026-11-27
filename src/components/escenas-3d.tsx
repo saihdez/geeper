@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { Aviso, Barra, archivo, pedir, postJson, useSondeo } from "./comun";
+import { Aviso, AvisoTarjeta, Barra, LineaFalta, archivo, faltanConGuardar, pedir, postJson, useGuardeAntes, useSondeo } from "./comun";
 import { Escuchar } from "./elegir-voz";
 import {
   CALIDADES_3D, COLORES_LOGO, DURACION_3D, ESTILOS_3D, FONDOS_3D, FONDOS_SALIDA_3D, FORMATOS_3D, INFO_PLANTILLAS, MAX_DATOS_3D, MAX_DIALOGO, MOVIMIENTOS_3D, PALETAS_3D,
@@ -294,6 +294,7 @@ export function CrearEscena3d({ destino, alCrear }: { destino?: Destino3d; alCre
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [listo, setListo] = useState(false);
+  const guarde = useGuardeAntes();
   const { datos } = useEscenas3d(30_000);
   const info = e.plantilla ? INFO_PLANTILLAS[e.plantilla] : null;
   const poner = (x: Partial<Estado3d>) => setE((v) => ({ ...v, ...x }));
@@ -539,7 +540,7 @@ export function CrearEscena3d({ destino, alCrear }: { destino?: Destino3d; alCre
             <div className="space-y-1"><p className="text-sm">¿Video o imagen?</p><Opciones valor={e.salida} opciones={SALIDAS_3D} cambiar={(v) => poner({ salida: v })} columnas={2} /></div>
           )}
           {!destino && <Opciones valor={e.formato} opciones={FORMATOS_3D} cambiar={(v) => poner({ formato: v })} />}
-          {destino && <p className="text-xs text-tenue">Se hace del mismo formato que tu video.</p>}
+          {destino && <p className="text-xs text-tenue">Se hace con la misma forma que tu video.</p>}
           {e.plantilla === "personaje" && <p className="text-xs text-tenue">Dura lo que dura la voz{e.modoVoz === "escribir" && e.dialogo.trim() ? ` (unos ${segundosDe(e.dialogo)} segundos)` : ""}.</p>}
           {e.salida === "video" && e.plantilla !== "personaje" && (
             <label className="block space-y-1">
@@ -556,11 +557,12 @@ export function CrearEscena3d({ destino, alCrear }: { destino?: Destino3d; alCre
 
       {info && (
         <div className="space-y-2">
-          <button type="button" className="boton boton-primario" disabled={!!falta || enviando} onClick={() => void crear()}>
+          <AvisoTarjeta g={guarde}>Blender usa la tarjeta de video. Si está ocupada, espera su turno sola.</AvisoTarjeta>
+          <button type="button" className="boton boton-primario" disabled={!!falta || enviando || !guarde.guardado}
+            aria-describedby={falta || !guarde.guardado ? guarde.idFalta : undefined} onClick={() => void crear()}>
             {enviando ? "Enviando…" : destino ? `Crear y poner en la escena ${destino.numero}` : e.salida === "imagen" ? "Crear mi imagen 3D" : "Crear mi escena 3D"}
           </button>
-          {falta && <p className="text-xs text-amber-200">{falta}</p>}
-          {!falta && <p className="text-xs text-tenue">Usa la tarjeta de video. Si está ocupada, espera su turno sola.</p>}
+          <LineaFalta id={guarde.idFalta} faltan={faltanConGuardar(guarde, falta ? [falta] : [])} />
           {error && <Aviso tipo="error">{error}</Aviso>}
         </div>
       )}

@@ -65,8 +65,8 @@ export function ElegirVoz({ actual, idioma, usar, ocupado }: { actual: { motor: 
       </div>
       {aviso && <Aviso tipo="ok">{aviso}</Aviso>}
       <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {(datos?.kokoro ?? []).map((k) => tarjeta(k.voz, k.nombre, `${k.detalle} · rápida, no usa la tarjeta gráfica`, <Escuchar kokoro={k.voz} />, "kokoro", k.voz))}
-        {(datos?.guardadas ?? []).map((g) => tarjeta(g.id, g.nombre, `Creada por ti: «${g.descripcion}» · más natural, usa la tarjeta gráfica`, <Escuchar ruta={g.muestra} />, "voxcpm", g.id))}
+        {(datos?.kokoro ?? []).map((k) => tarjeta(k.voz, k.nombre, `${k.detalle} · rápida, no usa la tarjeta de video`, <Escuchar kokoro={k.voz} />, "kokoro", k.voz))}
+        {(datos?.guardadas ?? []).map((g) => tarjeta(g.id, g.nombre, `Creada por ti: «${g.descripcion}» · más natural, usa la tarjeta de video`, <Escuchar ruta={g.muestra} />, "voxcpm", g.id))}
       </ul>
 
       {datos && (abierto ? (

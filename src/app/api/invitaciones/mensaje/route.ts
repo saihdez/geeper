@@ -3,7 +3,7 @@ import { tomarGpu } from "@/lib/gpu";
 import { json, manejar } from "@/lib/http";
 import { Tipo } from "@/lib/invitaciones/esquema";
 import { leerMensajes, promptMensaje } from "@/lib/invitaciones/mensaje";
-import { preguntarLlama } from "@/lib/llm-local";
+import { preguntarLlama } from "@/lib/llama-local";
 
 export const dynamic = "force-dynamic";
 

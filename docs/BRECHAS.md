@@ -10,7 +10,7 @@
 | E1 vista previa en vivo | **Hecho** en `feat/m5-publicar-redes` (player de Hyperframes) |
 | E2 edición por texto | **Hecho**: recortar y restaurar palabras, acortar silencios, quitar muletillas |
 | E5 confianza de la alineación | **Hecho**: confianza por palabra (acuerdo con whisper, silencios, duración) y regla de QC |
-| G3 música | **Parcial**: pulsos (`hyperframes beats`) y música alineada a los cortes; efectos de sonido en pistas libres. Falta la biblioteca con licencia clara |
+| G3 música | **Parcial**: pulsos (`hyperframes beats`) y música alineada a los cortes; **efectos de sonido generados** con MOSS-SoundEffect (Apache 2.0) en una biblioteca compartida, en 3 pasos desde el editor (2026-11-20, DECISIONES §25). **Música y 88 efectos libres (CC0)** que vienen con Geeper, sin tarjeta de video (`audio-libre/`, 2026-11-27, HEREDADO «Doory»). El ánimo sale del tema y cada video cambia de canción escuchándolas («Música»); «Poner sonidos solos» en un clic. Falta: música de más ánimos y largos |
 | Q1 licencias que bloquean | **Hecho** (`comercial: true`) |
 | Q2 pico real y zonas por plataforma | **Hecho**. Siguen pendientes el contraste WCAG y la decisión de 17 car./s |
 | Q4 máster de archivo | **Hecho** (`entrega.master`: MOV calidad alta) |
@@ -18,8 +18,9 @@
 | Efectos y transiciones de EffectCraft | **Hecho** (2026-11-19): barrido, radial, iris y persianas; tinte, niveles, viñeta, grano y desenfoque; modos de fusión; Easy Ease. Ver EFFECTCRAFT.md |
 | G5 ingesta de material largo | **Hecho** (2026-11-19): `scripts/momentos.ts` + `scripts/importar-clip.ts` y la página /clips, visual en sincro con la voz, regla de QC de clips (DECISIONES §21) |
 | E4 reencuadre por cara | **Hecho parcial**: punto fijo por clip con YuNet para todo material (HEREDADO.md, LightCraft) y reencuadre react/cara para clips 9:16 (`py/reencuadre.py`); falta el seguimiento dinámico |
-| D1 portada y ganchos | **Hecho** (2026-11-19): portada en 3 pasos con PhotoCraft, diseños propios .psd y miniatura en YouTube (docs/PHOTOCRAFT.md); rúbrica de ganchos en la skill `geeper`. Falta descripción y hashtags con IA |
+| D1 portada y ganchos | **Hecho** (2026-11-19): portada en 3 pasos con PhotoCraft, diseños propios .psd y miniatura en YouTube (docs/PHOTOCRAFT.md); rúbrica de ganchos en la skill `geeper`; título, descripción y hashtags sugeridos con IA local en Publicar (2026-11-20) |
 | G2 voz nueva | **Hecho** (2026-11-20): elegir la voz escuchándola y crear voces nuevas describiéndolas (VoxCPM2, Apache 2.0); DECISIONES §24. Pendiente: Pocket TTS para voces nuevas sin GPU |
+| Localización | **Hecho** (2026-11-20): «Hacer una versión en otro idioma» (inglés, portugués, francés, italiano) con Gemma local + Kokoro + whisper; DECISIONES §23 |
 | E3, G1, G4, Q3, D2, D3, P1, P2 | Pendientes |
 
 ## 0. Qué significa «el mejor» aquí
@@ -108,7 +109,8 @@ un clic y medido en la GPU (ver HEREDADO.md «Open-Generative-AI»). Después:
 
 **G5. Ingesta de material propio largo** (directos, grabaciones de pantalla, demos de producto) →
 clips con puntaje de momentos. El plan completo está en HEREDADO.md («clips de directos»). El flujo
-«Lanzamiento de producto» con `brag` (F4) también sigue sin integrar.
+«Lanzamiento de producto» (F4): hecho el 2026-11-20 «Nuevo → Desde una página web» (demo de la página con voz,
+subtítulos y QC; idea de cap-demo de Cap, ver HEREDADO.md «Cap»); falta que `brag` escriba el texto de la voz.
 
 ### Calidad
 

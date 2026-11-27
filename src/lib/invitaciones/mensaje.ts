@@ -1,4 +1,4 @@
-/** «Escríbelo por mí»: tres mensajes para la invitación con el modelo local (llm-local / Ollama). */
+/** «Escríbelo por mí»: tres mensajes para la invitación con el modelo local (llama-local / Ollama). */
 import { TIPOS_INFO } from "./catalogo";
 import type { Tipo } from "./esquema";
 

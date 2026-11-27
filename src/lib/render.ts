@@ -1,5 +1,5 @@
 /**
- * Render de entrega de una versión: mezcla → compilar → hyperframes check → render → loudnorm
+ * Render de entrega de una versión: mezcla → compilar → hyperframes check y render (a la vez, REN-12) → loudnorm
  * (corrige) → QC (mide). Cada tramo es un paso con manifiesto: si se corta, al relanzar se saltan
  * los terminados.
  */
@@ -7,8 +7,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { sha256Archivo } from "./archivos";
 import { db } from "./db";
+import { exigirEspacio, type OpcionesEspacio } from "./espacio";
 import { compilar, escribirProyectoHf, VERSION_COMPILADOR } from "./compilador";
 import { conColor, prepararColor } from "./looks";
+import { prepararFondos } from "./fondos";
 import { ampliaciones } from "./nitidez";
 import { resumirConfianza } from "./confianza";
 import { pistasLibres, validarProyecto, type Proyecto } from "./esquema";
@@ -17,16 +19,28 @@ import { tomarGpu } from "./gpu";
 import { aSrt, duracionEscenas, escenasEnLinea, opcionesDe } from "./linea";
 import { huellaFfmpeg, probar } from "./media";
 import { mezclar } from "./mezcla";
-import { paso, type Contexto } from "./pasos";
+import { paso, pasoQueEnvuelve, type Contexto } from "./pasos";
+import { entradasCaptura } from "./render-entradas";
 import { obtenerPlantilla } from "./plantillas";
 import { cortesDe, medirRitmo, type Ritmo } from "./pulsos";
 import { asegurarPicoReal, correrQc, duplicadosEsperados, ENTREGA, normalizarAudio, TOPES_PICO, type InformeQc } from "./qc";
 import { HYPERFRAMES_VERSION, dirProyecto } from "./rutas";
 import { correrHf } from "./hyperframes";
+import { leerCheck, type ResumenCheck } from "./render-check";
+import { checkALaVez, checkYRender } from "./render-paralelo";
+import { banderasRender, hayNvidia, renderConRespaldo } from "./render-gpu";
 import { SISTEMA } from "./plataforma";
 import { origenClip, reglaClip } from "./clips";
 
 const ENV_HF = { HYPERFRAMES_NO_TELEMETRY: "1", DO_NOT_TRACK: "1" };
+
+/** Lo que puede ocupar el máster MOV en calidad alta (aprox. 40 MB por segundo, mínimo 2,1 GB). */
+export const bytesMaster = (segundos: number) => Math.max(2.1e9, Math.ceil(segundos * 40e6));
+
+/** Antes del máster (DSC-05): si no cabe con la reserva, se dice en palabras simples y no se empieza. */
+export async function exigirEspacioMaster(dir: string, segundos: number, o?: OpcionesEspacio) {
+  return exigirEspacio(dir, bytesMaster(segundos), "crear el video de archivo en calidad alta", o);
+}
 
 /** Cortes en pulso según los marcadores de pulso (ya en tiempo de la línea final); null sin pulsos. */
 export function ritmoDe(p: Proyecto): Ritmo | null {
@@ -41,23 +55,6 @@ export interface ResultadoRender {
   aprobado: boolean;
   gpu: boolean;
   segundos: number;
-}
-
-interface ResumenCheck {
-  ok: boolean;
-  errores: number;
-  avisos: number;
-  resumen: string;
-}
-
-function contarHallazgos(v: unknown, acc: { errores: string[]; avisos: number }) {
-  if (Array.isArray(v)) v.forEach((x) => contarHallazgos(x, acc));
-  else if (v && typeof v === "object") {
-    const o = v as Record<string, unknown>;
-    if (o.severity === "error") acc.errores.push(`${String(o.code ?? "")}: ${String(o.message ?? "")}`.slice(0, 300));
-    else if (o.severity === "warning") acc.avisos++;
-    Object.values(o).forEach((x) => contarHallazgos(x, acc));
-  }
 }
 
 export async function versionDeProyecto(proyectoId: string, numero?: number): Promise<{ numero: number; p: Proyecto }> {
@@ -115,78 +112,55 @@ export async function renderEntregar(
   // El look de color del canal y la mejora automática se hornean en copias de los clips (src/lib/looks.ts).
   if (conColor(plantilla.datos.color)) await ctx.etapa("Aplicando el color del canal", 0.12);
   const sustitutos = await prepararColor(p, dir, plantilla.datos.color, ctx.log);
-  const comp = compilar(p, plantilla.datos, rutaMezcla, dir, sustitutos);
+  // REN-09: el fondo borroso de los clips contenidos, horneado con ffmpeg (Chrome no lo desenfoca al capturar).
+  const fondos = await prepararFondos(p, dir, sustitutos, m.W, m.H, ctx.log);
+  const comp = compilar(p, plantilla.datos, rutaMezcla, dir, sustitutos, fondos);
   const dirBuild = path.join(dir, "build", `hf-${p.formato.replace(":", "x")}`);
   await escribirProyectoHf(dirBuild, comp);
   const indexHtml = path.join(dirBuild, "index.html");
   const fuera = comp.cajas.filter((c) => !c.dentro);
   if (fuera.length) ctx.log(`Aviso: fuera de la banda segura: ${fuera.map((c) => c.nombre).join(", ")}`);
 
-  // 3. hyperframes check.
-  await ctx.etapa("hyperframes check", 0.15);
-  const rutaCheck = path.join(dir, "build", `check-${p.formato.replace(":", "x")}.json`);
-  const { resultado: check } = await paso<ResumenCheck>(
-    ctx,
-    "hyperframes.check",
-    { archivos: [indexHtml, ...Object.values(comp.archivos)], params: { formato: p.formato }, motor: huella },
-    [rutaCheck],
-    async ([tmp]) => {
-      const r = await correrHf(["check", "--json", "--no-cache", "--no-craft"], {
-        cwd: dirBuild, env: ENV_HF, permitirFallo: true, signal: ctx.signal, timeout: 15 * 60_000,
-      });
-      await fs.writeFile(tmp!, r.stdout || "{}");
-      let j: { ok?: boolean } = {};
-      try {
-        j = JSON.parse(r.stdout) as { ok?: boolean };
-      } catch {
-        /* salida no JSON */
-      }
-      const acc = { errores: [] as string[], avisos: 0 };
-      contarHallazgos(j, acc);
-      const res = { ok: j.ok === true, errores: acc.errores.length, avisos: acc.avisos, resumen: acc.errores.slice(0, 5).join("\n") };
-      ctx.log(`check: ${res.ok ? "ok" : "con problemas"}, ${res.errores} errores, ${res.avisos} avisos`);
-      return res;
-    },
-  );
-  if (check.errores > 0) throw new Error(`hyperframes check encontró ${check.errores} errores:\n${check.resumen}`);
-
-  // 4. Render (NVENC si la GPU está libre; si no, CPU para no esperar).
-  await ctx.etapa("Renderizando", 0.2);
-  const crudo = path.join(dir, "build", `crudo-${m.perfil}.mp4`);
-  let gpu = false;
-  const rr = await paso(
-    ctx,
-    "hyperframes.render",
-    { archivos: [indexHtml, ...Object.values(comp.archivos)], params: { calidad: "delivery", fps: p.fps }, motor: huella },
-    [crudo],
-    async ([tmp]) => {
-      // NVENC sólo con NVIDIA: en macOS el render va por CPU (VideoToolbox queda para cuando se pruebe en un Mac).
-      const candado = SISTEMA === "mac" ? null : await tomarGpu(`render ${fila.slug}`, { esperar: false, signal: ctx.signal });
-      gpu = candado !== null;
-      ctx.log(gpu ? "GPU libre: render con NVENC (gpu-lock tomado)" : SISTEMA === "mac" ? "macOS: render con CPU (libx264)" : "GPU ocupada: render con CPU (libx264), sin esperar");
-      try {
-        const args = ["render", "--output", tmp!, "--quality", "delivery", "--fps", String(p.fps), "--quiet"];
-        if (gpu) args.push("--gpu");
-        else args.push("--no-browser-gpu");
-        await correrHf(args, { cwd: dirBuild, env: ENV_HF, log: ctx.log, signal: ctx.signal, timeout: 60 * 60_000 });
-      } finally {
-        candado?.liberar();
-      }
-      return { gpu };
-    },
-  );
-  gpu = rr.resultado.gpu;
-
-  // 5. Entrega: loudnorm en dos pasadas y, en la misma pasada, la codificación liviana del video (ENTREGA).
-  await ctx.etapa("Normalizando sonoridad", 0.8);
+  // 3 a 5. check + render + entrega, envueltos en «entrega.final» (REN-08): volver a una versión que
+  // ya se entregó reutiliza su MP4 aunque el crudo se haya sobrescrito con otro render.
   const base = `v${numero}-${m.perfil}`;
   const final = path.join(dir, "renders", `${base}.mp4`);
-  await paso(ctx, "entrega.loudnorm", { archivos: [crudo], params: { lufs: -14, tp: -2, entrega: ENTREGA, fps: p.fps, pico: TOPES_PICO }, motor: huella }, [final], async ([tmp]) => {
-    const medido = await normalizarAudio(crudo, tmp!, ctx.log, p.fps);
-    // El AAC sube el pico real: si pasa de −1 dBTP, limitador a 192 kHz y otra vez (hasta 4).
-    const pico = await asegurarPicoReal(tmp!, ctx.log);
-    return { antes: medido, pico };
-  });
+  const crudo = path.join(dir, "build", `crudo-${m.perfil}.mp4`);
+  const archivosComp = [indexHtml, ...Object.values(comp.archivos)];
+  const { resultado: entregado } = await pasoQueEnvuelve(
+    ctx,
+    "entrega.final",
+    {
+      archivos: archivosComp,
+      params: { formato: p.formato, perfil: m.perfil, calidad: "delivery", fps: p.fps, lufs: -14, tp: -2, entrega: ENTREGA, pico: TOPES_PICO },
+      motor: `${huella}|entrega-final-v1`,
+    },
+    final,
+    async () => {
+      // REN-12: check y render a la vez; el check va en su propia copia (enlaces duros) para no
+      // compartir el estado `.hyperframes` con el render. Si el check trae errores, corta el render.
+      const aLaVez = checkALaVez();
+      const dirCheck = aLaVez ? `${dirBuild}-check` : dirBuild;
+      if (aLaVez) await escribirProyectoHf(dirCheck, comp);
+      const { check, render: gpu } = await checkYRender(
+        (signal) => revisarHf({ ...ctx, signal }, dir, dirCheck, p.formato, archivosComp, huella),
+        (signal) => renderCrudo({ ...ctx, signal }, fila.slug, dirBuild, crudo, p.fps, entradasCaptura(archivosComp, rutaMezcla), huella),
+        { signal: ctx.signal, aLaVez },
+      );
+      // 5. Entrega: loudnorm en dos pasadas y, en la misma pasada, la codificación liviana del video (ENTREGA).
+      // El sonido sale de la mezcla en WAV, no del crudo (REN-07).
+      await ctx.etapa("Normalizando sonoridad", 0.8);
+      await paso(ctx, "entrega.loudnorm", { archivos: [crudo, rutaMezcla], params: { lufs: -14, tp: -2, entrega: ENTREGA, fps: p.fps, pico: TOPES_PICO, audio: "mezcla" }, motor: huella }, [final], async ([tmp]) => {
+        const medido = await normalizarAudio(crudo, tmp!, ctx.log, p.fps, rutaMezcla);
+        // El AAC sube el pico real: si pasa de −1 dBTP, limitador a 192 kHz y otra vez (hasta 4), partiendo
+        // otra vez de la mezcla en WAV para no pasar el sonido dos veces por AAC (REN-07).
+        const pico = await asegurarPicoReal(tmp!, ctx.log, { audio: rutaMezcla, medido });
+        return { antes: medido, pico };
+      });
+      return { check, gpu };
+    },
+  );
+  const { check, gpu } = entregado;
 
   // 5 bis. Máster de archivo (si el proyecto lo pide): el mismo proyecto Hyperframes en MOV, calidad alta.
   let master: string | undefined;
@@ -200,9 +174,11 @@ export async function renderEntregar(
       [master],
       async ([tmp]) => {
         // Sin GPU: el máster nunca compite con una generación ni la espera.
+        await exigirEspacioMaster(path.dirname(tmp!), comp.total);
         const salida = `${tmp!}.mov`;
-        await correrHf(["render", "--output", salida, "--format", "mov", "--quality", "high", "--fps", String(p.fps), "--quiet", "--no-browser-gpu"], {
-          cwd: dirBuild, env: ENV_HF, log: ctx.log, signal: ctx.signal, timeout: 60 * 60_000,
+        const b = banderasRender(false, SISTEMA);
+        await correrHf(["render", "--output", salida, "--format", "mov", "--quality", "high", "--fps", String(p.fps), "--quiet", ...b.args], {
+          cwd: dirBuild, env: { ...ENV_HF, ...b.env }, log: ctx.log, signal: ctx.signal, timeout: 60 * 60_000,
         });
         await fs.rename(salida, tmp!);
         const info = await probar(tmp!);
@@ -237,6 +213,7 @@ export async function renderEntregar(
       check,
       extras: [reglaClip(p, comp.inicioTarjeta)].filter((r) => r !== null),
       ritmoSubtitulosAviso: origenClip(p) !== null,
+      duplicadosAviso: origenClip(p) !== null,
       duplicadosEsperados: await repetidosDelMaterial(p, dir),
     },
     path.join(dir, "renders", `${base}-hoja`),
@@ -273,6 +250,69 @@ export async function renderEntregar(
   await db.proyecto.update({ where: { id: proyectoId }, data: { estado: informe.aprobado ? "entregado" : "qc" } });
   ctx.log(`Render ${informe.aprobado ? "APROBADO" : "RECHAZADO por QC"}: ${final} (${segundos.toFixed(1)} s)`);
   return { renderId: render.id, ruta: final, aprobado: informe.aprobado, gpu, segundos };
+}
+
+type CtxRender = Contexto & { etapa: (e: string, progreso: number) => Promise<void>; signal?: AbortSignal };
+
+/** 3. hyperframes check; lanza si encuentra errores. */
+async function revisarHf(ctx: CtxRender, dir: string, dirBuild: string, formato: string, archivos: string[], huella: string): Promise<ResumenCheck> {
+  await ctx.etapa("hyperframes check", 0.15);
+  const rutaCheck = path.join(dir, "build", `check-${formato.replace(":", "x")}.json`);
+  const { resultado: check } = await paso<ResumenCheck>(
+    ctx,
+    "hyperframes.check",
+    { archivos, params: { formato }, motor: huella },
+    [rutaCheck],
+    async ([tmp]) => {
+      const r = await correrHf(["check", "--json", "--no-cache", "--no-craft"], {
+        cwd: dirBuild, env: ENV_HF, permitirFallo: true, signal: ctx.signal, timeout: 15 * 60_000,
+      });
+      // WRK-12: sin JSON con `ok` booleano se lanza aquí dentro, para que no se guarde el manifiesto.
+      if (r.codigo !== 0) ctx.log(`hyperframes check salió con código ${r.codigo}`);
+      const res = leerCheck(r.stdout);
+      await fs.writeFile(tmp!, r.stdout);
+      ctx.log(`check: ${res.ok ? "ok" : "con problemas"}, ${res.errores} errores, ${res.avisos} avisos`);
+      return res;
+    },
+  );
+  if (check.errores > 0) throw new Error(`hyperframes check encontró ${check.errores} errores:\n${check.resumen}`);
+  return check;
+}
+
+/** 4. Render del crudo (NVENC si la GPU está libre; si no, CPU para no esperar). Devuelve si usó la GPU. */
+async function renderCrudo(ctx: CtxRender, slug: string, dirBuild: string, crudo: string, fps: number, archivos: string[], huella: string): Promise<boolean> {
+  await ctx.etapa("Renderizando", 0.2);
+  const rr = await paso(
+    ctx,
+    "hyperframes.render",
+    { archivos, params: { calidad: "delivery", fps, audio: "aparte" }, motor: huella },
+    [crudo],
+    async ([tmp]) => {
+      // NVENC sólo con NVIDIA: en macOS el render va por CPU (VideoToolbox queda para cuando se pruebe en un Mac).
+      // Con la detección de REN-03 (por defecto en Windows) tampoco se pide en un equipo sin NVIDIA (render-gpu.ts).
+      const nvidia = await hayNvidia(SISTEMA);
+      const candado = !nvidia ? null : await tomarGpu(`render ${slug}`, { esperar: false, signal: ctx.signal });
+      let suelto = false;
+      const soltar = () => {
+        if (suelto) return;
+        suelto = true;
+        candado?.liberar();
+      };
+      let gpu = candado !== null;
+      ctx.log(gpu ? "GPU libre: render con NVENC (gpu-lock tomado)" : SISTEMA === "mac" ? "macOS: render con CPU (libx264)" : !nvidia ? "Sin tarjeta NVIDIA: render con CPU (libx264)" : "GPU ocupada: render con CPU (libx264), sin esperar");
+      try {
+        gpu = await renderConRespaldo(gpu, async (conGpu) => {
+          const b = banderasRender(conGpu, SISTEMA);
+          const args = ["render", "--output", tmp!, "--quality", "delivery", "--fps", String(fps), "--quiet", ...b.args];
+          await correrHf(args, { cwd: dirBuild, env: { ...ENV_HF, ...b.env }, log: ctx.log, signal: ctx.signal, timeout: 60 * 60_000 });
+        }, ctx.log, process.env, ctx.signal, soltar);
+      } finally {
+        soltar();
+      }
+      return { gpu };
+    },
+  );
+  return rr.resultado.gpu;
 }
 
 /** Fotogramas repetidos que ya trae el material (fuentes de pocos fps, imágenes fijas): ver `duplicadosEsperados`. */

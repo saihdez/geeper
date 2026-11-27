@@ -24,7 +24,8 @@ import { paso, type Contexto } from "./pasos";
 import type { DatosPlantilla } from "./plantillas";
 import { detectar, hornear } from "./reencuadre";
 import { segmentar } from "./segmentar";
-import { MODELO_WHISPER, transcribir } from "./voz";
+import { MODELO_WHISPER, motorTranscripcion, transcribir } from "./voz";
+import { FILTRO_VOZ, limpiarVoz, VERSION_FILTRO_VOZ } from "./voz-limpia";
 
 export const ENCUADRES = ["cubrir", "contener", "react", "cara"] as const;
 export type EncuadreClip = (typeof ENCUADRES)[number];
@@ -52,17 +53,22 @@ export interface DatosClip {
   gancho?: string;
   /** Si hay permiso o campaña: texto que lo dice. Sin esto, la licencia queda «revisar». */
   permiso?: string;
+  /** Nombres propios para guiar a whisper (whisper.ts): «GTA VI, Lucia, Vice City». */
+  glosario?: string;
   campania?: Campania;
+  /** «Mejorar la voz» (voz-limpia.ts): quita ruido de fondo y empareja el volumen. Por defecto, sí. */
+  mejorarVoz?: boolean;
 }
 
 /** Palabras del tramo (tiempo del asset de voz) con su confianza; paso con manifiesto. */
-async function palabrasDelTramo(ctx: Contexto, voz: string, idioma: string): Promise<Palabra[]> {
+async function palabrasDelTramo(ctx: Contexto, voz: string, idioma: string, glosario?: string): Promise<Palabra[]> {
   const salida = path.join(ctx.dir, "assets", "palabras-voz-tramo.json");
   const pesos = await etiquetaPesos(`whisper-${MODELO_WHISPER}`);
-  await paso(ctx, "clip.palabras", { archivos: [voz], params: { idioma, modelo: MODELO_WHISPER }, motor: `transcribir-v1+${pesos}` }, [salida], async ([tmp]) => {
-    const w = await transcribir(voz, idioma, ctx.log);
+  const motor = `transcribir-v2+${await motorTranscripcion()}+${pesos}`;
+  await paso(ctx, "clip.palabras", { archivos: [voz], params: { idioma, modelo: MODELO_WHISPER, glosario: glosario ?? null }, motor }, [salida], async ([tmp]) => {
+    const w = await transcribir(voz, idioma, ctx.log, { glosario });
     const crudas: Palabra[] = w.map((x) => ({ texto: x.text.trim(), inicio: x.start, fin: Math.max(x.end, x.start + 0.02) })).filter((x) => x.texto);
-    const palabras = puntuarPalabras(crudas, w, await detectarSilencios(voz));
+    const palabras = puntuarPalabras(crudas, w, await detectarSilencios(voz), { probabilidad: true });
     const r = resumirConfianza([{ id: "voz", palabras }]);
     if (r.dudosas) ctx.log(`Aviso: ${r.dudosas} de ${r.medidas} palabras con tiempos dudosos (música o voces encimadas)`);
     await fs.writeFile(tmp!, JSON.stringify(palabras));
@@ -125,8 +131,18 @@ export async function importarClip(ctx: Contexto, d: DatosClip): Promise<{ versi
     resumen = `${d.encuadre} es sólo para 9:16`;
   }
 
-  // 3. Palabras del tramo.
-  const palabras = await palabrasDelTramo(ctx, rutaVoz, d.idioma);
+  // 3. Palabras del tramo (whisper oye el audio original: la limpieza no cambia los subtítulos).
+  const palabras = await palabrasDelTramo(ctx, rutaVoz, d.idioma, d.glosario);
+
+  // 3 bis. Voz mejorada: es la que suena en el video.
+  let vozFinal = rutaVoz;
+  if (d.mejorarVoz !== false) {
+    vozFinal = path.join(ctx.dir, "assets", "voz-tramo-limpia.wav");
+    await paso(ctx, "clip.voz-limpia", { archivos: [rutaVoz], params: { filtro: FILTRO_VOZ }, motor: `${VERSION_FILTRO_VOZ}+${ff}` }, [vozFinal], async ([tmp]) => {
+      await limpiarVoz(rutaVoz, tmp!, ctx.log);
+      return { filtro: FILTRO_VOZ };
+    });
+  }
 
   // 4. Assets con su procedencia.
   const licencia = d.permiso
@@ -148,12 +164,16 @@ export async function importarClip(ctx: Contexto, d: DatosClip): Promise<{ versi
     licencia,
     regenerar: { ...procedencia, encuadre, reencuadre: paramsReencuadre },
   });
-  const aVoz = await describirAsset(ctx.dir, path.relative(ctx.dir, rutaVoz), {
+  const aVoz = await describirAsset(ctx.dir, path.relative(ctx.dir, vozFinal), {
     id: "voz-tramo",
     tipo: "audio",
     source: "archivo",
     licencia,
-    regenerar: { ...procedencia, alineacion: { modelo: `whisper-${MODELO_WHISPER}`, pesos: await huellaPesos(`whisper-${MODELO_WHISPER}`) } },
+    regenerar: {
+      ...procedencia,
+      alineacion: { modelo: `whisper-${MODELO_WHISPER}`, pesos: await huellaPesos(`whisper-${MODELO_WHISPER}`) },
+      mejora: vozFinal === rutaVoz ? null : { filtro: FILTRO_VOZ, version: VERSION_FILTRO_VOZ, original: path.relative(ctx.dir, rutaVoz) },
+    },
   });
   assets[aVisual.id] = aVisual;
   assets[aVoz.id] = aVoz;

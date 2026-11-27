@@ -66,7 +66,7 @@ describe("asistente: recomendaciones", () => {
   it("traduce los fallos del QC del render al día, y los ignora si el render es viejo", () => {
     const reglas = [{ id: "subtitulos", nombre: "Subtítulos legibles", ok: false }, { id: "sonoridad", nombre: "Sonoridad", ok: true }];
     const al = recomendar(entrada(proyectoDePrueba(), { render: { versionNumero: 1, estado: "rechazado", reglas } }));
-    expect(al.find((x) => x.id === "qc-subtitulos")).toMatchObject({ prioridad: "bloquea", area: "subtitulos", ir: "#qc" });
+    expect(al.find((x) => x.id === "qc-subtitulos")).toMatchObject({ prioridad: "bloquea", area: "subtitulos", ir: "#listo" });
     expect(al.some((x) => x.id === "qc-sonoridad")).toBe(false);
     const viejo = recomendar(entrada(proyectoDePrueba(), { versionActual: 2, render: { versionNumero: 1, estado: "rechazado", reglas } }));
     expect(viejo.some((x) => x.id.startsWith("qc-"))).toBe(false);

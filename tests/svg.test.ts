@@ -108,7 +108,7 @@ describe("ampliación de clips raster", () => {
     // Los de MPT (832×1216) cubriendo 9:16: 1,58×, pasa.
     for (const a of Object.values(p.assets)) if (a.tipo === "video") Object.assign(a, { ancho: 832, alto: 1216 });
     expect(ampliaciones(p, 1080, 1920)[0]!.factor).toBeCloseTo(1920 / 1216, 3);
-    // Con un zoom de cámara a 1,5× ya no.
+    // Con un zoom de cámara a 1.5× ya no.
     p.pistas[0]!.clips[0]!.movimiento = { desde: { escala: 1, x: 0, y: 0 }, hasta: { escala: 1.5, x: 0, y: 0 } };
     expect(ampliaciones(p, 1080, 1920)[0]!.factor).toBeGreaterThan(AMPLIACION_MAX);
   });
@@ -116,7 +116,7 @@ describe("ampliación de clips raster", () => {
   it("reglaAmpliacion avisa (no bloquea) y dice qué clip", () => {
     const r = reglaAmpliacion(ampliaciones(conLogoPng(), 1080, 1920))!;
     expect(r).toMatchObject({ id: "ampliacion", ok: false, aviso: true });
-    expect(r.detalle).toBe("Superposición a los 0,0 s: se estira 4,0× y se verá borrosa. Cámbiala por una de al menos 540×960 px, o por un SVG.");
+    expect(r.detalle).toBe("Superposición a los 0.0 s: se estira 4.0× y se verá borrosa. Cámbiala por una de al menos 540×960 px, o por un SVG.");
     expect(reglaAmpliacion(ampliaciones(proyectoDePrueba(), 1080, 1920))).toMatchObject({ ok: true });
     expect(reglaAmpliacion([])).toBeNull();
   });
@@ -127,6 +127,6 @@ describe("nitidez en palabras", () => {
     const p = proyectoDePrueba();
     for (const a of Object.values(p.assets)) if (a.tipo === "video") Object.assign(a, { ancho: 270, alto: 480 });
     const r = reglaAmpliacion(ampliaciones(p, 1080, 1920))!;
-    expect(r.detalle?.split("\n")[0]).toMatch(/^Escena 1: se estira 4,0× y se verá borrosa/);
+    expect(r.detalle?.split("\n")[0]).toMatch(/^Escena 1: se estira 4.0× y se verá borrosa/);
   });
 });

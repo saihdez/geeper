@@ -18,6 +18,7 @@ import type { Proyecto } from "./esquema";
 import { ENTRADA, escenasEnLinea } from "./linea";
 import { generarPresentadores, MAX_SEGUNDOS, type ContextoPresentador, type OpcionesPresentador } from "./presentador";
 import { regenerarVoz } from "./regenerar";
+import { leerGuardado } from "./almacen";
 import { versionDeProyecto } from "./render";
 import { segundosTomasJuntas } from "./tiempo-hablar";
 
@@ -70,6 +71,8 @@ export async function protagonizarVideo(
 ): Promise<{ escenas: number[]; tomas: number }> {
   const avatar = await leerAvatar(o.avatar);
   let { p } = await versionDeProyecto(proyectoId);
+  // SEG-05: lo guardado junto con `p`; las tomas se guardan encima de lo que se edite mientras tanto.
+  let guardada = await leerGuardado(proyectoId);
 
   // 1. Su voz. Antes de las tomas: la boca sigue a la voz que va a quedar.
   if (avatar.voz && !hablaConSuVoz(p.voz, avatar.voz)) {
@@ -78,6 +81,7 @@ export async function protagonizarVideo(
     try {
       await regenerarVoz(ctx, proyectoId, conVoz, null);
       ({ p } = await versionDeProyecto(proyectoId));
+      guardada = await leerGuardado(proyectoId);
     } catch (e) {
       if (ctx.signal?.aborted) throw e;
       ctx.log(`No se pudo poner la voz de ${avatar.nombre} (${motivo(e)}); sigue con la del video.`);
@@ -107,7 +111,7 @@ export async function protagonizarVideo(
   // 3. Todas las tomas en una corrida (480p: tiempo-hablar.ts).
   await etapa({ etapa: `${avatar.nombre} hablando a cámara (${tomas.length} ${tomas.length === 1 ? "escena" : "escenas"})`, avance: 0.3 });
   try {
-    const r = await generarPresentadores(ctx, proyectoId, p, tomas.map((t) => t.op), `${avatar.nombre} protagoniza el video (${tomas.length} escenas)`);
+    const r = await generarPresentadores(ctx, proyectoId, p, tomas.map((t) => t.op), `${avatar.nombre} protagoniza el video (${tomas.length} escenas)`, guardada);
     return { escenas: r.hechas.map((i) => tomas[i]!.e.numero), tomas: tomas.length };
   } catch (err) {
     if (ctx.signal?.aborted) throw err;

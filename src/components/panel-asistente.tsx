@@ -131,7 +131,7 @@ export function PanelAsistente({ proyectoId, version, ocupado, editarVarias, ren
                 <span className={`rounded px-1.5 py-0.5 text-xs ${pr.clase}`}>{pr.texto}</span>
                 <span className="font-medium">{r.titulo}</span>
                 {r.efecto && <span className="text-xs text-emerald-300">{r.efecto}</span>}
-                {r.gpu && <span className="text-xs text-amber-300" title="Esa herramienta usa la tarjeta gráfica: va por la cola y te pide confirmar">usa la tarjeta gráfica</span>}
+                {r.gpu && <span className="text-xs text-amber-300" title="Esa herramienta usa la tarjeta de video: va por la cola y te pide confirmar">usa la tarjeta de video</span>}
               </div>
               <p className="mt-1 text-sm text-tenue">{r.porque}</p>
               {r.tecnico && (
@@ -154,12 +154,12 @@ export function PanelAsistente({ proyectoId, version, ocupado, editarVarias, ren
                     <button type="submit" className="boton boton-primario py-1 text-sm" disabled={ocupado || !texto}>Ponerlo en el video</button>
                     {esc.sugerir && (
                       <button type="button" className="boton py-1 text-sm" disabled={ideas[r.id]?.cargando}
-                        title="La IA de tu PC lee lo que dice el video y propone 3. Usa la tarjeta gráfica unos segundos."
+                        title="La IA de tu PC lee lo que dice el video y propone 3. Usa la tarjeta de video unos segundos."
                         onClick={() => void pedirIdeas(r.id, esc.sugerir!)}>
                         {ideas[r.id]?.cargando ? "Pensando… (hasta 1 min)" : ideas[r.id]?.ganchos ? "Otras 3 ideas" : "✨ Sugiéreme 3"}
                       </button>
                     )}
-                    {esc.sugerir && !ideas[r.id] && <p className="w-full text-xs text-tenue">«Sugiéreme 3» usa la IA de tu PC y la tarjeta gráfica unos segundos.</p>}
+                    {esc.sugerir && !ideas[r.id] && <p className="w-full text-xs text-tenue">«Sugiéreme 3» usa la IA de tu PC y la tarjeta de video unos segundos.</p>}
                     {ideas[r.id]?.error && <p className="w-full text-xs text-red-300" role="alert">{ideas[r.id]!.error}</p>}
                     {ideas[r.id]?.ganchos && (
                       <div className="flex w-full flex-wrap items-center gap-2 text-sm" role="group" aria-label="Ideas de gancho">

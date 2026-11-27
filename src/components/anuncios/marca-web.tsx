@@ -131,7 +131,7 @@ export function MarcaDesdeWeb({ ctx }: { ctx: Ctx }) {
               <div className="flex items-center gap-2 text-xs text-tenue">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={archivo(logo.ruta)} alt="Logo encontrado" className="h-10 max-w-40 rounded bg-white/5 object-contain p-1" />
-                Logo encontrado: va en la plantilla que crees
+                Logo encontrado: va en el estilo que crees
               </div>
             )}
             {perfil.avisos.map((a) => <Aviso key={a} tipo="info">{a}</Aviso>)}
@@ -142,13 +142,15 @@ export function MarcaDesdeWeb({ ctx }: { ctx: Ctx }) {
             <Campo etiqueta="Nombre de la marca"><input className="campo" value={eleccion.marca} maxLength={60} onChange={(e) => setEleccion((x) => ({ ...x, marca: e.target.value }))} /></Campo>
             <div className="grid grid-cols-3 gap-2">
               {ROLES.map((r) => (
-                <button key={r.id} onClick={() => setRol(r.id)} aria-pressed={rol === r.id} title={r.ayuda}
-                  className={`rounded-lg border p-2 text-left text-xs ${rol === r.id ? "border-cyan-600 bg-cyan-950/40" : "border-borde bg-[#0f131a]"}`}>
-                  <span className="mb-1 block h-6 rounded" style={{ background: eleccion[r.id] }} />
-                  {r.nombre}
-                  <input className="mt-1 w-full bg-transparent tabular-nums text-tenue outline-none" value={eleccion[r.id]} maxLength={7}
-                    onChange={(e) => setEleccion((x) => ({ ...x, [r.id]: e.target.value }))} aria-label={`${r.nombre} en hexadecimal`} />
-                </button>
+                // A11-09: el botón y el campo van como hermanos (como ControlColor): un campo dentro de un botón no se puede usar con el teclado.
+                <div key={r.id} className={`rounded-lg border p-2 text-xs ${rol === r.id ? "border-cyan-600 bg-cyan-950/40 ring-2 ring-cyan-600" : "border-borde bg-[#0f131a]"}`}>
+                  <button type="button" onClick={() => setRol(r.id)} aria-pressed={rol === r.id} title={r.ayuda} className="block w-full text-left">
+                    <span className="mb-1 block h-6 rounded" style={{ background: eleccion[r.id] }} />
+                    {r.nombre}
+                  </button>
+                  <input className="mt-1 w-full bg-transparent rounded tabular-nums text-tenue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-acento" value={eleccion[r.id]} maxLength={7}
+                    onFocus={() => setRol(r.id)} onChange={(e) => setEleccion((x) => ({ ...x, [r.id]: e.target.value }))} aria-label={`${r.nombre} en hexadecimal`} />
+                </div>
               ))}
             </div>
             <details className="text-sm">
@@ -163,18 +165,18 @@ export function MarcaDesdeWeb({ ctx }: { ctx: Ctx }) {
               <span style={{ color: "#fff" }}>Así se ven </span><span style={{ color: eleccion.activa }}>los</span><span style={{ color: "#fff" }}> subtítulos</span>
               <div className="mt-2 flex justify-center gap-2"><span className="h-2 w-16 rounded" style={{ background: eleccion.acento1 }} /><span className="h-2 w-16 rounded" style={{ background: eleccion.acento2 }} /></div>
             </div>
-            <Campo etiqueta="CTA de la tarjeta final"><input className="campo" value={eleccion.cta} maxLength={60} onChange={(e) => setEleccion((x) => ({ ...x, cta: e.target.value }))} placeholder="Deja vacío para usar el de la plantilla base" /></Campo>
+            <Campo etiqueta="CTA de la tarjeta final"><input className="campo" value={eleccion.cta} maxLength={60} onChange={(e) => setEleccion((x) => ({ ...x, cta: e.target.value }))} placeholder="Deja vacío para usar el del estilo base" /></Campo>
             {eleccion.fuente && (
               <label className="flex items-start gap-2 text-sm">
                 <input type="checkbox" className="mt-1" checked={eleccion.usarFuente} onChange={(e) => setEleccion((x) => ({ ...x, usarFuente: e.target.checked }))} />
                 <span>Usar la letra «{eleccion.fuente}» en los títulos <span className="text-tenue">(la más parecida a la de su web, gratuita)</span></span>
               </label>
             )}
-            <Campo etiqueta="Nombre de la plantilla nueva"><input className="campo" value={eleccion.nombre} maxLength={80} onChange={(e) => setEleccion((x) => ({ ...x, nombre: e.target.value }))} /></Campo>
+            <Campo etiqueta="Nombre del estilo nuevo"><input className="campo" value={eleccion.nombre} maxLength={80} onChange={(e) => setEleccion((x) => ({ ...x, nombre: e.target.value }))} /></Campo>
             <div className="flex flex-wrap gap-2">
               <button className="boton" onClick={usarEnBrief} disabled={!eleccion.marca.trim()}>Usar en el brief</button>
               <button className="boton boton-primario" onClick={() => void crearPlantilla()} disabled={!eleccion.marca.trim() || ![eleccion.acento1, eleccion.acento2, eleccion.activa].every((c) => /^#[0-9a-f]{6}$/i.test(c))}>
-                Crear plantilla y usarla
+                Crear el estilo y usarlo
               </button>
             </div>
             {creada && <Aviso tipo="ok">Plantilla «{creada}» creada y elegida para esta campaña. Puedes ajustarla en Plantillas.</Aviso>}

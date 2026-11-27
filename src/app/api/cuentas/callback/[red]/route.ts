@@ -8,11 +8,16 @@ import { tapar } from "@/lib/redes/secretos";
 
 export const dynamic = "force-dynamic";
 
-/** Vuelve a /cuentas sin el código ni el state en la URL, y siempre borra la cookie de OAuth. */
+/**
+ * Vuelve a /cuentas sin el código ni el state en la URL, y siempre borra la cookie de OAuth. La dirección
+ * va relativa (ESC-02): `req.url` de Next cambia 127.0.0.1 por localhost, y en la app de escritorio esa
+ * vuelta ya no sería Geeper (la ventana de inicio de sesión quedaba en blanco). Relativa, el navegador
+ * vuelve por la misma dirección por la que entró.
+ */
 function volver(req: NextRequest, params: Record<string, string>) {
-  const u = new URL("/cuentas", req.url);
-  for (const [k, v] of Object.entries(params)) u.searchParams.set(k, k === "ok" ? v : tapar(v).slice(0, 500));
-  const res = NextResponse.redirect(u, 302);
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) q.set(k, k === "ok" ? v : tapar(v).slice(0, 500));
+  const res = new NextResponse(null, { status: 302, headers: { Location: `/cuentas?${q}` } });
   res.cookies.set(COOKIE_OAUTH, "", { httpOnly: true, sameSite: "lax", path: "/api/cuentas", maxAge: 0, secure: req.nextUrl.protocol === "https:" });
   return res;
 }

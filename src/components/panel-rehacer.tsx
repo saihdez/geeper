@@ -1,7 +1,8 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { Aviso, Barra, postJson, useSondeo } from "./comun";
+import { Aviso, AvisoTarjeta, Barra, LineaFalta, faltanConGuardar, postJson, useGuardeAntes, useSondeo } from "./comun";
+import { textoEspera, useMotorVivo } from "./motor";
 
 interface AvatarV { id: string; nombre: string; retrato: string; estiloNombre: string }
 interface MovimientoV { id: number; nombre: string; vista: string }
@@ -17,13 +18,21 @@ interface Datos {
 
 type Modo = "persona" | "camara";
 
+/** Abierto: cada 3 s. Cerrado: sólo mientras la escena tiene un trabajo, para el avance del título. */
+export function intervaloRehacer(abierto: boolean, conTrabajo: boolean): number {
+  if (abierto) return 3000;
+  return conTrabajo ? 10_000 : Infinity;
+}
+
 /**
  * «Rehacer la toma» (comfy-openjutsu y comfy-reshoot en Geeper): cambiar a la persona del video por un
  * avatar, o volver a filmar la escena con otro movimiento de cámara. Solo aparece en escenas con video.
  */
 export function PanelRehacer({ proyectoId, escena, numero, ocupado, miniatura }: { proyectoId: string; escena: string; numero: number; ocupado: boolean; miniatura: string }) {
   const [abierto, setAbierto] = useState(false);
-  const { datos, recargar } = useSondeo<Datos>(`/api/proyectos/${proyectoId}/rehacer?escena=${encodeURIComponent(escena)}`, abierto ? 3000 : 15_000);
+  // Como «Animar» (WEB-10): cerrado y sin trabajo de esta escena no vuelve a pedir; antes, cada 15 s por escena.
+  const { datos, recargar } = useSondeo<Datos>(`/api/proyectos/${proyectoId}/rehacer?escena=${encodeURIComponent(escena)}`,
+    (d) => intervaloRehacer(abierto, d?.trabajos.some((t) => t.escena === escena) ?? false));
   const [modo, setModo] = useState<Modo | null>(null);
   const [avatar, setAvatar] = useState<string | null>(null);
   const [reiluminar, setReiluminar] = useState(true);
@@ -32,9 +41,12 @@ export function PanelRehacer({ proyectoId, escena, numero, ocupado, miniatura }:
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [enviado, setEnviado] = useState(false);
+  const motorVivo = useMotorVivo();
+  const guarde = useGuardeAntes();
   const trabajo = datos?.trabajos.find((t) => t.escena === escena) ?? null;
   const plan = modo ? datos?.planes[modo] : null;
   const listo = modo === "persona" ? !!avatar : modo === "camara" ? movimiento !== null : false;
+  const faltan = faltanConGuardar(guarde, listo ? [] : [modo === "persona" ? "elegir quién aparece" : "elegir cómo se mueve la cámara"]);
 
   async function rehacer() {
     if (!modo) return;
@@ -53,7 +65,11 @@ export function PanelRehacer({ proyectoId, escena, numero, ocupado, miniatura }:
   }
 
   return (
-    <details className="text-sm" open={abierto} onToggle={(ev) => setAbierto((ev.target as HTMLDetailsElement).open)}>
+    <details className="text-sm" open={abierto} onToggle={(ev) => {
+      const abre = (ev.target as HTMLDetailsElement).open;
+      setAbierto(abre);
+      if (abre) void recargar(); // al abrir, datos frescos y vuelve el ritmo de 3 s
+    }}>
       <summary className="cursor-pointer text-tenue">
         Rehacer la toma con IA <span className="text-xs">(cambiar la persona o mover la cámara{trabajo ? ` · ${trabajo.estado === "pendiente" ? "en espera" : trabajo.etapa || "trabajando"}` : ""})</span>
       </summary>
@@ -62,8 +78,8 @@ export function PanelRehacer({ proyectoId, escena, numero, ocupado, miniatura }:
           {!datos.wan2gp.listo && <Aviso tipo="alerta">Para esto hace falta Wan2GP: instálalo desde <Link className="underline" href="/sistema">Sistema</Link>.</Aviso>}
           {trabajo ? (
             <div className="space-y-1">
-              <p className="text-xs">{trabajo.estado === "pendiente" ? "En espera: la tarjeta de video está ocupada." : trabajo.etapa || "Trabajando…"}</p>
-              <Barra valor={trabajo.progreso} />
+              <p className="text-xs">{trabajo.estado === "pendiente" ? textoEspera(motorVivo) : trabajo.etapa || "Trabajando…"}</p>
+              <Barra valor={trabajo.progreso} etiqueta={`Avance de la escena ${numero}`} />
               <p className="text-xs text-tenue">Cuando termine, la escena {numero} cambia sola. Si no te gusta, vuelve atrás en el historial.</p>
             </div>
           ) : (
@@ -135,16 +151,22 @@ export function PanelRehacer({ proyectoId, escena, numero, ocupado, miniatura }:
               {plan?.ok && (
                 <>
                   {plan.notas?.map((n) => <p key={n} className="text-xs text-tenue">{n}</p>)}
-                  <p className="text-xs text-tenue">
-                    Usa la tarjeta de video y tarda varios minutos{modo === "persona" ? " (más cuanto más larga sea la escena)" : ""}. La primera vez baja el modelo ({modo === "persona" ? "unos 23 GB" : "unos 3 GB"}).
-                  </p>
+                  {!enviado && (
+                    <AvisoTarjeta g={guarde}>
+                      Tarda varios minutos{modo === "persona" ? " (más cuanto más larga sea la escena)" : ""}. La primera vez baja el modelo ({modo === "persona" ? "unos 23 GB" : "unos 3 GB"}).
+                    </AvisoTarjeta>
+                  )}
                   {error && <Aviso tipo="error">{error}</Aviso>}
                   {enviado ? (
                     <Aviso tipo="ok">Listo: está en camino. Lo ves avanzar aquí mismo.</Aviso>
                   ) : (
-                    <button type="button" className="boton boton-primario" disabled={!listo || enviando || ocupado || !datos.wan2gp.listo} onClick={() => void rehacer()}>
-                      {enviando ? "Enviando…" : `3. Rehacer la escena ${numero}`}
-                    </button>
+                    <div className="space-y-1">
+                      <button type="button" className="boton boton-primario" disabled={faltan.length > 0 || enviando || ocupado || !datos.wan2gp.listo}
+                        aria-describedby={faltan.length ? guarde.idFalta : undefined} onClick={() => void rehacer()}>
+                        {enviando ? "Enviando…" : `3. Rehacer la escena ${numero}`}
+                      </button>
+                      <LineaFalta id={guarde.idFalta} faltan={faltan} />
+                    </div>
                   )}
                 </>
               )}

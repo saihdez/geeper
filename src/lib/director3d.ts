@@ -25,7 +25,7 @@ import { PALETAS_3D, type Colores3d, type Personaje3d } from "./escenas3d-catalo
 import type { Proyecto } from "./esquema";
 import { tomarGpu } from "./gpu";
 import { escenasEnLinea, type EscenaEnLinea } from "./linea";
-import { llamaDisponible, preguntarLlama } from "./llm-local";
+import { llamaDisponible, preguntarLlama } from "./llama-local";
 import type { ContextoPlano } from "./plano";
 import { obtenerPlantilla } from "./plantillas";
 import { correr } from "./proceso";

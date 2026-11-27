@@ -8,71 +8,25 @@
  * Sólo Reels (9:16, 3 a 90 s). Los videos 16:9 de página (`/{page_id}/videos`) quedan fuera por ahora.
  */
 import { credenciales, urlCallback } from "./config";
-import { TIMEOUT_SUBIDA_MS, errorDe, formulario, leerTramo, pedir, pedirJson } from "./http";
-import { registrarSecreto, tapar } from "./secretos";
+import { formulario, pedirJson } from "./http";
+import { clasificarErrorGraph, crearGraph, cuota, GRAPH_VERSION, HORA_MS, subirTramoRupload, textoSesion, uriSubida } from "./meta";
+import { registrarSecreto } from "./secretos";
 import { ErrorRed, type CuentaDescifrada, type CuentaNueva, type Red, type Sesion } from "./tipos";
 
-/** Última versión estable de Graph API (v27.0, 4 nov. 2026; es la de los ejemplos de la doc de Meta). */
-// VERIFICAR: la página de cambios de v27.0 aún daba 404 al implementar; la lista de versiones mostraba v26.0.
-export const GRAPH_VERSION = "v27.0";
 const GRAPH = `https://graph.facebook.com/${GRAPH_VERSION}`;
 /** Permisos que pide hoy la Reels Publishing API. */
 const SCOPES = ["pages_show_list", "pages_manage_posts", "pages_read_engagement"];
 
-interface ErrorGraph {
-  error?: { message?: string; code?: number; error_subcode?: number };
-}
-
-/** 190/102 → auth; límites de llamadas (4, 17, 32, 613, 80001) → cuota 1 h. */
+/** 190/102 → auth; límites de llamadas (4, 17, 32, 613 y 80001, el de la página) → cuota 1 h. */
 export function clasificarErrorFacebook(contexto: string) {
-  return (cuerpo: string): ErrorRed | null => {
-    let e: ErrorGraph["error"];
-    try {
-      e = (JSON.parse(cuerpo) as ErrorGraph).error;
-    } catch {
-      return null;
-    }
-    if (!e) return null;
-    const msg = tapar(`${contexto}: ${e.message ?? "error de Graph"} (code ${e.code ?? "?"}${e.error_subcode ? `/${e.error_subcode}` : ""})`);
-    if (e.code === 190 || e.code === 102) return new ErrorRed("auth", msg, undefined, 401);
-    // 80001 = límite de llamadas de la página. El tope de 30 Reels por página en 24 h móviles no tiene
-    // un código documentado en la guía de Reels.
-    // VERIFICAR: el código que devuelve `video_reels` al pasar los 30 Reels/24 h (hoy cae como 1 h de espera si es uno de estos).
-    if (e.code === 4 || e.code === 17 || e.code === 32 || e.code === 613 || e.code === 80001) {
-      return new ErrorRed("cuota", msg, new Date(Date.now() + 60 * 60_000), 429);
-    }
-    return null;
-  };
+  // 80001 = límite de llamadas de la página. El tope de 30 Reels por página en 24 h móviles no tiene
+  // un código documentado en la guía de Reels.
+  // VERIFICAR: el código que devuelve `video_reels` al pasar los 30 Reels/24 h (hoy cae como 1 h de espera si es uno de estos).
+  return clasificarErrorGraph(contexto, (e, msg) => (e.code === 80001 ? cuota(msg, HORA_MS) : null));
 }
 
-async function graph<T>(c: { acceso: string }, ruta: string, contexto: string, init: RequestInit = {}): Promise<T> {
-  registrarSecreto(c.acceso); // por si el cuerpo de un error lo repite
-  return pedirJson<T>(
-    `${GRAPH}${ruta}`,
-    { ...init, headers: { Authorization: `Bearer ${c.acceso}`, ...(init.headers as Record<string, string> | undefined) } },
-    contexto,
-    clasificarErrorFacebook(contexto),
-  );
-}
-
-function texto(s: Sesion, k: string): string {
-  const v = s[k];
-  if (typeof v !== "string" || !v) throw new ErrorRed("red", `La sesión de Facebook no tiene ${k}`);
-  return v;
-}
-
-/** URL de rupload del video; sólo rupload.facebook.com (ahí va el token de la página). */
-function uriSubida(uri: unknown, videoId: string): string {
-  if (typeof uri === "string") {
-    try {
-      const u = new URL(uri);
-      if (u.protocol === "https:" && u.hostname === "rupload.facebook.com") return uri;
-    } catch {
-      /* se arma abajo */
-    }
-  }
-  return `https://rupload.facebook.com/video-upload/${GRAPH_VERSION}/${videoId}`;
-}
+const graph = crearGraph(GRAPH, clasificarErrorFacebook);
+const texto = (s: Sesion, k: string) => textoSesion(s, k, "Facebook");
 
 interface EstadoVideo {
   status?: {
@@ -178,7 +132,7 @@ export const facebook: Red = {
       body: formulario({ upload_phase: "start" }),
     });
     if (!r.video_id) throw new ErrorRed("red", "Facebook no devolvió el id del video");
-    return { videoId: r.video_id, uploadUrl: uriSubida(r.upload_url, r.video_id) };
+    return { videoId: r.video_id, uploadUrl: uriSubida(r.upload_url, "video-upload", r.video_id) };
   },
 
   async bytesRecibidos(c, s, archivo) {
@@ -199,16 +153,8 @@ export const facebook: Red = {
   },
 
   async subirTramo(c, s, archivo, desde, hasta) {
-    const r = await pedir(uriSubida(s.uploadUrl, texto(s, "videoId")), {
-      method: "POST",
-      headers: { Authorization: `OAuth ${c.acceso}`, offset: String(desde), file_size: String(archivo.bytes) },
-      body: leerTramo(archivo.ruta, desde, hasta),
-      duplex: "half",
-      timeout: TIMEOUT_SUBIDA_MS,
-    } as RequestInit & { duplex: "half"; timeout: number });
-    if (!r.ok) throw await errorDe(r, "Subida a Facebook", clasificarErrorFacebook("Subida a Facebook"));
-    await r.text().catch(() => "");
-    return { bytes: archivo.bytes };
+    const uri = uriSubida(s.uploadUrl, "video-upload", texto(s, "videoId"));
+    return subirTramoRupload(uri, c.acceso, archivo, desde, hasta, "Subida a Facebook", clasificarErrorFacebook("Subida a Facebook"));
   },
 
   async cerrarSubida(c, s, meta) {

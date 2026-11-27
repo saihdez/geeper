@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * «Sugiéreme 3» del asistente: ganchos para los primeros segundos, a partir de lo que dice el video.
- * Usa la IA local (toma el candado de la tarjeta gráfica sin esperar: si está ocupada, lo dice). Sólo
+ * Usa la IA local (toma el candado de la tarjeta de video sin esperar: si está ocupada, lo dice). Sólo
  * cuando la persona lo pide; ella elige uno o escribe el suyo.
  */
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {

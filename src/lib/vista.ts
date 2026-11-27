@@ -1,4 +1,6 @@
 /** Datos que la UI muestra de un proyecto (derivados de geeper.json + la base). */
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { descripcionClip, origenClip } from "./clips";
 import { db } from "./db";
 import { resumirConfianza, UMBRAL_DUDOSA } from "./confianza";
@@ -8,18 +10,42 @@ import { caracteresPorLinea, metricas } from "./formatos";
 import { dirProyecto } from "./rutas";
 import { duracionEscenas, escenasEnLinea, gruposDeEscena, opcionesDe, todosLosGrupos } from "./linea";
 import { obtenerPlantilla } from "./plantillas";
+import { cpsDeGrupos, escenasConSubtitulosRapidos, OBJETIVO } from "./qc";
 import { lineas } from "./subtitulos";
+import { KOKORO, listarGuardadas } from "./voces";
+import { claveVoz, vocesDeEscenas } from "./ediciones";
+
+/**
+ * Nombre para la persona: el de Kokoro, el de una voz diseñada, o null si no se conoce. `id` viene ya
+ * normalizado con claveVoz (UX-12: la misma cuenta que la revisión final, sin prefijo y en minúsculas).
+ */
+export function nombreDeVoz(id: string, guardadas: { id: string; nombre: string }[] = []): string | null {
+  const k = claveVoz(id);
+  for (const vs of Object.values(KOKORO)) {
+    const x = vs.find((v) => claveVoz(v.voz) === k);
+    if (x) return x.nombre;
+  }
+  return guardadas.find((g) => claveVoz(g.id) === k)?.nombre ?? null;
+}
+
+/**
+ * Topes de lo que viaja en cada sondeo de la vista (SRV-05): las listas crecen con el uso y la vista se
+ * pide cada pocos segundos. La UI muestra el historial más reciente; lo viejo sigue en la base.
+ */
+export const TOPES_VISTA = { versiones: 200, renders: 30, publicaciones: 50 } as const;
 
 export async function vistaProyecto(id: string) {
   const fila = await db.proyecto.findUnique({
     where: { id },
     include: {
-      versiones: { orderBy: { numero: "desc" }, select: { numero: true, nota: true, creado: true, hash: true } },
-      renders: { orderBy: { creado: "desc" } },
-      trabajos: { orderBy: { creado: "desc" }, take: 30 },
+      versiones: { orderBy: { numero: "desc" }, take: TOPES_VISTA.versiones, select: { numero: true, nota: true, creado: true, hash: true } },
+      renders: { orderBy: { creado: "desc" }, take: TOPES_VISTA.renders },
+      // Sin payload (la sesión de subida de una publicación no debe salir), resultado ni log.
+      trabajos: { orderBy: { creado: "desc" }, take: 30, select: { id: true, tipo: true, estado: true, etapa: true, progreso: true, error: true, usaGpu: true, creado: true, iniciado: true, terminado: true } },
       lote: { select: { id: true, nombre: true } },
       publicaciones: {
         orderBy: { creado: "desc" },
+        take: TOPES_VISTA.publicaciones,
         include: { cuenta: { select: { id: true, red: true, usuario: true, alias: true } } },
       },
     },
@@ -32,14 +58,29 @@ export async function vistaProyecto(id: string) {
   }
   let escenas: unknown[] = [];
   let total = 0;
+  /** REN-04: escenas con subtítulos de más de 17 car./s, sabido antes de renderizar. */
+  let subtitulosRapidos: { limite: number; bloquea: boolean; escenas: { id: string; indice: number; cps: number }[] } | null = null;
   if (p) {
     const proyecto = p;
     const plantilla = await obtenerPlantilla(proyecto.plantilla).catch(() => null);
     const cpl = caracteresPorLinea(proyecto.formato, opcionesDe(proyecto));
     const { W, H } = metricas(proyecto.formato, opcionesDe(proyecto));
     const es = escenasEnLinea(proyecto);
+    // UX-12: con qué voz suena cada escena, con la misma cuenta que ediciones.ts (null si es voz real).
+    const vozDe = new Map(vocesDeEscenas(proyecto).map((x) => [x.escena, x.voz]));
     const todos = todosLosGrupos(proyecto);
-    total = duracionEscenas(proyecto) + (plantilla?.datos.tarjetaFinal.duracion ?? 0);
+    const finSubs = duracionEscenas(proyecto);
+    total = finSubs + (plantilla?.datos.tarjetaFinal.duracion ?? 0);
+    // Mismas funciones puras que la regla «subtitulos» del QC (finSubs = inicio de la tarjeta final).
+    const ritmo = cpsDeGrupos(todos, finSubs);
+    const cpsDe = new Map(todos.map((g, i) => [g, ritmo[i]!]));
+    const rapidas = escenasConSubtitulosRapidos(todos, finSubs);
+    subtitulosRapidos = {
+      limite: OBJETIVO.maxCps,
+      // En clips de material ajeno el ritmo sólo avisa (la voz original no se puede frenar).
+      bloquea: origenClip(proyecto) === null,
+      escenas: rapidas.map((r) => ({ id: r.escena, indice: es.find((e) => e.escena.id === r.escena)?.indice ?? -1, cps: r.cps })),
+    };
     escenas = es.map((e) => {
       const a = proyecto.assets[e.visual.asset]!;
       const vozA = proyecto.assets[e.voz.asset]!;
@@ -63,7 +104,8 @@ export async function vistaProyecto(id: string) {
         correcciones: e.escena.correcciones,
         efectos: { transicion: v.transicion ?? null, movimiento: v.movimiento ?? null, velocidad: v.velocidad ?? 1, color: v.color ?? null, efectos: v.efectos ?? null },
         visual: { asset: a.id, ruta: a.ruta, source: a.source, licencia: a.licencia, tipo: a.tipo, inicio: e.visual.rango.inicio, ajuste: e.visual.ajuste ?? "auto", ancla: e.visual.ancla ?? "centro", prompt: a.regenerar.prompt ?? null, encuadre: encuadreDe(e.visual, a, W, H), aspecto: a.ancho && a.alto ? a.ancho / a.alto : null },
-        voz: { asset: vozA.id, source: vozA.source, ruta: vozA.ruta, inicio: e.voz.rango.inicio },
+        // UX-12: con qué voz suena hoy la escena (null en clips o audios propios), para avisar de mezclas.
+        voz: { asset: vozA.id, source: vozA.source, ruta: vozA.ruta, inicio: e.voz.rango.inicio, voz: vozDe.get(e.escena.id) ?? null },
         grupos: gruposDeEscena(proyecto, e, todos).map((g) => {
           // Si el grupo cruza al corte siguiente, aquí se edita la parte de esta escena.
           const propias = g.fichas.filter((f) => f.escena === e.escena.id);
@@ -79,6 +121,7 @@ export async function vistaProyecto(id: string) {
             lineas: lineas(g.texto, cpl).length,
             cruza: propias.length < g.fichas.length,
             mostradoPropio: propias.map((f) => f.texto).join(" "),
+            cps: Number((cpsDe.get(g) ?? 0).toFixed(1)),
           };
         }),
       };
@@ -108,7 +151,31 @@ export async function vistaProyecto(id: string) {
         })(),
       }
     : null;
+  // UX-12: nombres de la voz elegida y de las que suenan (las diseñadas sólo se leen si hacen falta).
+  const voces = p ? await (async () => {
+    const elegida = typeof p.voz.voz === "string" && p.voz.voz.trim() ? claveVoz(p.voz.voz) : null;
+    const ids = [...new Set([elegida, ...(escenas as { voz: { voz: string | null } }[]).map((e) => e.voz.voz)].filter((x): x is string => !!x))];
+    let guardadas: { id: string; nombre: string }[] = [];
+    if (ids.some((x) => !nombreDeVoz(x))) guardadas = await listarGuardadas().catch(() => []);
+    return { elegida, nombres: Object.fromEntries(ids.map((x) => [x, nombreDeVoz(x, guardadas) ?? x])) as Record<string, string> };
+  })() : null;
   // Proyectos importados antes del reencuadre por cara: la UI pide analizarlos una vez al abrir.
   const carasPendientes = p ? await faltaAuto(dirProyecto(fila.slug)) : false;
-  return { fila, p, escenas, total, extras, carasPendientes };
+  // La vista viaja cada pocos segundos: el informe de QC sólo del último render (el que se muestra) y
+  // del proyecto sólo lo liviano; lo pesado (assets, pistas, escenas) ya va digerido en `escenas`/`extras`.
+  // UX-28: los videos de antes del 18 de noviembre no tienen .srt: el botón sólo sale si existe.
+  const renders = fila.renders.map((r, i) => (i === 0 ? { ...r, srt: tieneSrt(dirProyecto(fila.slug), r.ruta) } : { ...r, informeQc: null }));
+  return { fila: { ...fila, renders }, p: p ? proyectoLiviano(p) : null, escenas, total, extras, carasPendientes, subtitulosRapidos, voces };
+}
+
+/** Los subtítulos (.srt) que se entregan junto al MP4 de un render. */
+export const rutaSrt = (ruta: string) => ruta.replace(/\.mp4$/, ".srt");
+export function tieneSrt(dir: string, ruta: string): boolean {
+  return /\.mp4$/.test(ruta) && existsSync(path.join(dir, rutaSrt(ruta)));
+}
+
+/** El proyecto sin lo pesado (assets, pistas, escenas, marcadores ni el guion entero). */
+export function proyectoLiviano(p: Proyecto) {
+  const { assets: _a, pistas: _pi, escenas: _e, marcadores: _m, guion: _g, ...resto } = p;
+  return resto;
 }

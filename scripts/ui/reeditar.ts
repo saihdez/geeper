@@ -3,17 +3,11 @@
  * escena, cambia a 16:9 y pide el render. Uso: pnpm tsx scripts/ui/reeditar.ts <proyectoId> <dir-capturas>
  */
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
+import { rutaChrome } from "../../src/lib/navegador";
 import { chromium, type Page } from "playwright-core";
 
 const BASE = process.env.GEEPER_URL ?? "http://localhost:3300";
-
-function chrome(): string {
-  const raiz = path.join(os.homedir(), ".cache", "hyperframes", "chrome", "chrome-headless-shell");
-  const v = fs.readdirSync(raiz).sort().pop()!;
-  return path.join(raiz, v, "chrome-headless-shell-linux64", "chrome-headless-shell");
-}
 
 async function esperarGuardado(p: Page) {
   await p.getByText("Guardado como versión nueva").first().waitFor({ timeout: 20_000 });
@@ -22,7 +16,7 @@ async function esperarGuardado(p: Page) {
 async function main() {
   const [id, salida = "capturas"] = process.argv.slice(2);
   fs.mkdirSync(salida, { recursive: true });
-  const b = await chromium.launch({ executablePath: chrome() });
+  const b = await chromium.launch({ executablePath: rutaChrome() });
   const p = await b.newPage({ viewport: { width: 1440, height: 1000 } });
   p.on("dialog", (d) => void d.accept());
   await p.goto(`${BASE}/proyectos/${id}`, { waitUntil: "domcontentloaded" });
@@ -50,13 +44,13 @@ async function main() {
   await p.waitForFunction((n) => document.querySelectorAll("ol > li").length === n - 1, totalAntes, { timeout: 20_000 });
 
   // 4: cambiar a 16:9.
-  await p.getByLabel("Formato").selectOption("16:9");
+  await p.getByLabel("Forma del video").selectOption("16:9");
   await esperarGuardado(p);
   await p.waitForTimeout(3500);
 
-  // 5: renderizar (no genera nada con la GPU).
-  await p.getByRole("button", { name: /^Renderizar/ }).click();
-  await p.getByText("Render en cola").waitFor({ timeout: 20_000 });
+  // 5: crear el video (no genera nada con la tarjeta de video).
+  await p.getByRole("button", { name: /^Crear el video \(sin usar/ }).click();
+  await p.getByText("Quedó en cola").waitFor({ timeout: 20_000 });
   await p.screenshot({ path: path.join(salida, "reedicion-pedida.png"), fullPage: true });
   console.log(JSON.stringify({ subtitulos: cambios, escenas: `${totalAntes} → ${totalAntes - 1}`, formato: "16:9" }, null, 1));
   await b.close();

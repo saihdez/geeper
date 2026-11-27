@@ -198,7 +198,7 @@ export function Campana({ id }: { id: string }) {
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
         <Link href="/anuncios" className="text-sm text-tenue hover:text-white">← Anuncios</Link>
         <input
-          className="min-w-0 flex-1 basis-full rounded-md border border-transparent bg-transparent px-1 text-xl font-bold tracking-tight hover:border-borde focus:border-borde focus:outline-none sm:basis-auto"
+          className="min-w-0 flex-1 basis-full rounded-md border border-transparent bg-transparent px-1 text-xl font-bold tracking-tight hover:border-borde focus:border-borde focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-acento sm:basis-auto"
           defaultValue={campana.nombre}
           aria-label="Nombre de la campaña"
           maxLength={120}

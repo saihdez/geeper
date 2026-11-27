@@ -310,10 +310,12 @@
       "id": "moneyprinterturbo",
       "repo": "harry0703/MoneyPrinterTurbo",
       "tipo": "release",
+      "version": "main",
+      "commit": "c2353548",
       "como": [
         "servicio"
       ],
-      "revisado": "2026-11-19",
+      "revisado": "2026-11-22",
       "que": "Genera guion, voz y clips (corre en Docker). Geeper usa su API HTTP.",
       "archivos": [
         "src/lib/mpt.ts",
@@ -493,6 +495,74 @@
       "version": "v20"
     },
     {
+      "id": "voicestudio",
+      "repo": "debpalash/VoiceStudio",
+      "tipo": "release",
+      "como": [
+        "codigo"
+      ],
+      "version": "0.5.8",
+      "commit": "1ceb6d7",
+      "revisado": "2026-11-20",
+      "que": "Estudio de voz local (AGPL-3.0: sólo ideas, nunca código). De ahí salieron la versión en otro idioma (ajuste a los tiempos, acortar con el LLM), VoxCPM2 para voces diseñadas y MOSS-SoundEffect para efectos. Revisar docs/licensing/model-license-data.json (licencias de modelos nuevos) y backend/services/{fit_planner,duration_planner,dub_qc}.py y engines/moss_sfx.",
+      "docs": "docs/HEREDADO.md#voicestudio-debpalash-agpl-30--revisión-2026-11-20",
+      "archivos": [
+        "src/lib/traducir.ts",
+        "src/lib/voces.ts",
+        "src/lib/efectos-sonido.ts",
+        "py/voz_voxcpm.py",
+        "py/efecto_sonido.py"
+      ],
+      "pruebas": [
+        "tests/traducir.test.ts",
+        "tests/voces-efectos.test.ts"
+      ]
+    },
+    {
+      "id": "cap",
+      "repo": "CapSoftware/Cap",
+      "tipo": "commits",
+      "como": [
+        "codigo"
+      ],
+      "commit": "a29df6c",
+      "revisado": "2026-11-20",
+      "que": "Grabador de pantalla (AGPL-3.0 salvo cap-camera*/scap-* MIT: sólo ideas, nunca código). Revisar apps/cli/skill/cap-demo (demo desde URL), crates/project/src/{auto_zoom,disfluency,caption_words}.rs y crates/audio/src/voice*.rs (cadena de voz pendiente para /clips).",
+      "archivos": [
+        "src/lib/demo-web.ts",
+        "scripts/demo-web.ts",
+        "src/lib/ediciones.ts"
+      ],
+      "docs": "docs/HEREDADO.md#cap-capsoftware-agpl-30--revisión-2026-11-20",
+      "pruebas": [
+        "tests/demo-web.test.ts",
+        "tests/muletillas.test.ts"
+      ]
+    },
+    {
+      "id": "openwhispr",
+      "repo": "OpenWhispr/openwhispr",
+      "tipo": "release",
+      "como": [
+        "codigo"
+      ],
+      "version": "1.12.0",
+      "commit": "007826d",
+      "revisado": "2026-11-20",
+      "que": "App de dictado (MIT) con whisper.cpp. Tomado: VAD Silero y sus valores, umbrales del decodificador, idea de leer la probabilidad por token y --js-runtimes node para yt-dlp. Revisar src/constants/whisperVad.json, src/helpers/whisperServer.js (INFERENCE_DECODER_FIELDS), src/helpers/urlAudioDownloader.js y las releases de OpenWhispr/whisper.cpp (binarios CUDA).",
+      "archivos": [
+        "src/lib/whisper.ts",
+        "src/lib/voz.ts",
+        "src/lib/confianza.ts",
+        "src/lib/fuentes.ts",
+        "src/lib/tendencias.ts"
+      ],
+      "docs": "docs/HEREDADO.md#openwhispr-mit--revisión-2026-11-20",
+      "pruebas": [
+        "tests/whisper.test.ts"
+      ]
+    },
+    {
       "id": "comfyui",
       "repo": "Comfy-Org/ComfyUI",
       "tipo": "release",
@@ -612,6 +682,26 @@
         "tests/estilos-plantilla.test.ts",
         "tests/marca-web.test.ts",
         "tests/avatares.test.ts"
+      ]
+    },
+    {
+      "id": "doory",
+      "repo": "shaongitbd/doory",
+      "tipo": "commits",
+      "como": [
+        "codigo"
+      ],
+      "commit": "a05f1a8",
+      "revisado": "2026-11-27",
+      "que": "Biblioteca de audio CC0 (24 pistas de música y 88 efectos, sintetizados) copiada a audio-libre/. El código de Doory (Attribution Assurance License) no se copia; ver docs/HEREDADO.md.",
+      "archivos": [
+        "audio-libre/biblioteca.json",
+        "src/lib/audio-libre.ts",
+        "src/lib/animos-musica.ts"
+      ],
+      "docs": "docs/HEREDADO.md",
+      "pruebas": [
+        "tests/audio-libre.test.ts"
       ]
     }
   ]

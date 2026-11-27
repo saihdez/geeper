@@ -123,7 +123,7 @@ export function recomendar(e: EntradaRecomendar): Recomendacion[] {
       porque: "Lo que cambies ahora puede quedar debajo de lo que esos trabajos guarden al terminar.", ir: "#trabajos" });
   } else if (!r) {
     out.push({ id: "renderizar", prioridad: "mejora", area: "flujo", titulo: "Arma el video para revisarlo",
-      porque: "Hasta que no lo armes no se revisa su calidad ni se puede descargar. No usa la tarjeta gráfica: tarda 1 o 2 minutos.", accion: "renderizar" });
+      porque: "Hasta que no lo armes no se revisa su calidad ni se puede descargar. No usa la tarjeta de video: tarda 1 o 2 minutos.", accion: "renderizar" });
   } else if (r.versionNumero !== e.versionActual) {
     out.push({ id: "renderizar", prioridad: "mejora", area: "flujo", titulo: "Hay cambios que todavía no están en el video",
       porque: "Lo que descargarías es de antes de tus últimos cambios. Vuelve a armarlo para revisarlo y descargarlo tal como lo ves ahora (1 o 2 minutos).", accion: "renderizar" });
@@ -139,7 +139,7 @@ export function recomendar(e: EntradaRecomendar): Recomendacion[] {
           ? "La música de este video no tiene una licencia clara. Para publicarlo tranquilo, usa una con permiso (por ejemplo, de la Biblioteca de audio de YouTube)."
           : x.hacer,
         tecnico: [regla.nombre, regla.detalle].filter(Boolean).join(": ") || undefined,
-        ...(x.tecnico ? { accion: "renderizar" as const } : regla.id === "ritmo" ? { accion: "alinearMusica" as const } : { ir: "#qc" }),
+        ...(x.tecnico ? { accion: "renderizar" as const } : regla.id === "ritmo" ? { accion: "alinearMusica" as const } : { ir: "#listo" }),
       });
     }
   }
@@ -263,7 +263,7 @@ export function recomendar(e: EntradaRecomendar): Recomendacion[] {
   }
   if (subs.peorCps > 17 && !esClip && p.voz.velocidad > 0.85 && pista(p, "voz").clips.every((c) => p.assets[c.asset]?.source !== "archivo")) {
     out.push({ id: "voz-rapida", prioridad: "idea", area: "subtitulos", titulo: "Los subtítulos pasan muy rápido",
-      porque: `En algunas partes no da tiempo de leer. En «Ajustes», baja la velocidad de la voz a ${String(Math.max(0.85, Math.round((p.voz.velocidad - 0.05) * 100) / 100)).replace(".", ",")} y pulsa «Regenerar voz» (unos segundos, sin tarjeta gráfica): cambiar sólo el número no cambia lo que se oye.`,
+      porque: `En algunas partes no da tiempo de leer. En «Ajustes», baja la velocidad de la voz a ${String(Math.max(0.85, Math.round((p.voz.velocidad - 0.05) * 100) / 100)).replace(".", ",")} y pulsa «Regenerar voz» (unos segundos, sin tarjeta de video): cambiar sólo el número no cambia lo que se oye.`,
       tecnico: `${subs.peorCps.toFixed(1)} caracteres por segundo en el peor tramo (lo cómodo es ≤ 17)`,
       ir: "#vel" });
   }

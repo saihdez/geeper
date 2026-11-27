@@ -14,10 +14,11 @@ on:
     # Las ramas de integración también arman los instaladores (el botón «Run workflow» sólo aparece
     # cuando el flujo ya está en main).
     branches: ["integracion/**"]
-    paths-ignore: ["**/*.md", "docs/**", ".claude/**"]
+    # Cambios sólo de documentación o del sitio no cambian el instalador (las etiquetas no miran esto).
+    paths-ignore: ["sitio/**", "**.md", "docs/**", ".claude/**"]
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: escritorio-${{ github.ref }}
@@ -45,6 +46,8 @@ jobs:
       # Las pruebas que no dependen del estudio de desarrollo (ffmpeg en ~/.local, mpt_acabado, WSL):
       # las de la app de escritorio, que tienen que pasar en Windows y en macOS.
       - run: pnpm test:escritorio
+      # Las de la carcasa y del empaquetado (escritorio/, scripts/escritorio/), también en los dos sistemas.
+      - run: pnpm exec vitest run tests/escritorio-carcasa.test.ts tests/escritorio-armado.test.ts tests/escritorio-vigia.test.ts tests/escritorio-probar-app.test.ts tests/ci-escritorio.test.ts
       - run: pnpm escritorio:empaquetar
       # Ramas de integración: el instalador de Windows va a la release fija «integracion» (se reemplaza en
       # cada build). Las releases no cuentan en el espacio de artefactos (500 MB en la cuenta gratis, se
@@ -71,10 +74,23 @@ jobs:
           if-no-files-found: error
           # Cada instalador pesa ~300 MB: con los 90 días de siempre se llenó el espacio de la cuenta (19 GB) y
           # los builds dejaron de guardarse. Alcanza con 2 días para instalarlo; las versiones publicadas van
-          # en la release (abajo).
+          # en la release (abajo). Ya vienen comprimidos (.exe, .dmg).
           retention-days: 2
-      - if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+          compression-level: 0
+
+  # Sólo con una etiqueta v*: la release es el único paso que necesita escribir en el repo.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: instalador
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist-escritorio
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
         with:
           files: |
             dist-escritorio/*.exe

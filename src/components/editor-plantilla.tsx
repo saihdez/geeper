@@ -1,4 +1,6 @@
 "use client";
+import { ANIMOS, LICENCIA_LIBRE, PREFIJO_LIBRE, SIN_MUSICA } from "@/lib/animos-musica";
+import { cssFuentesPantalla } from "@/lib/fuentes-css";
 import { useEffect, useMemo, useState } from "react";
 import { aHex, ajustarHasta, aTexto, contrastePeor, hacerLegible, leerColor, legibilidad, opacidadHasta, textoSobre, type Roles } from "@/lib/colores-marca";
 import { aplicarEstilo, ESTILOS_PLANTILLA, FUENTES_ESTILOS, type EstiloPlantilla } from "@/lib/estilos-plantilla";
@@ -6,7 +8,7 @@ import { esVector } from "@/lib/formatos-vector";
 import type { LecturaWeb, MarcaWeb } from "@/lib/marca-web";
 import type { DatosPlantilla } from "@/lib/plantillas";
 import { Campo } from "./anuncios/ui";
-import { Aviso, archivo, pedir, postJson } from "./comun";
+import { Aviso, archivo, numero, pedir, postJson } from "./comun";
 import { Muestras, PaletaDeImagen, SubirImagen, subirParaPaleta, type Paleta } from "./paleta-imagen";
 
 export interface FilaPlantilla { slug: string; nombre: string; datos: DatosPlantilla; usos: number; logoRuta: string | null }
@@ -41,11 +43,21 @@ function useFuentes(familias: string[]) {
     if (!clave) return;
     const id = `fuentes-${clave}`;
     if (document.getElementById(id)) return;
-    const link = document.createElement("link");
-    link.id = id;
-    link.rel = "stylesheet";
-    link.href = `https://fonts.googleapis.com/css2?${clave.split("|").map((f) => `family=${encodeURIComponent(f).replace(/%20/g, "+")}:wght@400;600;700;800;900`).join("&")}&display=swap`;
-    document.head.appendChild(link);
+    // Las que trae Geeper salen de /fuentes (sin internet); sólo las demás se piden a Google (REN-10).
+    const { css, deGoogle } = cssFuentesPantalla(clave.split("|"));
+    if (css) {
+      const estilo = document.createElement("style");
+      estilo.id = id;
+      estilo.textContent = css;
+      document.head.appendChild(estilo);
+    }
+    if (deGoogle.length) {
+      const link = document.createElement("link");
+      link.id = css ? `${id}-google` : id;
+      link.rel = "stylesheet";
+      link.href = `https://fonts.googleapis.com/css2?${deGoogle.map((f) => `family=${encodeURIComponent(f).replace(/%20/g, "+")}:wght@400;600;700;800;900`).join("&")}&display=swap`;
+      document.head.appendChild(link);
+    }
   }, [clave]);
 }
 
@@ -141,7 +153,7 @@ function Legibilidad({ d, cambiar }: { d: DatosPlantilla; cambiar: (f: (x: Datos
           <li key={p.que} className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="w-36 shrink-0 text-tenue">{p.que}</span>
             <span className={ESTILO_LEGIBILIDAD[l]}>{l === "bien" ? "●" : l === "justo" ? "◐" : "○"} {NOMBRE_LEGIBILIDAD[l]}</span>
-            <span className="text-xs tabular-nums text-tenue">({p.k.toFixed(1)}:1)</span>
+            <span className="text-xs tabular-nums text-tenue">({numero(p.k, 1)}:1)</span>
             {p.nota && <span className="basis-full text-xs text-tenue">{p.nota}</span>}
             {l !== "bien" && (p.arreglo
               ? <button type="button" className="boton !py-0.5 text-xs" onClick={p.arreglo.aplicar}>Arreglar: {p.arreglo.texto.toLowerCase()}</button>
@@ -344,7 +356,7 @@ export function EditorPlantilla({ fila, alGuardar, alCerrar }: { fila: FilaPlant
     setMsg(null);
     try {
       await pedir(`/api/plantillas/${fila.slug}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ nombre, datos: d }) });
-      setMsg({ tipo: "ok", t: fila.usos ? `Guardada. Los ${fila.usos} proyectos que la usan la toman en su próximo render.` : "Guardada." });
+      setMsg({ tipo: "ok", t: fila.usos ? `Guardada. Los ${fila.usos} proyectos que lo usan lo toman la próxima vez que crees el video.` : "Guardada." });
       alGuardar();
     } catch (e) {
       setMsg({ tipo: "error", t: `No se guardó: ${e instanceof Error ? e.message : String(e)}` });
@@ -367,7 +379,7 @@ export function EditorPlantilla({ fila, alGuardar, alCerrar }: { fila: FilaPlant
         </details>
         <Grupo titulo="Marca">
           <div className="grid gap-3 sm:grid-cols-2">
-            <Campo etiqueta="Nombre de la plantilla" ayuda="Sólo lo ves tú, para elegirla."><input className="campo" value={nombre} maxLength={80} onChange={(e) => setNombre(e.target.value)} /></Campo>
+            <Campo etiqueta="Nombre del estilo" ayuda="Sólo lo ves tú, para elegirlo."><input className="campo" value={nombre} maxLength={80} onChange={(e) => setNombre(e.target.value)} /></Campo>
             <Campo etiqueta="Nombre de la marca" ayuda="Aparece arriba durante todo el video."><input className="campo" value={d.marca.texto} maxLength={40} onChange={(e) => cambiar((x) => { x.marca.texto = e.target.value; })} /></Campo>
           </div>
           <div>
@@ -440,7 +452,7 @@ export function EditorPlantilla({ fila, alGuardar, alCerrar }: { fila: FilaPlant
             <Campo etiqueta="Botón (lo que le pides a la gente)" ayuda="Ej.: «Suscríbete para más», «Compra en la web»."><input className="campo" value={d.cta} maxLength={40} onChange={(e) => cambiar((x) => { x.cta = e.target.value; })} /></Campo>
           </div>
           <label className="block text-sm">
-            <span className="etiqueta">Duración de la tarjeta final: {d.tarjetaFinal.duracion.toFixed(1)} s</span>
+            <span className="etiqueta">Duración de la tarjeta final: {numero(d.tarjetaFinal.duracion, 1)} s</span>
             <input type="range" min={2} max={6} step={0.1} value={d.tarjetaFinal.duracion} className="w-full" onChange={(e) => cambiar((x) => { x.tarjetaFinal.duracion = Number(e.target.value); })} />
           </label>
         </Grupo>
@@ -455,15 +467,31 @@ export function EditorPlantilla({ fila, alGuardar, alCerrar }: { fila: FilaPlant
             <input type="checkbox" checked={d.musica.ducking} onChange={(e) => cambiar((x) => { x.musica.ducking = e.target.checked; })} />
             Bajar la música mientras alguien habla
           </label>
-          {!d.musica.carpeta && <p className="text-xs text-tenue">Esta plantilla no tiene música. La carpeta de canciones se cambia en «Avanzado».</p>}
+          <label className="block text-sm">
+            <span className="etiqueta">¿Qué música?</span>
+            <select className="campo" value={d.musica.carpeta === null ? "" : d.musica.carpeta === SIN_MUSICA || d.musica.carpeta.startsWith(PREFIJO_LIBRE) ? d.musica.carpeta : "propia"}
+              onChange={(e) => cambiar((x) => {
+                const v = e.target.value;
+                if (v === "propia") return;
+                x.musica.carpeta = v || null;
+                x.musica.licencia = v === SIN_MUSICA ? "sin música" : LICENCIA_LIBRE;
+              })}>
+              <option value="">Que Geeper elija según el tema (recomendado)</option>
+              <option value={SIN_MUSICA}>Sin música</option>
+              <option value={PREFIJO_LIBRE}>Libre, de cualquier ánimo</option>
+              {Object.entries(ANIMOS).map(([id, nombre]) => <option key={id} value={`${PREFIJO_LIBRE}${id}`}>Libre: {nombre.toLowerCase()}</option>)}
+              {d.musica.carpeta !== null && d.musica.carpeta !== SIN_MUSICA && !d.musica.carpeta.startsWith(PREFIJO_LIBRE) && <option value="propia">Mis canciones ({d.musica.carpeta})</option>}
+            </select>
+            <span className="text-xs text-tenue">La libre viene con Geeper y se puede usar en videos con fines comerciales. Cada video toma una canción, y en cada video se puede cambiar escuchándolas en «Música». Tu propia carpeta de canciones se pone en «Avanzado»; si no existe en esta computadora, se usa la libre.</span>
+          </label>
         </Grupo>
 
         <details className="rounded-lg border border-borde p-3" onToggle={(e) => setJson((e.target as HTMLDetailsElement).open ? JSON.stringify(d, null, 2) : null)}>
           <summary className="cursor-pointer text-sm font-semibold">Avanzado (voz, MoneyPrinterTurbo, música, portada)</summary>
-          <p className="mt-2 text-xs text-tenue">Todos los datos de la plantilla. Lo que cambies aquí se aplica al pulsar «Aplicar»; los campos de arriba se actualizan.</p>
+          <p className="mt-2 text-xs text-tenue">Todos los datos del estilo. Lo que cambies aquí se aplica al pulsar «Aplicar»; los campos de arriba se actualizan.</p>
           {json !== null && (
             <>
-              <textarea className="campo mt-2 min-h-72 font-mono text-xs" value={json} onChange={(e) => setJson(e.target.value)} spellCheck={false} aria-label="Datos de la plantilla en JSON" />
+              <textarea className="campo mt-2 min-h-72 font-mono text-xs" value={json} onChange={(e) => setJson(e.target.value)} spellCheck={false} aria-label="Datos del estilo en JSON" />
               <button type="button" className="boton mt-2" onClick={() => {
                 try {
                   setD(JSON.parse(json) as DatosPlantilla);

@@ -119,7 +119,7 @@ export function respaldada(frase: string, aprobadas: string[]): boolean {
 }
 
 function seg(s: number | null): string {
-  return s == null ? "—" : `${s.toFixed(1).replace(".", ",")} s`;
+  return s == null ? "—" : `${s.toFixed(1)} s`;
 }
 
 function conManual(datos: DatosCampana, c: Chequeo): Chequeo {

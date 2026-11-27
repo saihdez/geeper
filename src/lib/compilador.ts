@@ -11,17 +11,20 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { ajusteDe, posicionCara, sigueCara } from "./caras";
 import { bezier, CURVAS, cssFusion, easeDe, esMascara, filtroEfectos, mascaraTransicion, scriptEfectos, svgDefs, unirFiltro, type Efecto, type EncuadreGsap, type Grano } from "./efectos";
-import { aplicarEstilo, pista, pistasLibres, type Asset, type Clip, type Encuadre, type Proyecto, type Texto, type Transicion } from "./esquema";
+import { aplicarEstilo, pistasLibres, type Asset, type Clip, type Encuadre, type Proyecto, type Texto, type Transicion } from "./esquema";
 import { ANCHO_CARACTER, caracteresPorLinea, dentro, metricas, PADDING_PASTILLA, type Caja, type Metricas } from "./formatos";
 import { duracionEscenas, escenasEnLinea, intervalos, opcionesDe, todosLosGrupos, type EscenaEnLinea, type Grupo } from "./linea";
 import { zonasDelVideo } from "./caras-zonas";
 import { cajaMarco, estiloMarco } from "./marco";
 import { resolverMarco, type Zona } from "./marco-auto";
 import type { DatosPlantilla } from "./plantillas";
+import { logoPermitido } from "./plantillas-rutas";
 import { lineas, lineasDePalabras } from "./subtitulos";
 import { textoSobre } from "./colores-marca";
+import { fuentesParaProyecto } from "./fuentes-letra";
+import { gsapParaProyecto } from "./gsap-local";
 
-export const VERSION_COMPILADOR = "compilador-hf-v3";
+export const VERSION_COMPILADOR = "compilador-hf-v4";
 
 export interface CajaRevisada {
   nombre: string;
@@ -68,9 +71,6 @@ export interface Anim {
   hasta: Record<string, number>;
   ease?: string;
 }
-
-/** Decide cubrir/contener (vive en caras.ts para que la vista previa del encuadre use el mismo cálculo). */
-export { ajusteDe };
 
 const ENCUADRE_BASE: Encuadre = { escala: 1, x: 0, y: 0 };
 const mezclarEncuadre = (a: Encuadre, b: Encuadre, k: number): Record<string, number> => ({
@@ -174,7 +174,33 @@ export function segmentosVisuales(es: Pick<EscenaEnLinea, "duracion" | "visual" 
  * `sustitutos`: id de asset → archivo que lo reemplaza al componer (p. ej. el clip con el look de color
  * del canal, src/lib/looks.ts). El geeper.json no cambia.
  */
-export function compilar(original: Proyecto, plantilla: DatosPlantilla, rutaMezcla: string, dirProyecto: string, sustitutos: Record<string, string> = {}): Compilado {
+/**
+ * Assets visuales de las escenas que van «contenidos» (con fondo borroso detrás): los que pide
+ * `prepararFondos` (fondos.ts, REN-09). El mismo cálculo que hace `compilar`.
+ */
+export function assetsConFondo(original: Proyecto, W: number, H: number): Asset[] {
+  const p = aplicarEstilo(original);
+  const vistos = new Map<string, Asset>();
+  for (const es of escenasEnLinea(p)) {
+    const a = p.assets[es.visual.asset];
+    if (a && ajusteDe(es.visual, a, W, H) === "contener") vistos.set(a.id, a);
+  }
+  return [...vistos.values()];
+}
+
+/**
+ * `fondos` (REN-09): id de asset → ruta absoluta de su fondo ya desenfocado y oscurecido con ffmpeg
+ * (fondos.ts). Con él, la pieza `b-…` usa ese archivo sin `filter` de CSS: Chrome ya no desenfoca
+ * cada cuadro mientras captura. Sin él, el desenfoque de CSS de siempre.
+ */
+export function compilar(
+  original: Proyecto,
+  plantilla: DatosPlantilla,
+  rutaMezcla: string,
+  dirProyecto: string,
+  sustitutos: Record<string, string> = {},
+  fondos: Record<string, string> = {},
+): Compilado {
   // El estilo del video se aplica a las escenas que no tienen el suyo.
   const p = aplicarEstilo(original);
   const m = metricas(p.formato, opcionesDe(p));
@@ -186,6 +212,9 @@ export function compilar(original: Proyecto, plantilla: DatosPlantilla, rutaMezc
   const total = inicioTarjeta + plantilla.tarjetaFinal.duracion;
   const grupos = todosLosGrupos(p);
   const archivos: Record<string, string> = { "assets/mezcla.wav": rutaMezcla };
+  // GSAP de node_modules, sin internet (REN-10).
+  const gsap = gsapParaProyecto();
+  if (gsap.archivo) archivos[gsap.src] = gsap.archivo;
   const anims: Anim[] = [];
   const enlazar = (a: Asset) => {
     const fuente = sustitutos[a.id] ?? path.join(dirProyecto, a.ruta);
@@ -233,7 +262,12 @@ export function compilar(original: Proyecto, plantilla: DatosPlantilla, rutaMezc
       const sincro = v.sincro === "voz" && !imagen;
       const comun = { src: nombre, inicio: es.inicio + t, dur, desde, imagen, pista: carril, velocidad: imagen || sincro ? undefined : velocidad };
       if (ajuste === "contener") {
-        piezas.push({ ...comun, id: `b-${base}`, clase: "fondo desenfoque", estilo: "" });
+        const horneado = fondos[a.id];
+        if (horneado) {
+          const src = `assets/${a.id}-fondo${path.extname(horneado)}`;
+          archivos[src] = horneado;
+          piezas.push({ ...comun, src, id: `b-${base}`, clase: "fondo desenfoque horneado", estilo: "" });
+        } else piezas.push({ ...comun, id: `b-${base}`, clase: "fondo desenfoque", estilo: "" });
         const pz = { ...comun, id: `v-${base}`, clase: "fondo contener", estilo: color };
         piezas.push(pz);
         propias.push(pz);
@@ -367,7 +401,9 @@ export function compilar(original: Proyecto, plantilla: DatosPlantilla, rutaMezc
 
   // ---- Marca (logo opcional).
   let logoHtml = "";
-  if (plantilla.marca.logo) {
+  // Sólo un logo subido desde el editor (<datos>/plantillas/, imagen): otra ruta podría sacar cualquier
+  // archivo de la PC por la vista previa (SEG-02). Si no vale, queda el texto de la marca.
+  if (plantilla.marca.logo && logoPermitido(plantilla.marca.logo)) {
     const nombre = `assets/logo${path.extname(plantilla.marca.logo)}`;
     archivos[nombre] = plantilla.marca.logo;
     logoHtml = `<img class="logo" src="${e(nombre)}" alt="" />`;
@@ -414,14 +450,18 @@ export function compilar(original: Proyecto, plantilla: DatosPlantilla, rutaMezc
   const t = plantilla.tipografia;
   const fuenteTitulos = `"${t.titulos}", "${t.texto}", sans-serif`;
   const fuenteTexto = `"${t.texto}", sans-serif`;
+  // Letras de public/fuentes, sin internet (REN-10): con su @font-face, Hyperframes no las baja de Google.
+  const letras = fuentesParaProyecto([t.titulos, t.texto]);
+  Object.assign(archivos, letras.archivos);
   const html = `<!doctype html>
 <html lang="es" data-resolution="${vertical ? "portrait" : W === H ? "square" : "landscape"}">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=${W}, height=${H}" />
     <!-- Generado por Geeper (${VERSION_COMPILADOR}) desde geeper.json: no editar a mano. -->
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <script src="${gsap.src}"></script>
     <style>
+${letras.css}
       :root {
         --tinta: ${c.tinta};
         --activa: ${c.activa};
@@ -440,6 +480,7 @@ export function compilar(original: Proyecto, plantilla: DatosPlantilla, rutaMezc
       .fondo.contener, .superpuesta.contener { object-fit: contain; }
       .fondo.contener { z-index: 2; }
       .fondo.desenfoque { filter: blur(40px) brightness(0.55); transform: scale(1.15); z-index: 1; }
+      .fondo.desenfoque.horneado { filter: none; }
       .ancla-arriba { object-position: 50% 0%; }
       .ancla-abajo { object-position: 50% 100%; }
       #marca { position: absolute; top: ${m.marcaTop}px; left: ${S.x}px; width: ${S.w}px; z-index: 30; display: flex; justify-content: center; }
@@ -541,6 +582,7 @@ export async function escribirProyectoHf(dirBuild: string, comp: Compilado): Pro
   await fs.mkdir(path.join(dirBuild, "assets"), { recursive: true });
   for (const [rel, abs] of Object.entries(comp.archivos)) {
     const destino = path.join(dirBuild, rel);
+    await fs.mkdir(path.dirname(destino), { recursive: true });
     try {
       await fs.link(abs, destino);
     } catch {
@@ -561,9 +603,3 @@ export async function escribirProyectoHf(dirBuild: string, comp: Compilado): Pro
     ),
   );
 }
-
-export function pistaMusica(p: Proyecto): Clip | undefined {
-  return p.pistas.find((x) => x.id === "musica")?.clips[0];
-}
-
-export { pista };

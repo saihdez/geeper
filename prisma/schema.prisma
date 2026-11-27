@@ -52,6 +52,8 @@ model Proyecto {
   trabajos       Trabajo[]
   renders        Render[]
   publicaciones  Publicacion[]
+
+  @@index([actualizado])
 }
 
 model Version {
@@ -111,6 +113,8 @@ model Trabajo {
   /// Ruta del log del trabajo (relativa a ~/geeper-data)
   log         String?
   error       String?
+  /// UX-41: los intentos anteriores al «Volver a intentar» (estado, error, etapa, log y fechas), del más viejo al más nuevo.
+  anteriores  Json?
   prioridad   Int       @default(0)
   creado      DateTime  @default(now())
   iniciado    DateTime?
@@ -119,6 +123,13 @@ model Trabajo {
   proyecto    Proyecto? @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
 
   @@index([motor, estado])
+  // SRV-05: sondeos por proyecto, por tipo y estado, y listas por fecha.
+  @@index([proyectoId, creado])
+  @@index([tipo, estado])
+  @@index([estado])
+  @@index([creado])
+  // WEB-13: el vigía de /api/eventos lee max(actualizado) cada segundo.
+  @@index([actualizado])
 }
 
 model Render {
@@ -138,6 +149,8 @@ model Render {
   trabajoId     String?
   creado        DateTime @default(now())
   proyecto      Proyecto @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+
+  @@index([proyectoId, creado])
 }
 
 /// Pares clave/valor del sistema (último latido del worker, etc.).
@@ -203,6 +216,8 @@ model Publicacion {
 
   /// Evita subir el mismo render dos veces a la misma cuenta por un doble clic.
   @@unique([renderId, cuentaId])
+  @@index([proyectoId, creado])
+  @@index([cuentaId, creado])
 }
 
 /// Una campaña de anuncios: brief, conceptos, revisión y prueba (docs/ANUNCIOS.md). Los datos se

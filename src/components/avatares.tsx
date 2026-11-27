@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
-import { Aviso, Barra, pedir, postJson, useSondeo } from "./comun";
+import { useEffect, useMemo, useState } from "react";
+import { cancelarAlSalir, escribirEstadoAsistente, leerEstadoAsistente, pedidoAvatar, puedeCrearAvatar, volverSeguro, type EstadoAsistente, type TextosAvatar } from "@/lib/asistente-avatar";
+import { Aviso, AvisoTarjeta, Barra, CIRCULO_PASO, CLASE_PASO, LineaFalta, faltanConGuardar, pedir, postJson, useGuardeAntes, useSondeo } from "./comun";
 import { ElegirVozAvatar, type VozElegida } from "./elegir-voz-avatar";
 
 export interface AvatarV {
@@ -18,7 +19,7 @@ export interface AvatarV {
   versiones: { nota: string; fecha: string }[];
 }
 interface Opcion { id: string; nombre: string; detalle?: string }
-interface TrabajoV { id: string; tipo: string; estado: string; etapa: string; progreso: number; avatar: string | null; propuesta: string | null }
+interface TrabajoV { id: string; tipo: string; estado: string; etapa: string; progreso: number; error: string | null; avatar: string | null; propuesta: string | null }
 interface Datos {
   wan2gp: { listo: boolean; falta: string | null; instalando: boolean };
   avatares: AvatarV[];
@@ -42,10 +43,37 @@ const RETOQUES = ["Ponle lentes", "Que sonría un poco", "Cámbiale la ropa por 
 
 const enCurso = (e?: string) => e === "pendiente" || e === "corriendo";
 
+/** Guarda en la URL por dónde va el asistente, para retomarlo al recargar o volver (UX-13). */
+function guardarEnUrl(e: EstadoAsistente | null) {
+  try {
+    const q = escribirEstadoAsistente(window.location.search, e);
+    if (q !== window.location.search) window.history.replaceState(window.history.state, "", `${window.location.pathname}${q}${window.location.hash}`);
+  } catch {
+    /* sin URL que tocar */
+  }
+}
+
 /** Avatares: crear (describirlo o desde una foto), elegir entre varias tomas, nombrarlo y retocarlo. */
 export function PaginaAvatares() {
-  const { datos, error, recargar } = useSondeo<Datos>("/api/avatares", 5000);
+  const { datos, error, recargar } = useSondeo<Datos>("/api/avatares", 5000, ["trabajos"]);
   const [creando, setCreando] = useState(false);
+  const [inicial, setInicial] = useState<EstadoAsistente | null>(null);
+  // Al llegar los datos: retomar lo que dice la URL o, si no, las opciones que se están dibujando (UX-13).
+  // Se hace una vez, durante el render (los datos sólo llegan en el navegador).
+  const [retomado, setRetomado] = useState(false);
+  // Si se llegó desde un video («Presentador»), el enlace para volver a él (UX-32).
+  const [volver, setVolver] = useState<string | null>(null);
+  const [guardado, setGuardado] = useState(false);
+  if (datos && !retomado) {
+    setRetomado(true);
+    setVolver(volverSeguro(new URLSearchParams(window.location.search).get("volver")));
+    const t = datos.trabajos.find((x) => x.tipo === "avatar.proponer" && enCurso(x.estado) && x.propuesta);
+    const e = leerEstadoAsistente(window.location.search) ?? (t ? { propuesta: t.propuesta!, trabajo: t.id } : null);
+    if (e && datos.wan2gp.listo) {
+      setInicial(e);
+      setCreando(true);
+    }
+  }
   if (error && !datos) return <Aviso tipo="error">{error}</Aviso>;
   if (!datos) return <p className="text-tenue">Cargando…</p>;
   return (
@@ -56,7 +84,14 @@ export function PaginaAvatares() {
           Un personaje, realista o animado, que presenta tus videos hablando con la voz del video. Se crea una vez y después lo eliges desde
           cualquier proyecto («Presentador»). Todo se hace en esta computadora, sin pagar nada.
         </p>
+        {volver && !guardado && <a className="inline-block text-sm text-acento underline" href={volver}>← Volver a tu video</a>}
       </header>
+      {guardado && (
+        <Aviso tipo="ok">
+          Listo: ya está en tu biblioteca.{" "}
+          {volver ? <>Ahora vuelve a tu video y elígelo en «Presentador». <a className="boton boton-primario ml-2 inline-block" href={volver}>Volver a tu video</a></> : "Ya lo puedes elegir en «Presentador» desde cualquier video."}
+        </Aviso>
+      )}
       {!datos.wan2gp.listo ? (
         <div className="space-y-2">
           <Aviso tipo="info">
@@ -67,9 +102,9 @@ export function PaginaAvatares() {
           <a className="boton boton-primario inline-block" href="/sistema#wan2gp">Ir a Sistema para instalarlo</a>
         </div>
       ) : creando ? (
-        <Crear datos={datos} cerrar={() => { setCreando(false); void recargar(); }} />
+        <Crear datos={datos} inicial={inicial} alGuardar={() => setGuardado(true)} cerrar={() => { guardarEnUrl(null); setInicial(null); setCreando(false); void recargar(); }} />
       ) : (
-        <button className="boton boton-primario" onClick={() => setCreando(true)}>＋ Crear un avatar</button>
+        <button className="boton boton-primario" onClick={() => { setGuardado(false); setCreando(true); }}>＋ Crear un avatar</button>
       )}
       {datos.avatares.length > 0 ? (
         <section className="space-y-3">
@@ -89,30 +124,43 @@ export function PaginaAvatares() {
 
 function Paso({ actual, n, titulo }: { actual: number; n: number; titulo: string }) {
   return (
-    <li className={`flex items-center gap-2 ${actual === n ? "text-white" : "text-tenue"}`} aria-current={actual === n ? "step" : undefined}>
-      <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs ${actual >= n ? "bg-cyan-700" : "bg-slate-700"}`}>{n}</span>
+    <li className={`flex items-center gap-2 ${CLASE_PASO[actual === n ? "actual" : actual > n ? "hecho" : "pendiente"]}`} aria-current={actual === n ? "step" : undefined}>
+      <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs ${CIRCULO_PASO[actual === n ? "actual" : actual > n ? "hecho" : "pendiente"]}`}>{actual > n ? "✓" : n}</span>
       {titulo}
     </li>
   );
 }
 
-function Crear({ datos, cerrar }: { datos: Datos; cerrar: () => void }) {
-  const [paso, setPaso] = useState<1 | 2 | 3>(1);
+function Crear({ datos, inicial, cerrar, alGuardar }: { datos: Datos; inicial: EstadoAsistente | null; cerrar: () => void; alGuardar: () => void }) {
+  const [paso, setPaso] = useState<1 | 2 | 3>(inicial ? 2 : 1);
   const [conFoto, setConFoto] = useState(false);
   const [estilo, setEstilo] = useState("realista");
-  const [descripcion, setDescripcion] = useState("");
+  // Un texto por modo (UX-23): lo escrito para «Describirlo» no viaja como cambio sobre la foto de alguien.
+  const [textos, setTextos] = useState<TextosAvatar>({ palabras: "", foto: "" });
+  const descripcion = conFoto ? textos.foto : textos.palabras;
+  const setDescripcion = (v: string) => setTextos((t) => (conFoto ? { ...t, foto: v } : { ...t, palabras: v }));
   const [fondo, setFondo] = useState("liso");
   const [luz, setLuz] = useState("");
   const [look, setLook] = useState("");
   const [foto, setFoto] = useState<File | null>(null);
+  const vistaFoto = useMemo(() => (foto ? URL.createObjectURL(foto) : null), [foto]);
+  useEffect(() => () => {
+    if (vistaFoto) URL.revokeObjectURL(vistaFoto);
+  }, [vistaFoto]);
   const [consiento, setConsiento] = useState(false);
-  const [pedido, setPedido] = useState<{ propuesta: string; trabajo: string } | null>(null);
+  const [pedido, setPedido] = useState<{ propuesta: string; trabajo: string } | null>(inicial ? { propuesta: inicial.propuesta, trabajo: inicial.trabajo } : null);
   const [avance, setAvance] = useState<Avance | null>(null);
-  const [elegida, setElegida] = useState<number | null>(null);
+  const [elegida, setElegida] = useState<number | null>(inicial?.toma ?? null);
+
+  useEffect(() => {
+    if (pedido) guardarEnUrl({ ...pedido, ...(elegida ? { toma: elegida } : {}) });
+  }, [pedido, elegida]);
   const [nombre, setNombre] = useState("");
   const [voz, setVoz] = useState<VozElegida | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const guarde = useGuardeAntes();
+  const faltaGuardar = faltanConGuardar(guarde);
 
   useEffect(() => {
     if (!pedido) return;
@@ -125,7 +173,15 @@ function Crear({ datos, cerrar }: { datos: Datos; cerrar: () => void }) {
         setAvance(d);
         if (enCurso(d.estado)) t = setTimeout(() => void tick(), 3000);
       } catch (e) {
-        if (vivo) setError((e as Error).message);
+        if (!vivo) return;
+        const m = (e as Error).message;
+        if (/No existe esa propuesta/.test(m)) {
+          // Lo que guardaba la URL ya no existe (se borró, es de otra PC…): se empieza de nuevo.
+          guardarEnUrl(null);
+          setPedido(null);
+          setPaso(1);
+          setError("Esas opciones ya no están: crea el avatar de nuevo.");
+        } else setError(m);
       }
     };
     void tick();
@@ -135,14 +191,14 @@ function Crear({ datos, cerrar }: { datos: Datos; cerrar: () => void }) {
     };
   }, [pedido]);
 
-  const puede = conFoto ? !!foto && consiento : descripcion.trim().length >= 8;
+  const puede = puedeCrearAvatar(conFoto, textos, !!foto, consiento);
 
   async function empezar() {
     setError(null);
     setEnviando(true);
     try {
       const f = new FormData();
-      f.set("pedido", JSON.stringify({ descripcion, estilo, fondo, ...(luz ? { luz } : {}), ...(look ? { look } : {}) }));
+      f.set("pedido", JSON.stringify(pedidoAvatar({ conFoto, textos, estilo, fondo, luz, look })));
       if (conFoto && foto) {
         f.set("foto", foto);
         f.set("consiento", consiento ? "si" : "no");
@@ -170,12 +226,26 @@ function Crear({ datos, cerrar }: { datos: Datos; cerrar: () => void }) {
     }
   }
 
+  /** Con las opciones dibujándose, «Cancelar» lo pregunta y para el trabajo (no deja la tarjeta ocupada a escondidas). */
+  async function cancelar() {
+    if (pedido && cancelarAlSalir(pedido, avance?.estado)) {
+      if (!confirm("¿Dejar de dibujar? Se pierde lo que lleva.")) return;
+      try {
+        await postJson(`/api/trabajos/${pedido.trabajo}`, { accion: "cancelar" });
+      } catch {
+        /* ya había terminado */
+      }
+    }
+    cerrar();
+  }
+
   async function guardar() {
     if (!pedido || !elegida) return;
     setError(null);
     setEnviando(true);
     try {
       await postJson("/api/avatares/propuestas", { accion: "guardar", propuesta: pedido.propuesta, toma: elegida, nombre, ...(voz ? { voz } : {}) });
+      alGuardar();
       cerrar();
     } catch (e) {
       setError((e as Error).message);
@@ -192,15 +262,15 @@ function Crear({ datos, cerrar }: { datos: Datos; cerrar: () => void }) {
           <Paso actual={paso} n={2} titulo="Elige el que más te guste" />
           <Paso actual={paso} n={3} titulo="Nombre y voz" />
         </ol>
-        <button className="boton" onClick={cerrar}>Cancelar</button>
+        <button className="boton" onClick={() => void cancelar()}>Cancelar</button>
       </div>
       {error && <Aviso tipo="error">{error}</Aviso>}
 
       {paso === 1 && (
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="De dónde sale el avatar">
-            <button role="radio" aria-checked={!conFoto} className={`boton ${!conFoto ? "boton-primario" : ""}`} onClick={() => setConFoto(false)}>Describirlo con palabras</button>
-            <button role="radio" aria-checked={conFoto} className={`boton ${conFoto ? "boton-primario" : ""}`} onClick={() => setConFoto(true)}>Desde una foto</button>
+            <button type="button" role="radio" aria-checked={!conFoto} className="opcion" onClick={() => setConFoto(false)}>Describirlo con palabras</button>
+            <button type="button" role="radio" aria-checked={conFoto} className="opcion" onClick={() => setConFoto(true)}>Desde una foto</button>
           </div>
 
           <fieldset className="space-y-2">
@@ -208,7 +278,7 @@ function Crear({ datos, cerrar }: { datos: Datos; cerrar: () => void }) {
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {datos.estilos.map((e) => (
                 <button key={e.id} type="button" aria-pressed={estilo === e.id} onClick={() => setEstilo(e.id)}
-                  className={`tarjeta p-3 text-left hover:bg-white/5 ${estilo === e.id ? "outline outline-2 outline-cyan-500" : ""}`}>
+                  className="opcion-tarjeta p-3">
                   <span className="block font-medium">{e.nombre}</span>
                   <span className="block text-xs text-tenue">{e.detalle}</span>
                 </button>
@@ -219,11 +289,17 @@ function Crear({ datos, cerrar }: { datos: Datos; cerrar: () => void }) {
           {conFoto ? (
             <div className="space-y-2">
               <p className="text-sm font-medium">Foto de frente, con la cara bien visible</p>
-              <label className="boton cursor-pointer">
-                {foto ? "Cambiar la foto" : "Elegir una foto"}
-                <input type="file" accept=".png,.jpg,.jpeg,.webp" className="sr-only" onChange={(ev) => setFoto(ev.target.files?.[0] ?? null)} />
-              </label>
-              {foto && <p className="text-xs text-tenue">Elegida: {foto.name}</p>}
+              <div className="flex flex-wrap items-center gap-3">
+                {vistaFoto && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={vistaFoto} alt="La foto que elegiste" className="h-24 w-24 rounded-lg object-cover" />
+                )}
+                <label className="boton cursor-pointer">
+                  {foto ? "Cambiar la foto" : "Elegir una foto"}
+                  <input type="file" accept=".png,.jpg,.jpeg,.webp" className="sr-only" onChange={(ev) => setFoto(ev.target.files?.[0] ?? null)} />
+                </label>
+                {foto && <span className="text-xs text-tenue">Mírala: ¿se ve bien la cara, de frente?</span>}
+              </div>
               <label className="flex items-start gap-2 text-sm">
                 <input type="checkbox" className="mt-1" checked={consiento} onChange={(ev) => setConsiento(ev.target.checked)} />
                 <span>{datos.consentimiento}</span>
@@ -246,7 +322,7 @@ function Crear({ datos, cerrar }: { datos: Datos; cerrar: () => void }) {
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium">Fondo</legend>
             <div className="flex flex-wrap gap-2">
-              {datos.fondos.map((f) => <button key={f.id} type="button" aria-pressed={fondo === f.id} className={`boton ${fondo === f.id ? "boton-primario" : ""}`} onClick={() => setFondo(f.id)}>{f.nombre}</button>)}
+              {datos.fondos.map((f) => <button key={f.id} type="button" aria-pressed={fondo === f.id} className="opcion" onClick={() => setFondo(f.id)}>{f.nombre}</button>)}
             </div>
           </fieldset>
 
@@ -255,8 +331,9 @@ function Crear({ datos, cerrar }: { datos: Datos; cerrar: () => void }) {
             <div className="mt-2 grid gap-3 sm:grid-cols-2">
               <label className="space-y-1"><span className="block text-xs text-tenue">Luz</span>
                 <select className="campo" value={luz} onChange={(ev) => setLuz(ev.target.value)}>
-                  <option value="">Estudio pareja (recomendada)</option>
-                  {datos.luces.map((l) => <option key={l.id} value={l.id}>{l.nombre}</option>)}
+                  <option value="">Luz de estudio uniforme (recomendada)</option>
+                  {/* «estudio» es la misma luz que la recomendada: no se repite (UX-32). */}
+                  {datos.luces.filter((l) => l.id !== "estudio").map((l) => <option key={l.id} value={l.id}>{l.nombre}</option>)}
                 </select>
               </label>
               <label className="space-y-1"><span className="block text-xs text-tenue">Look</span>
@@ -268,14 +345,15 @@ function Crear({ datos, cerrar }: { datos: Datos; cerrar: () => void }) {
             </div>
           </details>
 
+          <AvisoTarjeta g={guarde}>
+            Mientras tanto se pausa la generación de videos. Tarda unos 2 minutos; la primera vez, unos 6, porque baja el modelo (unos 11 GB).
+          </AvisoTarjeta>
           <div className="space-y-1">
-            <button className="boton boton-primario" disabled={!puede || enviando} onClick={() => void empezar()}>
+            <button className="boton boton-primario" disabled={!puede || enviando || faltaGuardar.length > 0} aria-describedby={faltaGuardar.length ? guarde.idFalta : undefined}
+              onClick={() => void empezar()}>
               {enviando ? "Enviando…" : conFoto ? "Crear 2 versiones" : "Crear 4 opciones"}
             </button>
-            <p className="text-xs text-tenue">
-              Usa la tarjeta de video: mientras tanto se pausa la generación de videos. Tarda unos 2 minutos; la primera vez, unos 6, porque
-              baja el modelo (unos 11 GB).
-            </p>
+            <LineaFalta id={guarde.idFalta} faltan={faltaGuardar} />
           </div>
         </div>
       )}
@@ -295,7 +373,7 @@ function Crear({ datos, cerrar }: { datos: Datos; cerrar: () => void }) {
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {avance.tomas.map((t) => (
                   <button key={t.url} type="button" aria-pressed={elegida === t.numero} onClick={() => setElegida(t.numero)}
-                    className={`overflow-hidden rounded-lg border ${elegida === t.numero ? "border-cyan-400 outline outline-2 outline-cyan-500" : "border-transparent"}`}>
+                    className="opcion-tarjeta overflow-hidden">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={t.url} alt={`Opción ${t.numero}`} className="aspect-[832/1216] w-full object-cover" />
                   </button>
@@ -303,11 +381,15 @@ function Crear({ datos, cerrar }: { datos: Datos; cerrar: () => void }) {
               </div>
             </>
           )}
+          {avance && !enCurso(avance.estado) && <AvisoTarjeta g={guarde} />}
           <div className="flex flex-wrap gap-2">
             <button className="boton" onClick={() => setPaso(1)}>← Cambiar la descripción</button>
-            <button className="boton" disabled={!avance || enCurso(avance.estado)} onClick={() => void otras()}>{avance?.conFoto ? "Hacer otras 2" : "Hacer otras 4"}</button>
+            <button className="boton" disabled={!avance || enCurso(avance.estado) || faltaGuardar.length > 0}
+              aria-describedby={avance && !enCurso(avance.estado) && faltaGuardar.length ? guarde.idFalta : undefined}
+              onClick={() => void otras()}>{avance?.conFoto ? "Hacer otras 2" : "Hacer otras 4"}</button>
             <button className="boton boton-primario" disabled={!elegida} onClick={() => setPaso(3)}>Usar éste →</button>
           </div>
+          {avance && !enCurso(avance.estado) && <LineaFalta id={guarde.idFalta} faltan={faltaGuardar} />}
         </div>
       )}
 
@@ -339,6 +421,8 @@ function Tarjeta({ avatar: a, listo, trabajo, cambio }: { avatar: AvatarV; listo
   const [instruccion, setInstruccion] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  const guarde = useGuardeAntes();
+  const faltaGuardar = faltanConGuardar(guarde);
 
   async function hacer(fn: () => Promise<unknown>) {
     setError(null);
@@ -386,6 +470,9 @@ function Tarjeta({ avatar: a, listo, trabajo, cambio }: { avatar: AvatarV; listo
             <Barra valor={trabajo.progreso} />
           </div>
         )}
+        {trabajo?.estado === "fallido" && !a.retoque && (
+          <Aviso tipo="error">No se pudo retocar{trabajo.error ? `: ${trabajo.error}` : "."} Puedes volver a intentarlo.</Aviso>
+        )}
         {error && <Aviso tipo="error">{error}</Aviso>}
         {a.retoque && !retocando && !editando && (
           <ElegirRetoque avatar={a} ocupado={ocupado} elegir={(toma) => void hacer(() => patch({ elegirRetoque: toma }))} />
@@ -397,10 +484,13 @@ function Tarjeta({ avatar: a, listo, trabajo, cambio }: { avatar: AvatarV; listo
             <div className="flex flex-wrap gap-1">
               {RETOQUES.map((x) => <button key={x} type="button" className="boton text-xs" onClick={() => setInstruccion(x)}>{x}</button>)}
             </div>
+            <AvisoTarjeta g={guarde} />
             <div className="flex gap-2">
-              <button className="boton boton-primario" disabled={ocupado || instruccion.trim().length < 3} onClick={() => void hacer(async () => { await postJson(`/api/avatares/${a.id}`, { instruccion }); setRetocar(false); setInstruccion(""); })}>Retocar</button>
+              <button className="boton boton-primario" disabled={ocupado || instruccion.trim().length < 3 || faltaGuardar.length > 0} aria-describedby={faltaGuardar.length ? guarde.idFalta : undefined}
+                onClick={() => void hacer(async () => { await postJson(`/api/avatares/${a.id}`, { instruccion }); setRetocar(false); setInstruccion(""); })}>Retocar</button>
               <button className="boton" onClick={() => setRetocar(false)}>Cerrar</button>
             </div>
+            <LineaFalta id={guarde.idFalta} faltan={faltaGuardar} />
           </div>
         ) : (
           <div className="flex flex-wrap gap-2">
@@ -432,7 +522,7 @@ function ElegirRetoque({ avatar: a, ocupado, elegir }: { avatar: AvatarV; ocupad
       <div className="grid grid-cols-3 gap-1" role="radiogroup" aria-label="Opciones del retoque">
         {[{ toma: null as number | null, url: a.retrato, titulo: "Actual" }, ...r.opciones.map((url, i) => ({ toma: i + 1 as number | null, url, titulo: `Opción ${i + 1}` }))].map((o) => (
           <button key={o.titulo} type="button" role="radio" aria-checked={elegida === o.toma}
-            className={`overflow-hidden rounded border-2 text-xs ${elegida === o.toma ? "border-cyan-400" : "border-transparent"}`}
+            className="opcion-tarjeta overflow-hidden text-xs"
             onClick={() => setElegida(o.toma)}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={o.url} alt={o.titulo} className="aspect-[832/1216] w-full object-cover" />

@@ -7,12 +7,24 @@
  *
  * Sin dependencias de Electron: lo usan el servidor y el worker, que son procesos Node comunes.
  */
+import { readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 export type Sistema = "windows" | "mac" | "linux";
 
 export const SISTEMA: Sistema = process.platform === "win32" ? "windows" : process.platform === "darwin" ? "mac" : "linux";
+
+/** ¿Corre dentro de WSL? (Linux con el núcleo de Microsoft.) Su disco vive en un archivo de C: (DSC-06). */
+export function esWsl(env: Record<string, string | undefined> = process.env): boolean {
+  if (process.platform !== "linux") return false;
+  if (env.WSL_DISTRO_NAME) return true;
+  try {
+    return /microsoft/i.test(readFileSync("/proc/sys/kernel/osrelease", "utf8"));
+  } catch {
+    return false;
+  }
+}
 
 /** Corre como app de escritorio (lo fija la carcasa de Electron). */
 export const ESCRITORIO = process.env.GEEPER_ESCRITORIO === "1";

@@ -17,6 +17,8 @@ import os from "node:os";
 import path from "node:path";
 import { build } from "esbuild";
 import { unzipSync } from "fflate";
+import { electronDelRepo, probarApp } from "./probar-app";
+import { copiarStandalone, faltantesApp, podarNodeModules, revisarStandalone, tamanoCarpeta } from "./armado";
 
 const REPO = path.resolve(__dirname, "..", "..");
 const APP = path.join(REPO, "escritorio-app");
@@ -135,6 +137,8 @@ async function bundles() {
     // resources\package.json». Va aparte, en node_modules (abajo).
     await build({ ...comun, entryPoints: [path.join(REPO, entrada)], outfile: path.join(APP, salida), format: "esm", banner, external: ["better-sqlite3", "playwright-core"] });
   }
+  // Arranca el servidor y el worker y los apaga en orden cuando la carcasa cierra (escritorio/main.ts).
+  fs.copyFileSync(path.join(REPO, "escritorio", "vigia.mjs"), path.join(APP, "vigia.mjs"));
 }
 
 async function main() {
@@ -146,15 +150,17 @@ async function main() {
   correr("pnpm", ["exec", "next", "build"], { env: { GEEPER_STANDALONE: "1", NEXT_TELEMETRY_DISABLED: "1" } });
   const standalone = path.join(APP, "standalone");
   const dist = path.join(REPO, ".next-escritorio");
-  copiar(path.join(dist, "standalone"), standalone);
+  // Sólo server.js, package.json y .next-escritorio: el standalone arrastra la raíz del repo (ESC-15).
+  copiarStandalone(path.join(dist, "standalone"), standalone);
   copiar(path.join(dist, "static"), path.join(standalone, ".next-escritorio", "static"));
   if (fs.existsSync(path.join(REPO, "public"))) copiar(path.join(REPO, "public"), path.join(standalone, "public"));
+  revisarStandalone(standalone);
 
   // 2. Bundles.
   await bundles();
 
   // 3. node_modules plano (npm, sin los enlaces de pnpm, que no sobreviven al instalador) con las
-  //    versiones exactas que usa el servidor, más Hyperframes (se corre como CLI). better-sqlite3 es la
+  //    versiones exactas que usa el servidor, más Hyperframes (se corre como CLI) y gsap (el render lo usa sin internet). better-sqlite3 es la
   //    versión del adaptador de Prisma: un solo módulo nativo, recompilado para Electron.
   const real = (paquete: string) => fs.realpathSync(path.join(REPO, "node_modules", paquete));
   const versionDe = (dir: string) => JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8")).version as string;
@@ -167,13 +173,14 @@ async function main() {
     "@prisma/adapter-better-sqlite3": versionDe(adaptador),
     "better-sqlite3": versionDe(path.join(adaptador, "..", "..", "better-sqlite3")),
     hyperframes: process.env.GEEPER_HYPERFRAMES_VERSION ?? "0.9.27",
+    // REN-10: el render copia node_modules/gsap/dist/gsap.min.js al proyecto en vez de bajarlo del CDN.
+    gsap: versionDe(real("gsap")),
     "playwright-core": versionDe(real("playwright-core")),
   };
   // Turbopack pide algunos paquetes con un nombre con hash (p. ej. @prisma/client-ad5a…), que en el build
   // son enlaces en .next-escritorio/node_modules. electron-builder descarta todo node_modules que no esté
   // en la raíz de la app, así que se declaran como alias de npm (`npm:@prisma/client@7.10.1`): npm los
   // instala en escritorio-app/node_modules, y el servidor los encuentra subiendo carpetas.
-  const dirAlias = path.join(standalone, ".next-escritorio", "node_modules");
   const aliasDe = (dir: string): string[] =>
     !fs.existsSync(dir) ? [] : fs.readdirSync(dir).flatMap((n) => (n.startsWith("@") ? fs.readdirSync(path.join(dir, n)).map((m) => `${n}/${m}`) : [n]));
   for (const nombreAlias of aliasDe(path.join(dist, "standalone", ".next-escritorio", "node_modules"))) {
@@ -182,7 +189,6 @@ async function main() {
     deps[nombreAlias] = `npm:${pkg.name}@${pkg.version}`;
     console.log(`alias ${nombreAlias} → ${deps[nombreAlias]}`);
   }
-  fs.rmSync(dirAlias, { recursive: true, force: true });
   fs.writeFileSync(path.join(APP, "package.json"), JSON.stringify({
     name: "geeper", productName: "Geeper", version: raiz.version, private: true, main: "main.cjs",
     description: "Estudio de video local de Dimerso", author: "Dimerso", dependencies: deps,
@@ -204,6 +210,12 @@ async function main() {
   } else {
     correr("pnpm", ["exec", "electron-rebuild", "--version", ELECTRON, "--module-dir", APP, "--only", "better-sqlite3", "--force"]);
   }
+  // Lo que no se usa al correr (compilador de Next, sharp, Prisma de otras bases, fuentes de SQLite): ESC-04.
+  const nm = path.join(APP, "node_modules");
+  const antes = tamanoCarpeta(nm);
+  const podado = podarNodeModules(nm);
+  console.log(`node_modules: ${((antes - tamanoCarpeta(nm)) / 1048576).toFixed(0)} MB menos (${podado.length} entradas borradas)`);
+  if (!fs.existsSync(path.join(nm, "better-sqlite3", "build", "Release", "better_sqlite3.node"))) throw new Error("Falta better_sqlite3.node en la app tras la poda.");
 
   // El servidor resuelve sus paquetes subiendo hasta escritorio-app/node_modules: su propio node_modules
   // (con enlaces absolutos de pnpm) sobra. Y no puede quedar ningún node_modules fuera de la raíz: el
@@ -223,11 +235,22 @@ async function main() {
   fs.writeFileSync(path.join(APP, "esquema.sql"), esquema.slice(esquema.indexOf("--")));
   copiar(path.join(REPO, "py"), path.join(APP, "py"));
   fs.rmSync(path.join(APP, "py", "__pycache__"), { recursive: true, force: true });
+  // Música y efectos libres (CC0, src/lib/audio-libre.ts): unos 7 MB.
+  copiar(path.join(REPO, "audio-libre"), path.join(APP, "audio-libre"));
   fs.mkdirSync(path.join(APP, "docs"), { recursive: true });
   fs.copyFileSync(path.join(REPO, "docs", "fuentes.json"), path.join(APP, "docs", "fuentes.json"));
 
   // 5. Programas de este sistema (ffmpeg, uv, whisper).
   await recursos();
+
+  // Lo que se lee en tiempo de ejecución tiene que estar: si no, se vería en el equipo de alguien.
+  const falta = faltantesApp(APP);
+  if (falta.length) throw new Error(`A la app le falta lo que necesita al correr: ${falta.join(", ")}`);
+  // Se abre la app armada una vez (con el Node de Electron) antes de hacer el instalador: ESC-12.
+  if (process.env.GEEPER_SIN_PRUEBA !== "1") {
+    const fallas = await probarApp({ app: APP, ejecutable: electronDelRepo() });
+    if (fallas.length) throw new Error(`La app armada no funciona; no se hace el instalador:\n  ${fallas.join("\n  ")}`);
+  }
 
   if (sinInstalador) {
     console.log(`Lista: ${APP}\nProbar: pnpm exec electron ${APP}`);

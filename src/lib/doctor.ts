@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { correr } from "./proceso";
 import { apiViva } from "./mpt";
-import { CACHE_HF, FFMPEG, GPU_LOCK_BIN, GPU_LOCK_FILE, HYPERFRAMES_VERSION, MPT_API, PHOTOCRAFT_CLI, PHOTOCRAFT_VERSION, PYTHON_VOZ, RAIZ_REPO, VECTORCRAFT_CLI, VECTORCRAFT_VERSION, dirDatos } from "./rutas";
+import { CACHE_HF, FFMPEG, GPU_LOCK_BIN, GPU_LOCK_FILE, HYPERFRAMES_VERSION, MPT_API, PHOTOCRAFT_CLI, PHOTOCRAFT_VERSION, PYTHON_VOZ, RAIZ_REPO, ESTUDIO, VECTORCRAFT_CLI, VECTORCRAFT_VERSION, dirDatos } from "./rutas";
 import { correrHf } from "./hyperframes";
 import { existsSync } from "node:fs";
 import { ESCRITORIO, PYTHON_SISTEMA, SISTEMA } from "./plataforma";
@@ -11,7 +11,10 @@ import { BLENDER_VERSION, binBlender, rutaHdri, versionBlender } from "./blender
 import { MODELO_WHISPER } from "./voz";
 import { versionPhotocraft } from "./photocraft";
 import { versionVectorcraft } from "./vectorcraft";
-import { existe } from "./archivos";
+import { existe, sha256Archivo } from "./archivos";
+import { espacioLibre } from "./espacio";
+import { estadoDisco } from "./espacio-texto";
+import { rutaVad, VAD_SILERO } from "./whisper";
 import { PYTHON_CLIPS } from "./fuentes";
 import { db } from "./db";
 import { existeClave, rutaClave } from "./redes/cifrado";
@@ -132,6 +135,13 @@ export async function diagnosticar(): Promise<Chequeo[]> {
     nombre: `whisper ${MODELO_WHISPER} (Hyperframes)`, ok: whisper, detalle: whisper ? "modelo en caché" : "falta el modelo",
     arreglo: whisper ? undefined : ESCRITORIO ? PREPARAR : "Se descarga solo en el primer `hyperframes transcribe --model medium` (~1,5 GB).",
   });
+  // Filtro de voz de whisper (src/lib/whisper.ts): sin él, whisper puede inventar palabras sobre música.
+  const vad = (await existe(rutaVad())) && (await sha256Archivo(rutaVad())) === VAD_SILERO.sha256;
+  c.push({
+    nombre: "Filtro de voz para subtítulos (VAD Silero)", ok: vad, aviso: true,
+    detalle: vad ? `${VAD_SILERO.id} verificado` : "falta: se transcribe sin él (puede inventar palabras sobre música o silencio)",
+    arreglo: vad ? undefined : ESCRITORIO ? PREPARAR : "Se descarga solo (885 KB, SHA-256 fijado) la próxima vez que Geeper transcriba con internet.",
+  });
 
   // Clips de material largo (opcional): venv con OpenCV + yt-dlp y el modelo YuNet verificado.
   const ping = await intento(PYTHON_CLIPS, ["-I", "-c", "import cv2, numpy, yt_dlp; print(yt_dlp.version.__version__)"]);
@@ -168,12 +178,12 @@ export async function diagnosticar(): Promise<Chequeo[]> {
 
   // venv del estudio.
   const venv = PYTHON_VOZ;
-  const py = ESCRITORIO
-    ? await intento(venv, ["-I", "-c", "import kokoro_onnx, soundfile, sys; print(sys.version.split()[0])"], 60_000)
-    : await intento(venv, ["-c", "import torch, kokoro_onnx; print(torch.__version__, torch.cuda.is_available())"], 60_000);
+  // Sólo lo que usa la voz: importar torch y preguntar torch.cuda cargaba PyTorch y encendía CUDA en la
+  // tarjeta cada vez que se abría Sistema, y Kokoro (onnx) no los necesita.
+  const py = await intento(venv, ["-I", "-c", "import kokoro_onnx, soundfile, sys; print(sys.version.split()[0])"], 60_000);
   c.push({
     nombre: ESCRITORIO ? "Python de la voz (Kokoro)" : "venv del estudio (Kokoro para regenerar voz)", ok: py.codigo === 0,
-    detalle: py.codigo === 0 ? (ESCRITORIO ? `Python ${py.stdout.trim()} con kokoro-onnx` : `kokoro-onnx ok, torch ${py.stdout.trim()}`) : "no responde: regenerar la voz no funcionará",
+    detalle: py.codigo === 0 ? `Python ${py.stdout.trim()} con kokoro-onnx` : "no responde: regenerar la voz no funcionará",
     arreglo: py.codigo === 0 ? undefined : ESCRITORIO ? PREPARAR : "source ~/dev/video-tools/estudio.sh  (ver ESTUDIO.md)",
   });
 
@@ -228,6 +238,8 @@ export async function diagnosticar(): Promise<Chequeo[]> {
   } catch {
     c.push({ nombre: "Carpeta de datos", ok: false, detalle: `${datos} no existe o no se puede escribir`, arreglo: ESCRITORIO ? "Revisa que esa carpeta exista y que tu usuario pueda escribir en ella (OneDrive a veces la bloquea)." : `mkdir -p ${datos} && pnpm run setup` });
   }
+  // Espacio en disco (DSC-05, DSC-06): en WSL cuenta lo libre en C:, donde vive el disco de Linux.
+  c.push(...(await chequeosDisco([datos, ESTUDIO])));
   // Alineación guion ↔ whisper (py/alineacion.py): en la app, con el Python de la voz.
   const pyAlinear = ESCRITORIO ? PYTHON_VOZ : PYTHON_SISTEMA;
   const al = await correr(pyAlinear, [path.join(RAIZ_REPO, "py", "geeper_py.py"), "alinear"], { entrada: '{"guion":"hola","palabras":[{"text":"hola","start":0,"end":0.3}]}', permitirFallo: true }).catch(
@@ -241,6 +253,22 @@ export async function diagnosticar(): Promise<Chequeo[]> {
 
   c.push(...(await diagnosticarRedes()));
   return c;
+}
+
+/**
+ * Un chequeo por disco: los datos y las herramientas (modelos) suelen estar en el mismo, pero en la app
+ * de escritorio o con GEEPER_DATA en otro disco pueden no estarlo.
+ */
+export async function chequeosDisco(rutas: string[], medir: typeof espacioLibre = espacioLibre): Promise<Chequeo[]> {
+  const vistos = new Map<string, Chequeo>();
+  for (const r of rutas) {
+    const m = await medir(r).catch(() => null);
+    if (!m) continue;
+    const clave = `${m.disco}|${m.libre}|${m.total}`;
+    if (vistos.has(clave)) continue;
+    vistos.set(clave, { nombre: m.disco === "el disco" ? "Espacio en disco" : `Espacio en disco (${m.disco})`, ...estadoDisco(m) });
+  }
+  return [...vistos.values()];
 }
 
 /** Publicar en redes (PUBLICAR.md §6, §8): credenciales presentes, clave, VPN y cuentas. Nunca muestra secretos. */

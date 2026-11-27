@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { compilar } from "@/lib/compilador";
-import { aplicarEdicion } from "@/lib/ediciones";
+import { aplicarEdicion, Edicion } from "@/lib/ediciones";
 import { pista, validarProyecto } from "@/lib/esquema";
 import { escenasEnLinea, todosLosGrupos } from "@/lib/linea";
 import { PLANTILLAS_INICIALES } from "@/lib/plantillas";
@@ -35,10 +35,27 @@ describe("ediciones sin GPU", () => {
     expect(todosLosGrupos(p)[0]!.texto.startsWith("Escena 3")).toBe(true);
   });
 
+  it("UX-02: un subtítulo no puede quedar vacío", () => {
+    const r = Edicion.safeParse({ tipo: "corregirSubtitulo", escena: "e02", desde: 0, hasta: 2, texto: "   " });
+    expect(r.success).toBe(false);
+    expect(r.error?.issues[0]?.message).toBe("Un subtítulo no puede quedar vacío. Para quitar la palabra, recórtala arriba.");
+    expect(Edicion.safeParse({ tipo: "corregirSubtitulo", escena: "e02", desde: 0, hasta: 2, texto: "hola" }).success).toBe(true);
+  });
+
   it("corregir un subtítulo sólo toca lo mostrado", () => {
     const p = aplicarEdicion(proyectoDePrueba(), { tipo: "corregirSubtitulo", escena: "e02", desde: 0, hasta: 2, texto: "Segunda escena" });
     expect(todosLosGrupos(p).some((g) => g.texto.startsWith("Segunda escena"))).toBe(true);
     expect(p.escenas.e02!.palabras[0]!.texto).toBe("Escena");
+  });
+
+  it("corregir una palabra «revisada» (clips) la saca de las dudosas; sin la marca no toca la confianza", () => {
+    const base = structuredClone(proyectoDePrueba());
+    base.escenas.e02!.palabras[1] = { ...base.escenas.e02!.palabras[1]!, confianza: 0.4 };
+    const sin = aplicarEdicion(base, { tipo: "corregirSubtitulo", escena: "e02", desde: 1, hasta: 2, texto: "escenas" });
+    expect(sin.escenas.e02!.palabras[1]!.confianza).toBe(0.4);
+    const con = aplicarEdicion(base, { tipo: "corregirSubtitulo", escena: "e02", desde: 1, hasta: 2, texto: "escenas", revisada: true });
+    expect(con.escenas.e02!.palabras[1]!.confianza).toBe(1);
+    expect(con.escenas.e02!.correcciones).toEqual([{ desde: 1, hasta: 2, texto: "escenas" }]);
   });
 
   it("rechaza un geeper.json inconsistente", () => {

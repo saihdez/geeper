@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { Informe, Novedad } from "@/lib/novedades";
-import { Aviso, pedir, useSondeo } from "./comun";
+import { Aviso, fecha, pedir, useSondeo } from "./comun";
 
 const QUE_HACER: Record<string, string> = {
   web: "Es una app de Media: se actualiza ahí con un clic (y se puede volver a la anterior).",
@@ -51,7 +51,7 @@ export function Novedades() {
     <section aria-labelledby="titulo-novedades" className="space-y-3">
       <div className="flex flex-wrap items-baseline gap-3">
         <h2 id="titulo-novedades" className="font-medium">Novedades de los repos integrados</h2>
-        {datos && <span className="text-xs text-tenue">revisado {new Date(datos.fecha).toLocaleString("es")}</span>}
+        {datos && <span className="text-xs text-tenue">revisado {fecha(datos.fecha)}</span>}
         <button type="button" className="boton ml-auto py-1 text-xs" disabled={buscando} onClick={() => void buscarAhora()}>{buscando ? "Buscando…" : "Buscar ahora"}</button>
       </div>
       <p className="text-sm text-tenue">

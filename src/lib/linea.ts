@@ -73,22 +73,16 @@ export function duracionEscenas(p: Proyecto): number {
   return ENTRADA + escenasEnLinea(p).reduce((s, e) => s + e.duracion, 0);
 }
 
-/**
- * Tiempo de la línea final para un instante del asset de voz de la escena. Si cae en un recorte, va al
- * borde del tramo siguiente (o al final del anterior si no hay siguiente).
- */
-export function aLinea(e: Pick<EscenaEnLinea, "inicio" | "duracion" | "tramos">, t: number): number {
-  for (const x of e.tramos) {
-    if (t < x.inicio) return e.inicio + x.enEscena;
-    if (t <= x.fin) return e.inicio + x.enEscena + (t - x.inicio);
-  }
-  return e.inicio + e.duracion;
-}
-
 /** El tramo que contiene `t` (o -1 si cae en un recorte o fuera del clip). */
 export function tramoDe(tramos: Tramo[], t: number): number {
   return tramos.findIndex((x) => t >= x.inicio - 1e-6 && t <= x.fin + 1e-6);
 }
+
+/**
+ * Lo más que puede durar una palabra en pantalla (s). Idea de Cap (`MAX_CAPTION_WORD_DURATION`,
+ * `crates/project/src/caption_words.rs`): una palabra «larga» suele ser whisper estirándola sobre una pausa.
+ */
+export const MAX_DURACION_PALABRA = 2.5;
 
 /**
  * Palabras mostradas de una escena, ya en tiempo de la línea final. Una palabra cuyo centro cae en un
@@ -109,7 +103,8 @@ function fichasDeEscena(p: Proyecto, e: EscenaEnLinea): (Ficha & { escena: strin
       const a = Math.max(x.inicio, ini);
       const b = Math.min(x.fin, fin);
       const base = e.inicio + x.enEscena - x.inicio;
-      return [{ ...f, inicio: base + a, fin: base + Math.max(a + 0.02, b), escena: e.escena.id }];
+      // Tope por palabra: whisper a veces estira la última sobre un silencio y el subtítulo se queda.
+      return [{ ...f, inicio: base + a, fin: base + Math.max(a + 0.02, Math.min(b, a + MAX_DURACION_PALABRA)), escena: e.escena.id }];
     });
 }
 

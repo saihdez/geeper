@@ -7,6 +7,7 @@ import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { compilar, escribirProyectoHf, VERSION_COMPILADOR } from "./compilador";
+import { esFamiliaLocal } from "./fuentes-letra";
 import { prepararColor } from "./looks";
 import { db } from "./db";
 import { metricas } from "./formatos";
@@ -34,6 +35,32 @@ export const rutaRuntime = () => {
   if (!r) throw new Error(`Falta el runtime de Hyperframes (hyperframe.runtime.iife.js); se buscó en: ${RUNTIMES.join(", ")}`);
   return r;
 };
+
+/**
+ * El HTML del render sólo nombra las familias (Hyperframes las resuelve al renderizar); en la vista
+ * previa el navegador usaba su letra por defecto, más fina y con otros saltos de línea (REN-06). Se
+ * enlazan de Google Fonts sólo los pesos que usa el compilador: títulos en 400 y el texto en
+ * `pesoTexto`, normal e itálica (la cita). Un `<link>` por pedido: si una familia no tiene ese peso,
+ * Google responde error sólo en ese y los demás cargan igual.
+ *
+ * Las familias que trae Geeper (public/fuentes, REN-10) no se piden: el HTML compilado ya lleva su
+ * @font-face con los archivos locales, así que «En vivo» se ve igual sin internet.
+ */
+export function enlacesFuentes(
+  t: { titulos: string; texto: string; pesoTexto: number },
+  esLocal: (familia: string) => boolean = esFamiliaLocal,
+): string {
+  const fam = (f: string) => encodeURIComponent(f.trim()).replace(/%20/g, "+");
+  const urls: string[] = [];
+  if (!esLocal(t.titulos)) urls.push(`family=${fam(t.titulos)}`);
+  if (!esLocal(t.texto)) {
+    if (t.texto.trim() !== t.titulos.trim()) urls.push(`family=${fam(t.texto)}`);
+    urls.push(`family=${fam(t.texto)}:wght@${t.pesoTexto}`, `family=${fam(t.texto)}:ital,wght@1,${t.pesoTexto}`);
+  }
+  return [...new Set(urls)]
+    .map((q) => `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?${q}&amp;display=block" />`)
+    .join("\n");
+}
 
 export interface VistaPrevia {
   /** Ruta del index.html dentro de ~/geeper-data, para /api/archivos/<ruta>. */
@@ -65,7 +92,7 @@ async function preparar(proyectoId: string): Promise<VistaPrevia> {
   const total = duracionEscenas(p) + plantilla.datos.tarjetaFinal.duracion;
   const dirVista = path.join(dir, "build", `vista-${p.formato.replace(":", "x")}`);
   const sello = path.join(dirVista, "sello.json");
-  const clave = JSON.stringify({ numero, compilador: VERSION_COMPILADOR, plantilla: plantilla.datos, runtime: 1 });
+  const clave = JSON.stringify({ numero, compilador: VERSION_COMPILADOR, plantilla: plantilla.datos, runtime: 3 });
   const resultado: VistaPrevia = {
     ruta: path.relative(dirDatos(), path.join(dirVista, "index.html")),
     version: numero,
@@ -83,7 +110,10 @@ async function preparar(proyectoId: string): Promise<VistaPrevia> {
   await mezclar(p, dir, total, plantilla.datos.musica.ducking, rutaMezcla, () => {});
   const sustitutos = await prepararColor(p, dir, plantilla.datos.color);
   const comp = compilar(p, plantilla.datos, rutaMezcla, dir, sustitutos);
-  await escribirProyectoHf(dirVista, { ...comp, html: comp.html.replace("</body>", '<script src="hyperframe.runtime.js"></script>\n</body>') });
+  const html = comp.html
+    .replace("</head>", `${enlacesFuentes(plantilla.datos.tipografia)}\n</head>`)
+    .replace("</body>", '<script src="hyperframe.runtime.js"></script>\n</body>');
+  await escribirProyectoHf(dirVista, { ...comp, html });
   await fs.copyFile(rutaRuntime(), path.join(dirVista, "hyperframe.runtime.js"));
   await fs.writeFile(sello, clave);
   return resultado;

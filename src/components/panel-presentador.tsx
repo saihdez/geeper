@@ -1,9 +1,11 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AvatarV } from "./avatares";
-import { Aviso, Barra, pedir, postJson, useSondeo } from "./comun";
+import { Aviso, AvisoTarjeta, Barra, LineaFalta, faltanConGuardar, pedir, postJson, useGuardeAntes, useSondeo } from "./comun";
 import type { MotorVoz } from "./elegir-voz";
-import { Marco, type Formato } from "@/lib/esquema";
+import { useMotorVivo } from "./motor";
+import { enlaceAvatares } from "@/lib/asistente-avatar";
+import type { Formato, Marco } from "@/lib/esquema";
 import { metricas } from "@/lib/formatos";
 import { cajaMarco } from "@/lib/marco";
 import { resolverMarco, type Zona } from "@/lib/marco-auto";
@@ -107,6 +109,9 @@ export function PanelPresentador({ proyectoId, ocupado, alCambiar, usarVoz }: {
   const [otraActitud, setOtraActitud] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const guarde = useGuardeAntes();
+  const faltaGuardar = faltanConGuardar(guarde);
+  const describe = faltaGuardar.length ? guarde.idFalta : undefined;
   // El avatar elegido; sin elegir, el que ya está en el video o el primero de la biblioteca.
   const [base, setBase] = useState<Datos | null>(null);
   const elegido = avatar ?? (base?.estado.avatar && base.avatares.some((a) => a.id === base.estado.avatar) ? base.estado.avatar : base?.avatares[0]?.id ?? null);
@@ -124,9 +129,18 @@ export function PanelPresentador({ proyectoId, ocupado, alCambiar, usarVoz }: {
     return () => clearTimeout(t);
   }, [opciones]);
   const url = `/api/proyectos/${proyectoId}/presentador${pedidas ? `?opciones=${encodeURIComponent(JSON.stringify(pedidas))}` : ""}`;
-  const { datos: d, recargar } = useSondeo<Datos>(url, abierto ? 4000 : 15_000);
-  // El streamer va por la API del avatar (actuar.ts): su avance se sigue aparte.
-  const { datos: av, recargar: recargarAv } = useSondeo<{ trabajos: { id: string; tipo: string; estado: string; etapa: string; progreso: number }[] }>(`/api/proyectos/${proyectoId}/avatar`, abierto ? 5000 : 30_000);
+  // Como «Animar» y «Rehacer la toma»: cerrado sólo pide mientras hay un presentador en curso.
+  const enCurso = (t: { estado: string }) => t.estado === "pendiente" || t.estado === "corriendo";
+  const { datos: d, recargar } = useSondeo<Datos>(url, (x) =>
+    abierto ? 4000 : x?.trabajos.some((t) => t.estado === "pendiente" || t.estado === "corriendo") ? 10_000 : Infinity);
+  // El streamer va por la API del avatar (actuar.ts): su avance se sigue aparte. Cerrado y sin streamer en
+  // curso no pregunta; el aviso de trabajos nuevos del proyecto lo despierta (WEB-13).
+  const { datos: av, recargar: recargarAv } = useSondeo<{ trabajos: { id: string; tipo: string; estado: string; etapa: string; progreso: number }[] }>(
+    `/api/proyectos/${proyectoId}/avatar`,
+    (x) => (abierto ? 5000 : x?.trabajos.some((t) => t.tipo === "avatar.streamer" && enCurso(t)) ? 10_000 : Infinity),
+    [`trabajos:${proyectoId}`],
+  );
+  const motorVivo = useMotorVivo();
   const trabajo = d?.trabajos[0] ?? av?.trabajos.find((t) => t.tipo === "avatar.streamer") ?? null;
   if (d && base !== d && !base) {
     setBase(d);
@@ -206,7 +220,12 @@ export function PanelPresentador({ proyectoId, ocupado, alCambiar, usarVoz }: {
   const resumen = trabajo ? ` · ${trabajo.estado === "pendiente" ? "en espera" : trabajo.etapa || "generando"}` : d?.estado.viejoBurbuja ? " · hay que actualizarlo" : d?.estado.burbuja ? " · en el video" : "";
   return (
     <section className="tarjeta p-4">
-      <details open={abierto} onToggle={(ev) => setAbierto((ev.target as HTMLDetailsElement).open)}>
+      <details open={abierto} onToggle={(ev) => {
+        const abre = (ev.target as HTMLDetailsElement).open;
+        setAbierto(abre);
+        if (abre) void recargar(); // al abrir, datos frescos y vuelve el ritmo de 4 s
+        if (abre) void recargarAv();
+      }}>
         <summary className="cursor-pointer font-medium">
           Presentador <span className="text-xs font-normal text-tenue">(tu avatar en una ventana, comentando encima del video{resumen})</span>
         </summary>
@@ -220,15 +239,15 @@ export function PanelPresentador({ proyectoId, ocupado, alCambiar, usarVoz }: {
               </div>
             ) : d.avatares.length === 0 ? (
               <div className="space-y-2">
-                <p>Todavía no tienes avatares. Crea uno (realista o animado) y vuelve aquí.</p>
-                <a className="boton boton-primario inline-block" href="/avatares">Crear un avatar</a>
+                <p>Primero crea un avatar (3 pasos, unos minutos). Después vuelves aquí y lo eliges.</p>
+                <a className="boton boton-primario inline-block" href={enlaceAvatares(proyectoId)}>Crear un avatar</a>
               </div>
             ) : (
               <>
                 {(() => {
                   const sel = d.avatares.find((a) => a.id === elegido);
                   if (!sel) return null;
-                  if (!sel.voz) return <Aviso tipo="info">{sel.nombre} todavía no tiene voz elegida: va a hablar con la voz del video. <a className="underline" href="/avatares">Elegirle una voz</a></Aviso>;
+                  if (!sel.voz) return <Aviso tipo="info">{sel.nombre} todavía no tiene voz elegida: va a hablar con la voz del video. <a className="underline" href={enlaceAvatares(proyectoId)}>Elegirle una voz</a></Aviso>;
                   if (mismaVoz(d.vozVideo, sel.voz)) return null;
                   const v = sel.voz;
                   return (
@@ -244,24 +263,24 @@ export function PanelPresentador({ proyectoId, ocupado, alCambiar, usarVoz }: {
                   <div className="flex flex-wrap gap-3">
                     {d.avatares.map((a) => (
                       <button key={a.id} type="button" aria-pressed={elegido === a.id} onClick={() => setAvatar(a.id)}
-                        className={`w-24 overflow-hidden rounded-lg border text-left ${elegido === a.id ? "border-cyan-400 outline outline-2 outline-cyan-500" : "border-borde"}`}>
+                        className="opcion-tarjeta w-24 overflow-hidden rounded-lg">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={a.retrato} alt="" className="aspect-[832/1216] w-full object-cover" />
                         <span className="block truncate px-1 py-0.5 text-xs">{a.nombre}</span>
                       </button>
                     ))}
-                    <a href="/avatares" className="flex w-24 items-center justify-center rounded-lg border border-dashed border-borde text-center text-xs text-tenue hover:text-white">＋ Otro avatar</a>
+                    <a href={enlaceAvatares(proyectoId)} className="flex w-24 items-center justify-center rounded-lg border border-dashed border-borde text-center text-xs text-tenue hover:text-white">＋ Otro avatar</a>
                   </div>
                 </fieldset>
 
                 <fieldset className="space-y-2">
                   <legend className="font-medium">2. ¿Dónde aparece?</legend>
                   <div className="grid gap-2 sm:grid-cols-2">
-                    <button type="button" aria-pressed={ventana === "burbuja"} onClick={() => setVentana("burbuja")} className={`tarjeta p-3 text-left ${ventana === "burbuja" ? "outline outline-2 outline-cyan-500" : ""}`}>
+                    <button type="button" aria-pressed={ventana === "burbuja"} onClick={() => setVentana("burbuja")} className="opcion-tarjeta p-3">
                       <span className="block font-medium">En una burbuja, todo el video</span>
                       <span className="block text-xs text-tenue">Las imágenes siguen detrás y el avatar comenta desde una esquina.</span>
                     </button>
-                    <button type="button" aria-pressed={ventana === "streamer"} onClick={() => setVentana("streamer")} className={`tarjeta p-3 text-left ${ventana === "streamer" ? "outline outline-2 outline-cyan-500" : ""}`}>
+                    <button type="button" aria-pressed={ventana === "streamer"} onClick={() => setVentana("streamer")} className="opcion-tarjeta p-3">
                       <span className="block font-medium">Recortado, como streamer</span>
                       <span className="block text-xs text-tenue">Sin fondo, encima del video (ideal para gameplay), hablando y gesticulando.</span>
                     </button>
@@ -269,7 +288,7 @@ export function PanelPresentador({ proyectoId, ocupado, alCambiar, usarVoz }: {
                   <p className="text-xs text-tenue">¿Quieres que salga en las escenas, en lugar de las imágenes? Eso es «Tu avatar en el video», más arriba.</p>
                   {ventana === "burbuja" ? (
                   <div className="flex flex-wrap items-start gap-4">
-                  <Vista formato={d.formato} plataformas={d.plataformas} zonas={d.zonas} modo={modo} marco={Marco.parse({ esquina, forma, tamano })} retrato={d.avatares.find((a) => a.id === elegido)?.retrato} />
+                  <Vista formato={d.formato} plataformas={d.plataformas} zonas={d.zonas} modo={modo} marco={{ esquina, forma, tamano } satisfies Marco} retrato={d.avatares.find((a) => a.id === elegido)?.retrato} />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap gap-3">
                       <label className="space-y-1"><span className="block text-xs text-tenue">Esquina</span>
@@ -278,7 +297,7 @@ export function PanelPresentador({ proyectoId, ocupado, alCambiar, usarVoz }: {
                         </select>
                         {esquina === "auto" && (
                           <span className="block text-xs text-tenue">
-                            Queda {ESQUINAS.find((x) => x.id === resolverMarco(Marco.parse({ esquina, forma, tamano }), metricas(d.formato, { plataformas: d.plataformas }), d.zonas).esquina)?.nombre.slice(2).toLowerCase()}
+                            Queda {ESQUINAS.find((x) => x.id === resolverMarco({ esquina, forma, tamano } satisfies Marco, metricas(d.formato, { plataformas: d.plataformas }), d.zonas).esquina)?.nombre.slice(2).toLowerCase()}
                           </span>
                         )}
                       </label>
@@ -322,7 +341,7 @@ export function PanelPresentador({ proyectoId, ocupado, alCambiar, usarVoz }: {
                   <div className="flex flex-wrap gap-2">
                     {ACTITUDES.map((x) => (
                       <button key={x.nombre} type="button" aria-pressed={!otraActitud && actitud === x.prompt} onClick={() => { setActitud(x.prompt); setOtraActitud(""); }}
-                        className={`boton ${!otraActitud && actitud === x.prompt ? "boton-primario" : ""}`}>{x.nombre}</button>
+                        className="opcion">{x.nombre}</button>
                     ))}
                   </div>
                 </fieldset>
@@ -341,16 +360,17 @@ export function PanelPresentador({ proyectoId, ocupado, alCambiar, usarVoz }: {
                 {streamerOk && <Aviso tipo="ok">{streamerOk}</Aviso>}
                 {ventana === "burbuja" && d.plan && (
                   <div className="space-y-1 text-xs text-tenue">
-                    <p>Va a hablar {Math.round(d.plan.segundos)} s. Usa la tarjeta de video y tarda unos {minutosHablar(d.plan.segundos)} minutos (la primera vez, más: baja el modelo, unos 28 GB).</p>
+                    <p>Va a hablar {Math.round(d.plan.segundos)} s. Tarda unos {minutosHablar(d.plan.segundos)} minutos (la primera vez, más: baja el modelo, unos 28 GB).</p>
                     {d.plan.notas.map((n) => <p key={n}>{n}</p>)}
                     {d.plan.avisos.map((n) => <p key={n} className="text-amber-300">{n}</p>)}
                   </div>
                 )}
+                {!trabajo && <AvisoTarjeta g={guarde}>{puedeMover ? "Sólo para generarlo otra vez: moverlo no usa la tarjeta." : null}</AvisoTarjeta>}
                 {error && <Aviso tipo="error">{error}</Aviso>}
                 {trabajo ? (
                   <div className="space-y-1">
-                    <p>{trabajo.estado === "pendiente" ? "En espera: la tarjeta de video está ocupada." : trabajo.etapa || "Generando…"}</p>
-                    <Barra valor={trabajo.progreso} />
+                    <p>{trabajo.estado === "pendiente" ? (motorVivo === false ? "En espera: Geeper está en pausa (mira el aviso de arriba)." : "En espera: la tarjeta de video está ocupada.") : trabajo.etapa || "Generando…"}</p>
+                    <Barra valor={trabajo.progreso} etiqueta="Avance del presentador" />
                     <p className="text-xs text-tenue">Puedes seguir editando; cuando termine aparece en el video como una versión nueva (se deshace desde «Historial»).</p>
                     <button type="button" className="boton" onClick={() => void cancelar()}>Cancelar</button>
                   </div>
@@ -361,14 +381,19 @@ export function PanelPresentador({ proyectoId, ocupado, alCambiar, usarVoz }: {
                       <button className="boton boton-primario" disabled={ocupado || enviando || !cambioUbicacion} onClick={() => void mover()}>
                         {cambioUbicacion ? "Aplicar la ubicación (al instante)" : "Ya está en ese lugar"}
                       </button>
-                      <button className="boton" disabled={ocupado || enviando || !d.plan} onClick={() => void generar()}>Generar el presentador otra vez</button>
+                      <button className="boton" disabled={ocupado || enviando || !d.plan || faltaGuardar.length > 0} aria-describedby={describe} onClick={() => void generar()}>Generar el presentador otra vez</button>
                     </div>
+                    <LineaFalta id={guarde.idFalta} faltan={faltaGuardar} />
                     <p className="text-xs text-tenue">Mover, agrandar o cambiar la forma no vuelve a generar el avatar: se aplica en segundos. Generarlo otra vez sólo hace falta si cambias el avatar, cómo habla o lo que dice.</p>
                   </div>
                 ) : (
-                  <button className="boton boton-primario" disabled={ocupado || enviando || (ventana === "burbuja" && !d.plan)} onClick={() => void generar()}>
-                    {ventana === "streamer" ? "Poner el presentador recortado" : d.estado.burbuja ? "Generar el presentador otra vez" : "Poner el presentador"}
-                  </button>
+                  <div className="space-y-1">
+                    <button className="boton boton-primario" disabled={ocupado || enviando || (ventana === "burbuja" && !d.plan) || faltaGuardar.length > 0}
+                      aria-describedby={describe} onClick={() => void generar()}>
+                      {ventana === "streamer" ? "Poner el presentador recortado" : d.estado.burbuja ? "Generar el presentador otra vez" : "Poner el presentador"}
+                    </button>
+                    <LineaFalta id={guarde.idFalta} faltan={faltaGuardar} />
+                  </div>
                 )}
               </>
             )}

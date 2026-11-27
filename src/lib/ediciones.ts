@@ -25,7 +25,8 @@ import { norm } from "./subtitulos";
 const Id = z.string().regex(/^[a-z0-9-]+$/);
 
 export const Edicion = z.discriminatedUnion("tipo", [
-  z.object({ tipo: z.literal("corregirSubtitulo"), escena: z.string(), desde: z.number().int(), hasta: z.number().int(), texto: z.string() }),
+  // `revisada`: la persona escuchó el tramo y escribió lo que se oye (revisión de dudosas en clips): deja de ser dudosa.
+  z.object({ tipo: z.literal("corregirSubtitulo"), escena: z.string(), desde: z.number().int(), hasta: z.number().int(), texto: z.string().refine((t) => t.trim().length > 0, "Un subtítulo no puede quedar vacío. Para quitar la palabra, recórtala arriba."), revisada: z.boolean().optional() }),
   z.object({ tipo: z.literal("quitarCorreccion"), escena: z.string(), desde: z.number().int() }),
   z.object({ tipo: z.literal("quitarEscena"), escena: z.string() }),
   z.object({ tipo: z.literal("moverEscena"), escena: z.string(), a: z.number().int().min(0) }),
@@ -162,6 +163,73 @@ export function tramoDePalabras(p: Proyecto, escena: string, desde: number, hast
 /** Palabras de relleno que se quitan con «Quitar muletillas» (normalizadas: sin tildes ni signos). */
 export const MULETILLAS = new Set(["eh", "ehh", "ehhh", "ehm", "em", "emm", "mm", "mmm", "mmmm", "uh", "uhm", "um", "umm", "ah", "ahh"]);
 
+/** Formas base de las vacilaciones estiradas: «eeeeh», «ehmmm», «uuum» se aprietan a una de éstas. */
+const VACILACIONES = new Set(["eh", "em", "ehm", "uh", "um", "uhm", "ah", "hm", "mh"]);
+
+/**
+ * ¿Es una vacilación? Además de la lista, reconoce las estiradas de cualquier largo (idea de Cap,
+ * `crates/project/src/disfluency.rs`): «mmmmm» y, apretando las letras repetidas, «eeehhh» → «eh».
+ * «Ajá» o «mjm» no caen: no se aprietan a una forma de la lista.
+ */
+export function esMuletilla(texto: string): boolean {
+  const n = norm(texto);
+  if (!n) return false;
+  if (MULETILLAS.has(n)) return true;
+  if (!/^[a-z]+$/.test(n)) return false;
+  if (n.length >= 2 && /^m+$/.test(n)) return true;
+  return VACILACIONES.has(n.replace(/(.)\1+/g, "$1"));
+}
+
+/**
+ * Palabras que en español se repiten a propósito («no, no», «sí sí», «muy muy», «ya ya», «jaja ja»):
+ * nunca se cuentan como tartamudeo. Los números tampoco («dos dos»).
+ */
+const DOBLES_INTENCIONALES = new Set([
+  "no", "si", "muy", "ya", "bueno", "claro", "mas", "nada", "poco", "cada", "tan", "otra", "otro", "vamos", "dale",
+  "corre", "rapido", "anda", "andale", "hola", "adios", "chao", "oye", "mira", "ay", "uy", "oh", "ja", "je", "jaja",
+  "jeje", "jajaja", "pum", "tic", "tac", "bla", "toc", "listo", "vale", "eso", "bien", "super", "mucho", "mucha",
+  "cero", "uno", "una", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez", "cien", "mil", "millon",
+]);
+
+/** Pausa (s) a partir de la cual una repetición es intención («Fue… fue increíble») y no tartamudeo. */
+const PAUSA_REPETICION = 1.0;
+/** Frase más larga que se busca repetida («en el en el»). */
+const MAX_FRASE_REPETIDA = 3;
+
+/**
+ * Tartamudeos: una palabra o frase corta dicha dos veces seguidas («el el problema», «en la en la casa»).
+ * Devuelve los rangos [desde, hasta) de la PRIMERA vez, que es la que se quita. Reglas de Cap
+ * (`detect_repetitions`) pasadas al español: se saltan las vacilaciones intermedias («el, eh, el»), no
+ * cuenta si la primera vez cierra una oración, si hay una pausa ≥ 1 s o si es un doble intencional.
+ */
+export function repeticiones(palabras: { texto: string; inicio: number; fin: number }[]): [number, number][] {
+  const dichas = palabras.map((_, i) => i).filter((i) => !esMuletilla(palabras[i]!.texto) && norm(palabras[i]!.texto));
+  const cierra = (i: number) => /[.?!…]["'”’)\]]*$/.test(palabras[i]!.texto.trim());
+  const out: [number, number][] = [];
+  let k = 0;
+  while (k < dichas.length) {
+    let tam = 0;
+    for (let n = MAX_FRASE_REPETIDA; n >= 1; n--) {
+      if (k + 2 * n > dichas.length) continue;
+      const a = dichas.slice(k, k + n);
+      const b = dichas.slice(k + n, k + 2 * n);
+      if (!a.every((x, j) => norm(palabras[x]!.texto) === norm(palabras[b[j]!]!.texto))) continue;
+      if ([...a, ...b.slice(0, -1)].some(cierra)) continue;
+      if (a.every((x) => DOBLES_INTENCIONALES.has(norm(palabras[x]!.texto)) || /^\d+$/.test(norm(palabras[x]!.texto)))) continue;
+      let pausa = 0;
+      for (let x = a[0]!; x < b[n - 1]!; x++) pausa = Math.max(pausa, palabras[x + 1]!.inicio - palabras[x]!.fin);
+      if (pausa >= PAUSA_REPETICION) continue;
+      tam = n;
+      break;
+    }
+    if (tam) {
+      out.push([dichas[k]!, dichas[k + tam - 1]! + 1]);
+      k += tam;
+    } else k++;
+  }
+  return out;
+}
+
 function agregarRecorte(e: Escena, r: Recorte) {
   e.recortes.push(r);
   e.recortes.sort((a, b) => a.inicio - b.inicio);
@@ -203,6 +271,7 @@ export function aplicarEdicion(original: Proyecto, ed: Edicion): Proyecto {
       const oido = e.palabras.slice(ed.desde, ed.hasta).map((w) => w.texto).join(" ");
       if (ed.texto.trim() !== oido) e.correcciones.push({ desde: ed.desde, hasta: ed.hasta, texto: ed.texto.trim() });
       e.correcciones.sort((a, b) => a.desde - b.desde);
+      if (ed.revisada) for (let i = ed.desde; i < ed.hasta; i++) e.palabras[i] = { ...e.palabras[i]!, confianza: 1 };
       break;
     }
     case "quitarCorreccion": {
@@ -285,14 +354,19 @@ export function aplicarEdicion(original: Proyecto, ed: Edicion): Proyecto {
       const ids = ed.escena ? [ed.escena] : pista(p, "voz").clips.map((c) => c.escena!);
       for (const id of ids) {
         const e = escenaDe(p, id);
+        // Se recalcula entero: aplicarlo dos veces no duplica recortes.
+        e.recortes = e.recortes.filter((r) => r.motivo !== "muletilla");
+        // Vacilaciones («eh», «mmmm») y la primera vez de cada tartamudeo («el el»).
+        const quitar = e.palabras.map((w) => esMuletilla(w.texto));
+        for (const [a, b] of repeticiones(e.palabras)) for (let x = a; x < b; x++) quitar[x] = true;
         let i = 0;
         while (i < e.palabras.length) {
-          if (!MULETILLAS.has(norm(e.palabras[i]!.texto))) {
+          if (!quitar[i]) {
             i++;
             continue;
           }
           let j = i + 1;
-          while (j < e.palabras.length && MULETILLAS.has(norm(e.palabras[j]!.texto))) j++;
+          while (j < e.palabras.length && quitar[j]) j++;
           // Nunca se deja una escena sin nada que decir.
           if (!(i === 0 && j === e.palabras.length)) agregarRecorte(e, { ...tramoDePalabras(p, id, i, j), motivo: "muletilla" });
           i = j;
@@ -449,4 +523,58 @@ export function limpiarAssets(p: Proyecto): Proyecto {
   const usados = new Set(p.pistas.flatMap((x) => x.clips.map((c) => c.asset)));
   for (const id of Object.keys(p.assets)) if (!usados.has(id)) delete p.assets[id];
   return p;
+}
+
+/*
+ * Voces del video (UX-12). «Regenerar voz de la escena» usa la voz ELEGIDA del proyecto, que puede no
+ * ser la que suena en el resto. El aviso antes de rehacer y la lista de escenas con otra voz están en
+ * components/editor-estado.ts (preguntaVozEscena, escenasConOtraVoz), con las voces de cada escena que da
+ * vista.ts (que usa claveVoz y vocesDeEscenas de aquí). avisoMezclaVoces es para la revisión final:
+ * sólo avisa, no bloquea.
+ */
+
+/** Nombre comparable de una voz: «kokoro:ef_dora» (MPT) y «ef_dora» (Kokoro local) son la misma. */
+export function claveVoz(voz: string): string {
+  return voz.trim().toLowerCase().replace(/^kokoro:/, "");
+}
+
+/**
+ * Con qué voz suena cada escena (en el orden del video). `voz` es null si es una voz real (un clip, un
+ * audio propio) o si el asset no dice cuál es: ésas no cuentan para comparar.
+ */
+export function vocesDeEscenas(p: Proyecto): { escena: string; numero: number; voz: string | null }[] {
+  return pista(p, "voz").clips.map((c, i) => {
+    const a = p.assets[c.asset];
+    const sintetica = a && (a.source === "tts" || a.source === "mpt") && a.regenerar.origen !== "clip";
+    const voz = sintetica && typeof a.regenerar.voz === "string" && a.regenerar.voz.trim() ? claveVoz(a.regenerar.voz) : null;
+    return { escena: c.escena ?? "", numero: i + 1, voz };
+  });
+}
+
+/** Lo que la vista da de cada escena: su n.º (desde 0) y la voz con que suena (null: voz real o desconocida). */
+interface EscenaConVoz {
+  indice: number;
+  voz: { voz?: string | null };
+}
+
+const CUANTAS = ["cero", "una", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez"];
+const enPalabras = (n: number) => CUANTAS[n] ?? String(n);
+const enLista = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} y ${xs[xs.length - 1]}`);
+
+/**
+ * Aviso para la revisión final: «El video mezcla dos voces: Dora y Álex (escena 3).» Se nombran las
+ * escenas que no tienen la voz más usada (si empatan, gana la elegida). null si todas suenan igual.
+ * `voces`: la voz elegida y el nombre en pantalla de cada voz (el `voces` de vista.ts).
+ */
+export function avisoMezclaVoces(escenas: EscenaConVoz[], voces: { elegida: string | null; nombres: Record<string, string> } | null): string | null {
+  const con = escenas.filter((e): e is EscenaConVoz & { voz: { voz: string } } => !!e.voz.voz);
+  const cuenta = new Map<string, number>();
+  for (const e of con) cuenta.set(e.voz.voz, (cuenta.get(e.voz.voz) ?? 0) + 1);
+  if (cuenta.size < 2) return null;
+  const elegida = voces?.elegida ?? null;
+  const nombre = (v: string) => voces?.nombres[v] ?? v;
+  const principal = [...cuenta.entries()].sort((a, b) => b[1] - a[1] || Number(b[0] === elegida) - Number(a[0] === elegida))[0]![0];
+  const resto = con.filter((e) => e.voz.voz !== principal).map((e) => e.indice + 1);
+  const lista = enLista([principal, ...[...cuenta.keys()].filter((v) => v !== principal)].map(nombre));
+  return `El video mezcla ${enPalabras(cuenta.size)} voces: ${lista} (${resto.length === 1 ? "escena" : "escenas"} ${enLista(resto.map(String))}).`;
 }

@@ -94,14 +94,15 @@ export async function asegurarMpt(log?: (l: string) => void, { todos = false } =
 
 /**
  * La API de MPT (y su web) montan archivos de WSL: cuando WSL se reinicia, se caen (código 127) y Docker
- * no las vuelve a levantar. Antes de pedirle algo a MPT se levantan las que estén paradas, junto con los
- * contenedores pesados. Devuelve las que levantó.
+ * no las vuelve a levantar. Antes de pedirle algo a MPT se levantan las que estén paradas. Sólo la API y
+ * su web: los pesados (IA e imágenes, ~22 GB de RAM) los enciende crearVideo con el candado de la tarjeta
+ * tomado, para no despertarlos mientras Wan usa la tarjeta. Devuelve las que levantó.
  */
 export const CONTENEDORES_MPT_API = ["moneyprinterturbo-api", "moneyprinterturbo-webui"] as const;
 export async function levantarMptCaido(log?: (l: string) => void): Promise<string[]> {
   if (!liberarMptActivo()) return [];
   const levantados: string[] = [];
-  for (const c of [...CONTENEDORES_MPT_API, ...CONTENEDORES_MPT_PESADOS]) {
+  for (const c of CONTENEDORES_MPT_API) {
     const r = await docker(["inspect", "-f", "{{.State.Running}}", c]);
     if (r?.codigo !== 0 || !r.salida.includes("false")) continue;
     if ((await docker(["start", c]))?.codigo === 0) levantados.push(c);

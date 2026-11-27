@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { archivosCorrida3d, listarCorridas3d, Pedido3d, prepararCorrida3d } from "@/lib/escenas3d";
 import { json, manejar } from "@/lib/http";
 import { estadoInstalacionBlender } from "@/lib/instalar-blender";
-import { llamaDisponible } from "@/lib/llm-local";
+import { llamaDisponible } from "@/lib/llama-local";
 
 export const dynamic = "force-dynamic";
 

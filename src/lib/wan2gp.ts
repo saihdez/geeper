@@ -17,11 +17,16 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { argsAtencionWan2gp, atencionInstalada, elegirAtencion } from "./atencion";
+import { exigirEspacio, type OpcionesEspacio } from "./espacio";
 import type { Formato } from "./esquema";
 import { tomarGpu } from "./gpu";
+import { comandoGpuSolo } from "./gpu-solo";
 import { LICENCIAS } from "./licencias";
 import { aplicarParchesWan2gp } from "./parches-wan2gp";
 import { pausarParaWan, reanudarLuego } from "./liberar-mpt";
+import { matarArbol, patronComando } from "./proceso";
+import { anotarProceso } from "./procesos-largos";
 import { GPU_SOLO_BIN, WAN2GP_DIR, WAN2GP_PYTHON } from "./rutas";
 
 export interface ModeloPlano {
@@ -407,44 +412,23 @@ function archivosDe(dir: string, tipos: Set<string>): string[] {
 
 const videoMasNuevo = (dir: string): string | null => archivosDe(dir, MEDIOS).at(-1) ?? null;
 
-const escaparRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
 /**
- * Mata wgp.py y lo que haya lanzado (ffmpeg, compiladores): tiene su propio grupo de procesos. Primero
- * SIGTERM a todo el grupo; si a los 5 s sigue vivo, SIGKILL. Con gpu-solo, el SIGKILL va sólo al Python:
+ * Mata wgp.py y lo que haya lanzado (ffmpeg, compiladores): tiene su propio grupo de procesos. SIGTERM a
+ * todo el grupo y, si a los 5 s el grupo sigue vivo, SIGKILL (WRK-03: se mira el grupo y no el hijo
+ * directo, que con gpu-solo es gpu-lock y muere enseguida). Con gpu-solo, el SIGKILL va sólo al Python:
  * matar el bash de gpu-solo antes de su `trap` dejaría detenidos los contenedores de MPT.
  */
-function matarArbol(hijo: ChildProcess, i: InstalacionWan2gp, conGpuSolo: boolean) {
-  if (!hijo.pid || hijo.exitCode !== null || hijo.signalCode !== null) return;
-  if (process.platform === "win32") {
-    spawn("taskkill", ["/pid", String(hijo.pid), "/T", "/F"], { stdio: "ignore" });
-    return;
-  }
-  try {
-    process.kill(-hijo.pid, "SIGTERM");
-  } catch {
-    /* ya terminó */
-  }
-  setTimeout(() => {
-    if (hijo.exitCode !== null || hijo.signalCode !== null) return;
-    if (conGpuSolo) {
-      // Sólo los procesos del grupo cuya línea de comando empieza con «<python> <wgp.py>».
-      spawn("pkill", ["-KILL", "-g", String(hijo.pid), "-f", `^${escaparRegex(i.python)} ${escaparRegex(i.wgp)}`], { stdio: "ignore" }).on("error", () => {});
-      return;
-    }
-    try {
-      process.kill(-hijo.pid!, "SIGKILL");
-    } catch {
-      /* ya terminó */
-    }
-  }, 5000).unref();
+function matarWan2gp(hijo: ChildProcess, i: InstalacionWan2gp, conGpuSolo: boolean) {
+  matarArbol(hijo, { patronDuro: conGpuSolo ? patronComando(i.python) : undefined });
 }
 
 const TOPE_SALIDA = 2 * 1024 * 1024;
 
-function lanzar(i: InstalacionWan2gp, args: string[], conGpuSolo: boolean) {
-  const [cmd, ...resto] = conGpuSolo ? [GPU_SOLO_BIN, i.python, i.wgp, ...args] : [i.python, i.wgp, ...args];
-  return spawn(cmd!, resto, {
+function lanzar(i: InstalacionWan2gp, argsPedidos: string[], conGpuSolo: boolean) {
+  // La mejor atención instalada en su venv (sage > flash > sdpa); ver atencion.ts.
+  const args = [...argsAtencionWan2gp(elegirAtencion(atencionInstalada(i.python))), ...argsPedidos];
+  const c = conGpuSolo ? comandoGpuSolo(i.python, [i.wgp, ...args]) : { cmd: i.python, args: [i.wgp, ...args] };
+  return spawn(c.cmd, c.args, {
     cwd: i.dir,
     env: {
       ...process.env,
@@ -510,6 +494,21 @@ export interface OpcionesGenerar {
  * primera vez de cada modelo (Wan2GP baja los pesos a `ckpts/` sin decir nada; el avance sale del
  * tamaño de esa carpeta).
  */
+/** Lo que baja Wan2GP la primera vez que usa un modelo (los más grandes, unos 30 GB con su codificador). */
+export const BYTES_MODELO_WAN = 30e9;
+/** Lo que ocupa una generación ya con el modelo en el disco (cuadros, video y copia al proyecto). */
+export const BYTES_GENERACION_WAN = 2e9;
+
+/**
+ * Antes de correr Wan2GP (DSC-05): si el modelo todavía no tiene sus pesos, Wan2GP los baja (decenas de
+ * GB, sin avisar); si no caben con la reserva, se dice en palabras simples y no se empieza.
+ */
+export async function revisarEspacioWan2gp(i: InstalacionWan2gp, modelType: string, dirCorrida: string, o?: OpcionesEspacio) {
+  const estado = modelType ? estadoModelos(i, [{ id: modelType, modelType } as ModeloPlano])[modelType] : undefined;
+  if (estado === "sin-pesos") return exigirEspacio(path.join(i.dir, "ckpts"), BYTES_MODELO_WAN, "bajar el modelo que anima los videos (la primera vez)", o);
+  return exigirEspacio(dirCorrida, BYTES_GENERACION_WAN, "crear este video con IA", o);
+}
+
 export async function generarPlano(op: OpcionesGenerar): Promise<string> {
   return (await correrWan2gp(op, "video"))[0]!;
 }
@@ -555,6 +554,7 @@ async function correrWan2gp(op: OpcionesGenerar, tipo: "video" | "imagen", lote?
   const inicio = Date.now();
   const falta = faltaEnInstalacion(i);
   if (falta) throw new Error(falta);
+  await revisarEspacioWan2gp(i, String(ajustes.model_type ?? ""), dirCorrida);
   await aplicarParchesWan2gp(i.dir, op.log);
   const out = path.join(dirCorrida, "out");
   await fs.mkdir(out, { recursive: true });
@@ -568,6 +568,7 @@ async function correrWan2gp(op: OpcionesGenerar, tipo: "video" | "imagen", lote?
   try {
     if (signal?.aborted) throw new Error("Cancelado");
     const hijo = lanzar(i, ["--process", archivo, "--output-dir", out], conGpuSolo);
+    anotarProceso(hijo, "Wan2GP");
     const lector = crearLectorAvance();
     let modeloCargado = false;
     const salida = juntarSalida(hijo, (t) => {
@@ -583,7 +584,7 @@ async function correrWan2gp(op: OpcionesGenerar, tipo: "video" | "imagen", lote?
       const bajado = tamanoCarpeta(ckpts) - base;
       if (bajado > 0) op.alAvanzar?.({ fase: "descargando", bytes: bajado, avance: 0.02 });
     }, 2000);
-    const cancelar = () => matarArbol(hijo, i, conGpuSolo);
+    const cancelar = () => matarWan2gp(hijo, i, conGpuSolo);
     signal?.addEventListener("abort", cancelar, { once: true });
     try {
       return await new Promise<(string | null)[]>((ok, mal) => {

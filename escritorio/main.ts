@@ -5,7 +5,7 @@
  * ventana con la web en 127.0.0.1. Ver docs/ESCRITORIO.md.
  *
  * Estructura dentro de la app instalada (resources/app, sin asar: los hijos leen archivos reales):
- *   main.cjs, preparar-db.mjs, worker.mjs, esquema.sql
+ *   main.cjs, preparar-db.mjs, worker.mjs, vigia.mjs, esquema.sql
  *   standalone/            servidor de Next (server.js, .next, public)
  *   node_modules/          dependencias de los hijos (better-sqlite3 para Electron, hyperframes…)
  *   py/, docs/fuentes.json lo que lee el código en tiempo de ejecución
@@ -17,59 +17,112 @@ import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
-import { app, BrowserWindow, dialog, Menu, shell } from "electron";
-import { esVueltaOAuth } from "./oauth";
+import { app, BrowserWindow, dialog, Menu, session, shell } from "electron";
+import { esInicioLogin, pasoLogin } from "./oauth";
+import {
+  abrirFuera,
+  AvisoArranque,
+  comoRematar,
+  concederPermiso,
+  entornoHijos,
+  esDeGeeper,
+  paginaAbriendo,
+  permitirReinicio,
+  PLAZO_APAGAR_MS,
+  plantillaMenu,
+  registrar,
+  Relanzamiento,
+  rotarRegistro,
+  textoErrorArranque,
+} from "./reglas";
 
 const RAIZ = app.isPackaged ? path.join(process.resourcesPath, "app") : path.join(__dirname, "..", "escritorio-app");
 const hijos: { nombre: string; p: ChildProcess }[] = [];
 let ventana: BrowserWindow | null = null;
 let saliendo = false;
+/** Los hijos ya se detuvieron: `before-quit` deja cerrar la app. */
+let cerrado = false;
+let cerrando = false;
 let url = "";
+/** El servidor ya respondió: la ventana puede cargar Geeper. */
+let listo = false;
 
 const dirLogs = () => path.join(app.getPath("userData"), "logs");
+/** Registro de un proceso, con cabecera de fecha y versión. Pasado de ~5 MB se guarda como .1 y empieza otro. */
 function log(nombre: string): fs.WriteStream {
   fs.mkdirSync(dirLogs(), { recursive: true });
-  return fs.createWriteStream(path.join(dirLogs(), `${nombre}.log`), { flags: "a" });
+  const ruta = path.join(dirLogs(), `${nombre}.log`);
+  rotarRegistro(ruta);
+  const salida = fs.createWriteStream(ruta, { flags: "a" });
+  // Un registro que no se puede escribir (disco lleno, permisos) no debe tumbar la app.
+  salida.on("error", (e) => console.error(`registro ${nombre}: ${e.message}`));
+  salida.write(`\n--- ${new Date().toISOString()} ${app.getVersion()} ---\n`);
+  return salida;
 }
 
-/** Entorno de los hijos: dónde viven las cosas en este sistema (src/lib/plataforma.ts lo lee). */
+
+/** Entorno de los hijos: dónde viven las cosas en este sistema (escritorio/reglas.ts, entornoHijos). */
 function entorno(puerto: number): NodeJS.ProcessEnv {
-  return {
-    ...process.env,
-    ELECTRON_RUN_AS_NODE: "1",
-    NODE_ENV: "production",
-    GEEPER_ESCRITORIO: "1",
-    GEEPER_DOCUMENTOS: app.getPath("documents"),
-    GEEPER_APPDATA: app.getPath("userData"),
-    // Herramientas pesadas (venvs, modelos, CLIs): en Windows en Local, no en Roaming (que se sincroniza).
-    GEEPER_HERRAMIENTAS: process.platform === "win32" && process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Geeper", "herramientas") : path.join(app.getPath("userData"), "herramientas"),
-    GEEPER_RECURSOS: path.join(RAIZ, "recursos"),
-    GEEPER_REPO: RAIZ,
-    GEEPER_HYPERFRAMES_CLI: path.join(RAIZ, "node_modules", "hyperframes", "bin", "hyperframes.mjs"),
-    PORT: String(puerto),
-    HOSTNAME: "127.0.0.1",
-    NEXT_TELEMETRY_DISABLED: "1",
-  };
+  return entornoHijos(
+    { raiz: RAIZ, documentos: app.getPath("documents"), appData: app.getPath("userData"), localAppData: process.env.LOCALAPPDATA, plataforma: process.platform, puerto },
+    process.env,
+  );
 }
 
 function lanzar(nombre: string, script: string, env: NodeJS.ProcessEnv, cwd = RAIZ): ChildProcess {
-  const salida = log(nombre);
-  salida.write(`\n--- ${new Date().toISOString()} ${app.getVersion()} ---\n`);
-  const p = spawn(process.execPath, [script], { cwd, env, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
-  p.stdout?.pipe(salida);
-  p.stderr?.pipe(salida);
-  p.on("exit", (codigo) => {
-    salida.write(`--- terminó (${codigo}) ---\n`);
+  // Por vigia.mjs, con la entrada estándar abierta: al cerrarla (salir de Geeper, o si la carcasa se cae)
+  // el proceso se apaga en orden, también en Windows (ESC-11).
+  const p = spawn(process.execPath, [path.join(RAIZ, "vigia.mjs"), script], { cwd, env, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+  p.stdin?.on("error", () => {
+    /* el proceso ya terminó */
+  });
+  registrar(p, log(nombre));
+  p.on("exit", () => {
     if (saliendo) return;
     if (nombre === "worker") {
-      // Como dev-up: si el worker muere solo, se vuelve a lanzar (al arrancar marca lo interrumpido).
-      setTimeout(() => !saliendo && hijos.push({ nombre, p: lanzar(nombre, script, env, cwd) }), 3000);
-    } else {
-      dialog.showErrorBox("Geeper se detuvo", `El servidor de Geeper terminó (código ${codigo}). Mira ${path.join(dirLogs(), `${nombre}.log`)}.`);
-      app.quit();
+      // Como dev-up: si el worker muere solo, se vuelve a lanzar (al arrancar marca lo interrumpido),
+      // hasta 5 veces en 10 min. Si sigue cayendo, se avisa en vez de relanzarlo sin fin.
+      if (!permitirReinicio(reiniciosWorker, Date.now())) {
+        avisarWorkerCaido();
+        return;
+      }
+      // Uno solo a la vez; detenerHijos() lo cancela (ESC-13: si no, al «Volver a intentar» quedaban dos).
+      relanzoWorker.programar(() => {
+        if (saliendo) return;
+        const nuevo = lanzar(nombre, script, env, cwd);
+        const i = hijos.findIndex((h) => h.nombre === nombre);
+        if (i >= 0) hijos[i] = { nombre, p: nuevo };
+        else hijos.push({ nombre, p: nuevo });
+      }, 3000);
+    } else if (listo) {
+      // El servidor se cerró con la app abierta. Si cae al arrancar, lo atiende el cuadro de arrancar().
+      void preguntarTrasError("Geeper se detuvo", "Geeper dejó de funcionar de repente.", "Volver a abrir").then((que) => {
+        if (que === "reintentar") app.relaunch();
+        app.quit();
+      });
     }
   });
   return p;
+}
+
+const reiniciosWorker: number[] = [];
+const relanzoWorker = new Relanzamiento();
+
+/** El worker cayó 5 veces en 10 min: la web sigue abierta, pero los trabajos no avanzan. */
+function avisarWorkerCaido(): void {
+  const opciones = {
+    type: "warning" as const,
+    title: "Geeper no puede procesar trabajos",
+    message: "Geeper no puede procesar trabajos.",
+    detail: "Ciérralo y vuelve a abrirlo. Si vuelve a pasar, abre la carpeta de registros y mándasela a quien te ayuda.",
+    buttons: ["Abrir la carpeta de registros", "Entendido"],
+    defaultId: 1,
+    cancelId: 1,
+  };
+  const r = ventana ? dialog.showMessageBox(ventana, opciones) : dialog.showMessageBox(opciones);
+  void r.then(({ response }) => {
+    if (response === 0) void shell.openPath(dirLogs());
+  });
 }
 
 /**
@@ -93,30 +146,36 @@ function puertoLibre(preferido = 3300): Promise<number> {
 async function esperarServidor(u: string, ms = 60_000): Promise<void> {
   const fin = Date.now() + ms;
   while (Date.now() < fin) {
+    const web = hijos.find((h) => h.nombre === "web")?.p;
+    if (web && web.exitCode !== null) throw new AvisoArranque("Geeper se cerró mientras arrancaba.");
     try {
-      const r = await fetch(`${u}/api/media`);
+      // Con tope: un pedido colgado no debe comerse el minuto de espera.
+      const r = await fetch(`${u}/api/media`, { signal: AbortSignal.timeout(2000) });
       if (r.ok) return;
     } catch {
       /* todavía no */
     }
     await new Promise((r) => setTimeout(r, 300));
   }
-  throw new Error("El servidor de Geeper no respondió en 60 s");
+  throw new AvisoArranque("Geeper tardó demasiado en arrancar.");
 }
 
 function correrHasta(script: string, env: NodeJS.ProcessEnv): Promise<void> {
   return new Promise((ok, mal) => {
-    const salida = log("preparar-db");
     const p = spawn(process.execPath, [script], { cwd: RAIZ, env, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
-    p.stdout?.pipe(salida);
-    p.stderr?.pipe(salida);
-    p.on("exit", (c) => (c === 0 ? ok() : mal(new Error(`No se pudo preparar la base de datos (código ${c}). Mira ${path.join(dirLogs(), "preparar-db.log")}.`))));
+    registrar(p, log("preparar-db"));
+    p.on("exit", (c) => (c === 0 ? ok() : mal(new AvisoArranque("No se pudo preparar la base de datos de Geeper."))));
   });
 }
 
 async function arrancar(): Promise<void> {
   const puerto = await puertoLibre();
   url = `http://127.0.0.1:${puerto}`;
+  // Otro programa (o un Geeper viejo) tiene el 3300: se usa otro, y queda anotado para quien ayude.
+  if (puerto !== 3300) {
+    fs.mkdirSync(dirLogs(), { recursive: true });
+    fs.appendFileSync(path.join(dirLogs(), "web.log"), `\n--- ${new Date().toISOString()} el puerto 3300 estaba ocupado; se usa el ${puerto} ---\n`);
+  }
   const env = entorno(puerto);
   // Crea o pone al día las tablas antes de que los dos procesos abran la base.
   await correrHasta(path.join(RAIZ, "preparar-db.mjs"), env);
@@ -139,24 +198,32 @@ function crearVentana(): void {
   ventana.once("ready-to-show", () => ventana?.show());
   // Lo que sale de Geeper (GitHub, redes, «en otra pestaña») se abre en el navegador.
   ventana.webContents.setWindowOpenHandler(({ url: destino }) => {
-    if (destino.startsWith(url) && !destino.includes("/craft/")) return { action: "allow" };
-    void shell.openExternal(destino);
+    if (esDeGeeper(url, destino) && !destino.includes("/craft/")) return { action: "allow" };
+    if (abrirFuera(destino)) void shell.openExternal(destino);
     return { action: "deny" };
   });
   ventana.webContents.on("will-navigate", (e, destino) => {
     // «Conectar» una cuenta: el inicio de sesión de la red va en su propia ventana (ver abrirLogin).
-    if (destino.startsWith(`${url}/api/cuentas/conectar/`)) {
+    if (esInicioLogin(url, destino)) {
       e.preventDefault();
       abrirLogin(destino);
       return;
     }
-    if (!destino.startsWith(url)) {
+    if (!esDeGeeper(url, destino)) {
       e.preventDefault();
-      void shell.openExternal(destino);
+      if (abrirFuera(destino)) void shell.openExternal(destino);
     }
   });
-  void ventana.loadURL(url);
+  // Mientras arranca el servidor, «Abriendo Geeper…»; al responder se carga la dirección (mostrarGeeper).
+  void ventana.loadURL(url && listo ? url : paginaAbriendo());
   ventana.on("closed", () => (ventana = null));
+}
+
+/** El servidor ya responde: la ventana pasa de «Abriendo Geeper…» a Geeper. */
+function mostrarGeeper(): void {
+  listo = true;
+  if (!ventana) crearVentana();
+  else void ventana.loadURL(url);
 }
 
 /**
@@ -179,64 +246,87 @@ function abrirLogin(inicio: string): void {
     webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
   const guiar = (e: { preventDefault: () => void }, destino: string) => {
-    if (esVueltaOAuth(destino) && !destino.startsWith(url)) {
-      e.preventDefault();
-      const u = new URL(destino);
-      void login.loadURL(`${url}${u.pathname}${u.search}`);
-      return;
+    const paso = pasoLogin(url, destino);
+    if (paso.tipo === "seguir") return;
+    e.preventDefault();
+    if (paso.tipo === "llevar") void login.loadURL(paso.a);
+    else if (paso.tipo === "terminar") {
+      void ventana?.loadURL(paso.a);
+      login.close();
     }
-    if (destino.startsWith(url)) {
-      // Geeper ya procesó la vuelta (o devolvió un error): se muestra en la ventana principal.
-      if (!new URL(destino).pathname.startsWith("/api/cuentas/")) {
-        e.preventDefault();
-        void ventana?.loadURL(destino);
-        login.close();
-      }
-      return;
-    }
-    // Las páginas de inicio de sesión de las redes van siempre por https.
-    if (!destino.startsWith("https://")) e.preventDefault();
   };
   login.webContents.on("will-navigate", guiar);
   login.webContents.on("will-redirect", guiar);
   login.webContents.setWindowOpenHandler(({ url: destino }) => {
     // Enlaces de ayuda o privacidad de la red: al navegador.
-    if (destino.startsWith("https://")) void shell.openExternal(destino);
+    if (destino.startsWith("https://") && abrirFuera(destino)) void shell.openExternal(destino);
     return { action: "deny" };
   });
   void login.loadURL(inicio);
 }
 
 function menu(): void {
-  const esMac = process.platform === "darwin";
   Menu.setApplicationMenu(
-    Menu.buildFromTemplate([
-      ...(esMac ? [{ role: "appMenu" as const }] : []),
-      { role: "editMenu" },
-      {
-        label: "Ver",
-        submenu: [{ role: "reload", label: "Recargar" }, { role: "togglefullscreen", label: "Pantalla completa" }, { type: "separator" }, { role: "resetZoom" }, { role: "zoomIn" }, { role: "zoomOut" }],
-      },
-      {
-        label: "Ayuda",
-        submenu: [
-          { label: "Abrir la carpeta de proyectos", click: () => void shell.openPath(path.join(app.getPath("documents"), "Geeper")) },
-          { label: "Abrir los registros", click: () => void shell.openPath(dirLogs()) },
-          { label: "Herramientas de desarrollo", accelerator: "CmdOrCtrl+Alt+I", click: () => ventana?.webContents.toggleDevTools() },
-        ],
-      },
-    ]),
+    Menu.buildFromTemplate(
+      plantillaMenu(process.platform === "darwin", {
+        abrirProyectos: () => void shell.openPath(path.join(app.getPath("documents"), "Geeper")),
+        abrirRegistros: () => void shell.openPath(dirLogs()),
+        herramientasDesarrollo: () => ventana?.webContents.toggleDevTools(),
+      }),
+    ),
   );
 }
 
-function apagar(): void {
-  if (saliendo) return;
-  saliendo = true;
-  // SIGINT: el worker marca lo que corría como interrumpido y suelta la GPU (igual que con Ctrl+C).
-  for (const h of hijos) h.p.kill(process.platform === "win32" ? undefined : "SIGINT");
-  setTimeout(() => {
-    for (const h of hijos) if (h.p.exitCode === null) h.p.kill("SIGKILL");
-  }, 6000).unref();
+/**
+ * Cuadro de error con botones, en vez de una ruta que hay que buscar a mano. «Abrir la carpeta de
+ * registros» no cierra el cuadro: lo vuelve a mostrar para que la persona elija qué hacer después.
+ */
+async function preguntarTrasError(titulo: string, detalle: string, reintentar: string): Promise<"reintentar" | "cerrar"> {
+  for (;;) {
+    const opciones = {
+      type: "error" as const,
+      title: titulo,
+      message: titulo,
+      detail: `${detalle}\n\nSi vuelve a pasar, abre la carpeta de registros y mándasela a quien te ayuda.`,
+      buttons: [reintentar, "Abrir la carpeta de registros", "Cerrar"],
+      defaultId: 0,
+      cancelId: 2,
+      noLink: true,
+    };
+    const { response } = ventana && !ventana.isDestroyed() ? await dialog.showMessageBox(ventana, opciones) : await dialog.showMessageBox(opciones);
+    if (response === 0) return "reintentar";
+    if (response === 2) return "cerrar";
+    await shell.openPath(dirLogs());
+  }
+}
+
+/**
+ * Detiene el servidor y el worker y espera a que salgan (hasta 14 s: el worker se toma hasta 12 s, ver
+ * PLAZO_APAGAR_MS). Se les cierra la entrada estándar (vigia.mjs lo toma como Ctrl+C: el worker marca lo
+ * que corría como interrumpido y suelta la GPU); al que no salió a tiempo se lo remata, con sus hijos en
+ * Windows.
+ */
+async function detenerHijos(): Promise<void> {
+  relanzoWorker.cancelar();
+  const vivos = hijos.splice(0).filter((h) => h.p.exitCode === null && h.p.signalCode === null);
+  await Promise.all(
+    vivos.map(
+      (h) =>
+        new Promise<void>((ok) => {
+          const tope = setTimeout(() => {
+            const r = comoRematar(process.platform, h.p.pid);
+            if (r && "comando" in r) spawn(r.comando, r.args, { stdio: "ignore", windowsHide: true }).on("error", () => h.p.kill());
+            else if (r) h.p.kill(r.senal);
+            ok();
+          }, PLAZO_APAGAR_MS);
+          h.p.once("exit", () => {
+            clearTimeout(tope);
+            ok();
+          });
+          h.p.stdin?.end();
+        }),
+    ),
+  );
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -248,23 +338,56 @@ if (!app.requestSingleInstanceLock()) {
       ventana.focus();
     }
   });
+  // Ninguna ventana puede meter un <webview> (otra web con más poderes dentro de Geeper) (SEG-07).
+  app.on("web-contents-created", (_e, wc) => {
+    wc.on("will-attach-webview", (ev) => ev.preventDefault());
+  });
   app.whenReady().then(async () => {
+    // Electron concede por defecto todo permiso que una página pida: sólo los que usan Geeper y las apps
+    // Craft, y sólo a sus páginas (SEG-07). Las ventanas de inicio de sesión de las redes no reciben ninguno.
+    session.defaultSession.setPermissionRequestHandler((wc, permiso, responder, detalles) =>
+      responder(concederPermiso(url, permiso, detalles.requestingUrl || wc.getURL())),
+    );
+    session.defaultSession.setPermissionCheckHandler((_wc, permiso, desde) => concederPermiso(url, permiso, desde));
     menu();
-    try {
-      await arrancar();
-      crearVentana();
-    } catch (e) {
-      dialog.showErrorBox("No se pudo abrir Geeper", `${e instanceof Error ? e.message : String(e)}\n\nRegistros: ${dirLogs()}`);
-      apagar();
-      app.quit();
+    // La ventana sale ya, con «Abriendo Geeper…»: el arranque puede tardar varios segundos.
+    crearVentana();
+    for (;;) {
+      try {
+        await arrancar();
+        mostrarGeeper();
+        return;
+      } catch (e) {
+        // El detalle técnico, al registro; en el cuadro, sólo un texto pensado para la persona (ESC-13).
+        console.error(e);
+        log("carcasa").end(`No pudo abrir: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`);
+        saliendo = true; // que los procesos que se detienen ahora no avisen ni se relancen
+        await detenerHijos();
+        saliendo = false;
+        reiniciosWorker.length = 0;
+        const que = await preguntarTrasError("Geeper no pudo abrir", textoErrorArranque(e), "Volver a intentar");
+        if (que === "cerrar") {
+          app.quit();
+          return;
+        }
+      }
     }
   });
   app.on("activate", () => {
-    if (!ventana && url) crearVentana();
+    if (!ventana && listo) crearVentana();
   });
-  app.on("window-all-closed", () => {
-    apagar();
-    app.quit();
+  app.on("window-all-closed", () => app.quit());
+  // Antes de cerrar se espera a que el servidor y el worker terminen (ESC-11): cerrar sin esperar dejaba
+  // el worker cortado en seco en Windows y los trabajos «corriendo» hasta 90 s al volver a abrir.
+  app.on("before-quit", (e) => {
+    if (cerrado) return;
+    e.preventDefault();
+    if (cerrando) return;
+    cerrando = true;
+    saliendo = true;
+    void detenerHijos().finally(() => {
+      cerrado = true;
+      app.exit(0);
+    });
   });
-  app.on("before-quit", apagar);
 }

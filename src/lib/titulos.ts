@@ -1,13 +1,13 @@
 /**
  * Títulos propuestos para la portada y la publicación, con el LLM local que ya corre en MPT (Gemma en el
- * contenedor `mpt-ollama`, US$0). Ollama no expone puerto al host, así que se llama con `docker exec`.
+ * contenedor `mpt-ollama`, US$0), por `pedirJson` de llm-local.ts (salida restringida por esquema, GPU-09).
  * Gemma usa la GPU: se toma el `gpu-lock` sin esperar; si está ocupada o Docker está apagado, se devuelven
- * títulos sugeridos sin IA y el motivo en palabras simples.
+ * títulos sugeridos sin IA y el motivo en palabras simples. Con el candado tomado, si un corte dejó Ollama
+ * apagado, se enciende (ia-mpt.ts, dentro de pedirJson).
  */
-import { tomarGpu } from "./gpu";
-import { correr } from "./proceso";
+import { z } from "zod";
+import { ErrorLlm, pedirJson, type OpcionesLlm } from "./llm-local";
 
-export const CONTENEDOR_LLM = "mpt-ollama";
 export const MODELO_TITULOS = process.env.GEEPER_LLM_TITULOS ?? "gemma4:12b";
 export const MAX_TITULO = 70;
 
@@ -32,6 +32,8 @@ export function promptTitulos(o: { tema: string; guion: string; formato: string 
     'Responde sólo JSON: {"titulos": ["…", "…", "…"]}',
   ].join("\n");
 }
+
+export const RespuestaTitulos = z.object({ titulos: z.array(z.string()) }).describe("Tres títulos para la portada.");
 
 /** Limpia la respuesta del LLM: JSON o texto suelto → hasta 3 títulos únicos y cortos (función pura). */
 export function limpiarTitulos(texto: string): string[] {
@@ -74,33 +76,38 @@ export function titulosSugeridos(nombre: string, tema: string): string[] {
   return [...new Set(lista)];
 }
 
-export async function proponerTitulos(o: { nombre: string; tema: string; guion: string; formato: string }): Promise<Propuesta> {
+/**
+ * Por qué falló `docker exec` contra Ollama, en palabras simples (función pura). «not running» y
+ * «no such container» van antes que «daemon»: Docker los dice como «Error response from daemon: …» y
+ * entonces se mandaba a abrir Docker Desktop aunque estuviera abierto.
+ */
+export function motivoFallo(stderr: string): string {
+  const err = stderr.toLowerCase();
+  if (err.includes("no such container") || err.includes("not running")) return "La IA local (MoneyPrinterTurbo) no está encendida.";
+  if (err.includes("model") && err.includes("not found")) return `Falta el modelo ${MODELO_TITULOS} en la IA local.`;
+  if (err.includes("docker api") || err.includes("daemon") || err.includes("pipe") || err.includes("cannot connect")) return "La IA local está apagada: abre Docker Desktop y vuelve a intentar.";
+  if (err.includes("not found")) return `Falta el modelo ${MODELO_TITULOS} en la IA local.`;
+  return "La IA local no respondió.";
+}
+
+export async function proponerTitulos(
+  o: { nombre: string; tema: string; guion: string; formato: string },
+  op: Pick<OpcionesLlm, "ejecutar" | "candado" | "encender"> = {},
+): Promise<Propuesta> {
   const respaldo = (motivo: string): Propuesta => ({ titulos: titulosSugeridos(o.nombre, o.tema), fuente: "sugeridos", motivo });
-  let candado;
   try {
-    candado = await tomarGpu("titulos", { esperar: false });
-  } catch {
-    return respaldo("No se pudo revisar si la tarjeta gráfica está libre.");
-  }
-  if (!candado) return respaldo("La tarjeta gráfica está ocupada con otro trabajo (un video o un render). Prueba de nuevo en unos minutos.");
-  try {
-    const r = await correr("docker", ["exec", "-i", CONTENEDOR_LLM, "ollama", "run", MODELO_TITULOS, "--format", "json", "--nowordwrap"], {
-      entrada: promptTitulos(o),
-      timeout: 120_000,
-      permitirFallo: true,
-    });
-    if (r.codigo !== 0) {
-      const err = r.stderr.toLowerCase();
-      if (err.includes("docker api") || err.includes("daemon") || err.includes("pipe")) return respaldo("La IA local está apagada: abre Docker Desktop y vuelve a intentar.");
-      if (err.includes("no such container") || err.includes("not running")) return respaldo("La IA local (MoneyPrinterTurbo) no está encendida.");
-      if (err.includes("not found")) return respaldo(`Falta el modelo ${MODELO_TITULOS} en la IA local.`);
-      return respaldo("La IA local no respondió.");
-    }
-    const titulos = limpiarTitulos(r.stdout);
+    const r = await pedirJson(MODELO_TITULOS, promptTitulos(o), RespuestaTitulos, { tarea: "titulos", ...op });
+    const titulos = limpiarTitulos(JSON.stringify(r.datos));
     return titulos.length ? { titulos, fuente: "ia" } : respaldo("La IA respondió algo que no se pudo usar.");
-  } catch {
+  } catch (e) {
+    if (e instanceof ErrorLlm) {
+      if (e.causa === "gpu-ocupada") return respaldo("La tarjeta de video está ocupada con otro trabajo (un video o un render). Prueba de nuevo en unos minutos.");
+      if (e.causa === "mpt-apagado") return respaldo("La IA local (MoneyPrinterTurbo) no está encendida.");
+      if (e.causa === "modelo-falta") return respaldo(`Falta el modelo ${MODELO_TITULOS} en la IA local.`);
+      if (e.causa === "docker-apagado") return respaldo("La IA local está apagada: abre Docker Desktop y vuelve a intentar.");
+      if (e.causa === "tiempo") return respaldo("La IA local no respondió a tiempo.");
+      return respaldo(e.message);
+    }
     return respaldo("La IA local no respondió a tiempo.");
-  } finally {
-    candado.liberar();
   }
 }

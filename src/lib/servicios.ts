@@ -8,6 +8,17 @@ import { crearCarpetas } from "./almacen";
 import { encolar, type TipoTrabajo } from "./cola";
 import { db } from "./db";
 import type { Formato } from "./esquema";
+import { apiViva } from "./mpt";
+import { guardarPedido } from "./pedido-video";
+import type { FilaVideo } from "./tabla-videos";
+
+/** Lo que ve la persona si el generador de videos (MPT, en Docker) está apagado (UX-07). */
+export const GENERADOR_APAGADO = "El generador de videos está apagado. Abre Docker Desktop, espera un minuto y vuelve a intentar.";
+
+/** Antes de crear nada: con el generador apagado cada tema dejaría un proyecto fallido (UX-07). */
+export async function exigirGenerador(): Promise<void> {
+  if (!(await apiViva())) throw new Error(GENERADOR_APAGADO);
+}
 
 export function slugDe(texto: string): string {
   const base = texto
@@ -38,6 +49,8 @@ export interface NuevoProyecto {
   estilo?: EstiloGeneracion;
   /** El setup del preset, personalizado en «Nuevo» (setup-video.ts); sin él, el del preset. */
   setup?: SetupVideo;
+  /** Frase del final de este video, en vez de la del estilo (p. ej. de una fila de la tabla). */
+  cta?: string;
 }
 
 async function crearFila(n: NuevoProyecto) {
@@ -64,7 +77,8 @@ const CADENA_FABRICA: TipoTrabajo[] = ["proyecto.importar", "render.entregar"];
 const CADENA_CON_AVATAR: TipoTrabajo[] = ["proyecto.importar", "avatar.escenas", "render.entregar"];
 
 /** Fábrica: MPT genera → se importa a geeper.json → render con la plantilla → QC. */
-export async function crearProyecto(n: NuevoProyecto) {
+export async function crearProyecto(n: NuevoProyecto, op: { yaComprobado?: boolean } = {}) {
+  if (!op.yaComprobado) await exigirGenerador();
   const p = await crearFila(n);
   const base = n.avatar ? CADENA_CON_AVATAR : CADENA_FABRICA;
   // Con un estilo, las escenas pasan a video antes del render (después del avatar): con Wan o, si el estilo no
@@ -74,19 +88,27 @@ export async function crearProyecto(n: NuevoProyecto) {
   const cadena: TipoTrabajo[] = anima ? [...base.slice(0, -1), "escenas.animar", base[base.length - 1]!] : base;
   if (n.avatar) await guardarAvatarDelVideo(p.slug, { avatar: n.avatar, cuerpo: n.cuerpo ?? "medio" });
   if (anima) await guardarEstiloGeneracion(p.slug, n.estilo!, n.setup);
+  if (n.cta?.trim()) await guardarPedido(p.slug, { cta: n.cta.trim() });
   await encolar(p.id, "mpt.generar", n.guion?.trim() ? { cadena, guion: n.guion.trim() } : { cadena });
   return p;
 }
 
-/** Un tema por línea. Cada tema es un proyecto con su cadena; los terminados no se repiten. */
-export async function crearLote(temas: string[], formato: Formato, plantilla: string, nombre?: string, avatar?: string, estilo?: EstiloGeneracion, cuerpo?: CuerpoAvatar, setup?: SetupVideo) {
-  const limpios = temas.map((t) => t.trim()).filter(Boolean);
+/**
+ * Un tema por línea, o una fila de tabla por video (tema y, si se quiere, título, guion y frase final:
+ * tabla-videos.ts). Cada uno es un proyecto con su cadena; los terminados no se repiten.
+ */
+export async function crearLote(temas: (string | FilaVideo)[], formato: Formato, plantilla: string, nombre?: string, avatar?: string, estilo?: EstiloGeneracion, cuerpo?: CuerpoAvatar, setup?: SetupVideo) {
+  const filas = temas.map((t): FilaVideo => (typeof t === "string" ? { tema: t.trim() } : { ...t, tema: t.tema.trim() })).filter((f) => f.tema);
+  const limpios = filas.map((f) => f.tema);
   if (!limpios.length) throw new Error("El lote no tiene temas");
+  await exigirGenerador();
   const lote = await db.lote.create({
     data: { nombre: nombre ?? `Lote de ${limpios.length} temas`, formato, plantilla, temas: limpios },
   });
   const proyectos = [];
-  for (const [i, tema] of limpios.entries()) proyectos.push(await crearProyecto({ tema, formato, plantilla, loteId: lote.id, orden: i, avatar, estilo, cuerpo, setup }));
+  for (const [i, f] of filas.entries()) {
+    proyectos.push(await crearProyecto({ tema: f.tema, nombre: f.titulo, guion: f.guion, cta: f.cta, formato, plantilla, loteId: lote.id, orden: i, avatar, estilo, cuerpo, setup }, { yaComprobado: true }));
+  }
   return { lote, proyectos };
 }
 
@@ -117,9 +139,39 @@ export interface NuevoClip {
   titulo?: string;
   gancho?: string;
   permiso?: string;
+  /** Nombres propios para guiar a whisper («GTA VI, Lucia, Vice City»). */
+  glosario?: string;
   campania?: Record<string, unknown>;
   /** false: sólo importar (para revisar antes de renderizar). */
   renderizar?: boolean;
+  /** «Mejorar la voz» (quita ruido y empareja el volumen). Por defecto, sí. */
+  mejorarVoz?: boolean;
+}
+
+export interface NuevaDemo {
+  url: string;
+  formato: "9:16" | "16:9";
+  estilo: "3d" | "plano";
+  texto: string;
+  plantilla: string;
+  nombre?: string;
+  /** El sitio es de quien crea el proyecto (o tiene permiso). */
+  propio?: boolean;
+}
+
+/** Demo de una página web: voz → demo a su medida → proyecto → render y QC. */
+export async function crearDemo(d: NuevaDemo) {
+  let host: string;
+  try {
+    const u = new URL(d.url);
+    if (!/^https?:$/.test(u.protocol)) throw new Error();
+    host = u.host.replace(/^www\./, "");
+  } catch {
+    throw new Error("El link no es válido: cópialo completo desde tu navegador (empieza con https://).");
+  }
+  const p = await crearFila({ tema: `Demo de ${host}`, nombre: d.nombre?.trim() || `Demo de ${host}`, formato: d.formato, plantilla: d.plantilla });
+  await encolar(p.id, "demo.crear", { url: d.url, estilo: d.estilo, texto: d.texto, propio: d.propio === true, cadena: ["render.entregar"] });
+  return p;
 }
 
 /** Clip de material largo (VOD, directo ya publicado, grabación): importar → render → QC. */

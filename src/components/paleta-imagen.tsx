@@ -46,17 +46,20 @@ export function SubirImagen({ etiqueta, alElegir, ocupado, compacto = false }: {
 /** Fila de colores; tocar uno lo elige. */
 export function Muestras({ colores, alElegir, titulo }: { colores: ColorPaleta[]; alElegir: (hex: string) => void; titulo?: string }) {
   return (
-    <div className="flex flex-wrap gap-1.5" role="list" aria-label={titulo ?? "Colores encontrados"}>
+    // A11-09: lista de verdad (ul/li) con un botón en cada fila; antes el botón tenía role="listitem" y perdía su rol.
+    <ul className="flex flex-wrap gap-1.5" aria-label={titulo ?? "Colores encontrados"}>
       {colores.map((c) => (
-        <button key={c.hex} type="button" role="listitem" onClick={() => alElegir(c.hex)}
-          className="flex items-center gap-1.5 rounded-md border border-borde bg-[#0f131a] px-1.5 py-1 text-xs hover:border-slate-500"
-          title={`${c.hex} · ${Math.round(c.parte * 100)} % de la imagen`}>
-          <span className="h-5 w-5 rounded border border-white/20" style={{ background: c.hex }} />
-          <span className="tabular-nums">{c.hex}</span>
-          <span className="text-tenue">{Math.round(c.parte * 100)} %</span>
-        </button>
+        <li key={c.hex}>
+          <button type="button" onClick={() => alElegir(c.hex)}
+            className="flex items-center gap-1.5 rounded-md border border-borde bg-[#0f131a] px-1.5 py-1 text-xs hover:border-slate-500"
+            title={`${c.hex} · ${Math.round(c.parte * 100)} % de la imagen`}>
+            <span className="h-5 w-5 rounded border border-white/20" style={{ background: c.hex }} />
+            <span className="tabular-nums">{c.hex}</span>
+            <span className="text-tenue">{Math.round(c.parte * 100)} %</span>
+          </button>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }
 

@@ -24,7 +24,7 @@ import { tomarGpu } from "./gpu";
 import { formasDeBoca, type FormaBoca } from "./rhubarb";
 import { probar } from "./media";
 import { sintetizar } from "./voz";
-import { llamaDisponible, preguntarLlama } from "./llm-local";
+import { llamaDisponible, preguntarLlama } from "./llama-local";
 import { correr, type Registro } from "./proceso";
 import { versionDeProyecto } from "./render";
 import { dirDatos, dirProyecto, FFMPEG, RAIZ_REPO } from "./rutas";

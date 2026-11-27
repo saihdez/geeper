@@ -4,7 +4,7 @@ import { configurada, urlCallback } from "@/lib/redes/config";
 import { cuentaPublica } from "@/lib/redes/cuentas";
 import { obtenerRed } from "@/lib/redes/index";
 import { privadosBloquean } from "@/lib/redes/privados";
-import { leerAjustes, verificarSalida } from "@/lib/redes/salida";
+import { leerAjustes, verificarSinMedir } from "@/lib/redes/salida";
 import { REDES_IDS } from "@/lib/redes/tipos";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +27,9 @@ export async function GET() {
       const r = obtenerRed(id);
       return { id, nombre: r.nombre, configurada: configurada(id), formatos: r.formatos, privacidades: r.privacidades, programar: r.programar, callback: urlCallback(id) };
     });
-    const [ajustes, vpn] = await Promise.all([leerAjustes(), verificarSalida()]);
+    // WEB-09: Cuentas y el panel de publicar piden esto cada 30–60 s; se pinta la última medida, sin
+    // salir a internet. Se mide en «Medir ahora» (/api/red), al conectar una cuenta y al publicar.
+    const [ajustes, vpn] = await Promise.all([leerAjustes(), verificarSinMedir()]);
     // Con archivos secretos sin proteger, «configurada» da false: la UI explica el motivo real.
     return json({ cuentas, redes, ajustes, vpn, privadosBloquean: privadosBloquean() });
   });

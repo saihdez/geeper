@@ -49,9 +49,11 @@ export function BotonIdeas({ ctx, texto = "Propónme ideas", primario = false, a
         </div>
       )}
       {fase === "pensando" && (
-        <div className="flex items-center gap-3 rounded-lg border border-cyan-900 bg-cyan-950/30 p-3 text-sm" role="status" aria-live="polite">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-cyan-900 bg-cyan-950/30 p-3 text-sm">
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent motion-reduce:animate-none" aria-hidden />
-          Pensando ideas… {segundos} s <span className="text-tenue">(hasta 1 a 2 minutos la primera vez)</span>
+          {/* Lo que se anuncia no cambia cada segundo: el contador va fuera de la región viva. */}
+          <span role="status">Pensando ideas… <span className="text-tenue">(hasta 1 a 2 minutos la primera vez)</span></span>
+          <span className="tabular-nums text-tenue" aria-hidden>{segundos} s</span>
         </div>
       )}
       {error && <div className="mt-2"><Aviso tipo="error">{error}</Aviso></div>}

@@ -46,7 +46,7 @@ export interface Lectura {
   decision: string;
 }
 
-const pct = (x: number, d = 2) => `${(x * 100).toFixed(d).replace(".", ",")} %`;
+const pct = (x: number, d = 2) => `${(x * 100).toFixed(d)} %`;
 
 function valido(c: Conteo | undefined): c is { unidades: number; conversiones: number } {
   return Boolean(c && c.unidades != null && c.conversiones != null && c.unidades > 0 && c.conversiones >= 0);
@@ -90,7 +90,7 @@ export function leerPrueba(e: {
     const p = se0 > 0 ? 2 * (1 - normalAcumulada(Math.abs(zz))) : 1;
     const r = { ...base, tasaTratamiento: pt, diferencia: dif, relativa: pc > 0 ? dif / pc : null, intervalo: [dif - z * se, dif + z * se] as [number, number], z: zz, p };
     const rel = r.relativa != null ? ` (${r.relativa >= 0 ? "+" : ""}${pct(r.relativa, 1)})` : "";
-    const resumen = `${pct(pt)} contra ${pct(pc)} de la base${rel}; la diferencia real está probablemente entre ${pct(r.intervalo[0])} y ${pct(r.intervalo[1])} (p ${p < 0.001 ? "< 0,001" : `= ${p.toFixed(3).replace(".", ",")}`})`;
+    const resumen = `${pct(pt)} contra ${pct(pc)} de la base${rel}; la diferencia real está probablemente entre ${pct(r.intervalo[0])} y ${pct(r.intervalo[1])} (p ${p < 0.001 ? "< 0.001" : `= ${p.toFixed(3)}`})`;
     if (e.planeada != null && (c.unidades < e.planeada || t.unidades < e.planeada)) {
       const falta = Math.max(0, e.planeada - Math.min(c.unidades, t.unidades));
       return { ...r, veredicto: "temprano", texto: `Todavía no se puede saber: faltan ~${falta.toLocaleString("es")} personas por anuncio. Por ahora: ${resumen}.` };

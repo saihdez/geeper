@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { AvisoPrivados } from "./aviso-privados";
 import { AppsRedes } from "./apps-redes";
-import { Aviso, Estado, pedir, useSondeo } from "./comun";
+import { Aviso, Estado, fecha, pedir, useSondeo } from "./comun";
 
 export interface RedInfo {
   id: string;
@@ -41,7 +41,14 @@ const ESTADO_VPN: Record<Vpn["estado"], { texto: string; color: string }> = {
   sin_configurar: { texto: "sin configurar", color: "text-amber-300" },
 };
 
-const fecha = (s: string) => new Date(s).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" });
+
+/**
+ * El aviso del VPN con la hora de la medida: la lista de cuentas ya no mide en cada refresco (WEB-09),
+ * así que la medida puede ser de hace un rato.
+ */
+export function textoVpn(vpn: Pick<Vpn, "detalle" | "salida">): string {
+  return `${vpn.detalle}${vpn.salida?.medido ? ` · medido ${fecha(vpn.salida.medido)}` : ""}`;
+}
 
 function FormAjustes({ inicial, alGuardar }: { inicial: Ajustes; alGuardar: (v: { ajustes: Ajustes; vpn: Vpn }) => void }) {
   const [a, setA] = useState(inicial);
@@ -121,7 +128,7 @@ function BarraVpn({ ajustes, vpn, alCambiar }: { ajustes: Ajustes; vpn: Vpn; alC
           <button type="button" className="boton" aria-expanded={abierto} aria-controls="vpn-ajustes" onClick={() => setAbierto(!abierto)}>Ajustes</button>
         </div>
       </div>
-      <p className="text-sm text-tenue">{actual.detalle}{actual.salida?.medido ? ` · medido ${fecha(actual.salida.medido)}` : ""}</p>
+      <p className="text-sm text-tenue">{textoVpn(actual)}</p>
       {error && <Aviso tipo="error">{error}</Aviso>}
       {abierto && (
         <div id="vpn-ajustes">
@@ -242,11 +249,11 @@ function SeccionRed({ red, cuentas, vpn, bloqueada, alCambiar, avisar }: {
         // Exigido por las políticas para desarrolladores de los Servicios de API de YouTube.
         <p className="text-xs text-tenue">
           Geeper usa los Servicios de API de YouTube. Al conectar un canal aceptas los{" "}
-          <a className="text-acento hover:underline" href="https://www.youtube.com/t/terms" target="_blank" rel="noreferrer">Términos del Servicio de YouTube</a>
+          <a className="text-acento underline" href="https://www.youtube.com/t/terms" target="_blank" rel="noreferrer">Términos del Servicio de YouTube</a>
           {" "}y la{" "}
-          <a className="text-acento hover:underline" href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">Política de Privacidad de Google</a>.
+          <a className="text-acento underline" href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">Política de Privacidad de Google</a>.
           {" "}Puedes revocar el acceso cuando quieras con «Desconectar» o desde la{" "}
-          <a className="text-acento hover:underline" href="https://security.google.com/settings/security/permissions" target="_blank" rel="noreferrer">configuración de seguridad de Google</a>.
+          <a className="text-acento underline" href="https://security.google.com/settings/security/permissions" target="_blank" rel="noreferrer">configuración de seguridad de Google</a>.
         </p>
       )}
       {red.configurada && !vpn.ok && <p className="text-xs text-amber-300">No se puede conectar ahora: {vpn.detalle}</p>}

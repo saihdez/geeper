@@ -10,8 +10,6 @@ import path from "node:path";
 import { muestrasRgba, paleta, proponerRoles, type ColorPaleta, type Roles } from "./colores-marca";
 import { ffmpeg } from "./media";
 
-export const EXTENSIONES_PALETA = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".mp4", ".mov", ".webm"]);
-
 export async function paletaDeArchivo(ruta: string): Promise<{ colores: ColorPaleta[]; roles: Roles }> {
   const salida = path.join(os.tmpdir(), `geeper-paleta-${randomUUID()}.rgba`);
   try {

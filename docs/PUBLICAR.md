@@ -71,7 +71,10 @@ nombres de scope de estas APIs cambian seguido. El `doctor` muestra lo que repor
    hora programada. Debajo, cada cuenta muestra «✓ Título y descripción listos» o lo que la red
    recortaría o ignoraría (aviso) y lo que rechazaría (error: no deja publicar), con un botón para
    arreglarlo cuando Geeper puede (`src/lib/redes/revision-texto.ts`). También avisa si el título ya
-   se usó en esa cuenta, en cualquier proyecto.
+   se usó en esa cuenta, en cualquier proyecto. «✨ Sugerir título, descripción y hashtags» los escribe
+   con el modelo local de MPT a partir de lo que dice el video (`src/lib/texto-publicacion.ts`: largo según
+   la duración, sin hashtags de relleno, con el crédito del creador si es un clip); reemplaza lo escrito
+   y la persona lo revisa antes de publicar. Usa la GPU un momento: si está ocupada, lo dice.
 4. Aprieta «Publicar». Se encola un trabajo `publicar.subir` por cuenta.
 5. En **Trabajos** se ve el progreso de la subida. Al terminar, el proyecto muestra el enlace al
    video en cada red.

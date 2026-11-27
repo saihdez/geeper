@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Aviso, Barra, postJson, useSondeo } from "./comun";
+import { Aviso, AvisoTarjeta, Barra, LineaFalta, faltanConGuardar, postJson, useGuardeAntes, useSondeo } from "./comun";
 import { INTENSIDADES_CAMARA3D, MOVIMIENTOS_CAMARA3D, type IntensidadCamara3d, type MovimientoCamara3d } from "@/lib/camara3d-catalogo";
 
 interface Datos {
@@ -42,9 +42,11 @@ function FormCamara3d({ proyectoId, escena, numero, ocupado }: { proyectoId: str
   const [intensidad, setIntensidad] = useState<IntensidadCamara3d>("normal");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const guarde = useGuardeAntes();
   if (!datos) return <p className="mt-2 text-xs text-tenue">Cargando…</p>;
   if (datos.falta) return <div className="mt-3"><Aviso tipo="alerta">{datos.falta}</Aviso></div>;
   const trabajo = datos.trabajos.find((t) => t.escena === escena);
+  const faltan = faltanConGuardar(guarde);
 
   async function enviar() {
     setError(null);
@@ -82,9 +84,12 @@ function FormCamara3d({ proyectoId, escena, numero, ocupado }: { proyectoId: str
             <legend className="font-medium">2. ¿Cuánta profundidad?</legend>
             <Opciones valor={intensidad} cambiar={setIntensidad} opciones={INTENSIDADES_CAMARA3D} />
           </fieldset>
-          <button type="button" className="boton boton-primario" disabled={ocupado || enviando} onClick={() => void enviar()}>
+          <AvisoTarjeta g={guarde}>Mover la cámara usa la tarjeta de video (Blender) menos de un minuto.</AvisoTarjeta>
+          <button type="button" className="boton boton-primario" disabled={ocupado || enviando || faltan.length > 0} aria-describedby={faltan.length ? guarde.idFalta : undefined}
+            onClick={() => void enviar()}>
             {enviando ? "Enviando…" : `Mover la cámara en la escena ${numero}`}
           </button>
+          <LineaFalta id={guarde.idFalta} faltan={faltan} />
           {error && <Aviso tipo="error">{error}</Aviso>}
         </>
       )}
