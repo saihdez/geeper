@@ -4,15 +4,22 @@ import { Aviso, AvisoTarjeta, LineaFalta, archivo, faltanConGuardar, numero, pos
 
 interface Datos {
   instalado: boolean;
+  grupos: Record<string, string>;
+  libres: { id: string; nombre: string; grupo: string; segundos: number; muestra: string }[];
   presets: { id: string; nombre: string; segundos: number }[];
   biblioteca: { id: string; nombre: string; segundos: number; muestra: string }[];
 }
-type Eleccion = { tipo: "preset"; id: string; nombre: string } | { tipo: "biblioteca"; id: string; nombre: string } | { tipo: "propio" };
+type Eleccion =
+  | { tipo: "libre"; id: string; nombre: string; muestra: string }
+  | { tipo: "preset"; id: string; nombre: string }
+  | { tipo: "biblioteca"; id: string; nombre: string }
+  | { tipo: "propio" };
 
 /**
- * Efectos de sonido en 3 pasos: qué sonido (uno listo, uno ya creado o descrito con palabras), cuándo
- * suena (al empezar una escena o en un segundo exacto) y agregar. Los ya creados entran al instante;
- * uno nuevo se crea con la tarjeta gráfica (~3 min) y se agrega solo al terminar.
+ * Efectos de sonido en 3 pasos: qué sonido (uno de los que vienen con Geeper, uno ya creado o uno
+ * descrito con palabras), cuándo suena (al empezar una escena o en un segundo exacto) y agregar. Los que
+ * vienen con Geeper (CC0, audio-libre/) y los ya creados entran al instante; uno nuevo se crea con la
+ * tarjeta de video (~3 min) y se agrega solo al terminar.
  */
 export function PanelEfectosSonido({ proyectoId, escenas, total, ocupado, alCambiar }: {
   proyectoId: string;
@@ -23,6 +30,7 @@ export function PanelEfectosSonido({ proyectoId, escenas, total, ocupado, alCamb
 }) {
   const { datos } = useSondeo<Datos>("/api/efectos", 30_000);
   const [eleccion, setEleccion] = useState<Eleccion | null>(null);
+  const [grupo, setGrupo] = useState("transicion");
   const [descripcion, setDescripcion] = useState("");
   const [segundos, setSegundos] = useState(3);
   const [cuando, setCuando] = useState<string>("escena-1");
@@ -31,7 +39,7 @@ export function PanelEfectosSonido({ proyectoId, escenas, total, ocupado, alCamb
   const [msg, setMsg] = useState<{ tipo: "ok" | "error" | "info"; texto: string } | null>(null);
   const guarde = useGuardeAntes();
 
-  if (datos && !datos.instalado && !datos.biblioteca.length) return null;
+  if (datos && !datos.instalado && !datos.biblioteca.length && !datos.libres.length) return null;
   const inicio = cuando === "exacto" ? exacto : (escenas.find((e) => `escena-${e.numero}` === cuando)?.inicio ?? 0);
 
   async function agregar() {
@@ -39,7 +47,7 @@ export function PanelEfectosSonido({ proyectoId, escenas, total, ocupado, alCamb
     setEnviando(true);
     setMsg(null);
     try {
-      const cuerpo = eleccion.tipo === "biblioteca" ? { biblioteca: eleccion.id, inicio } : eleccion.tipo === "preset" ? { preset: eleccion.id, inicio } : { descripcion, segundos, inicio };
+      const cuerpo = eleccion.tipo === "libre" ? { libre: eleccion.id, inicio } : eleccion.tipo === "biblioteca" ? { biblioteca: eleccion.id, inicio } : eleccion.tipo === "preset" ? { preset: eleccion.id, inicio } : { descripcion, segundos, inicio };
       const r = await postJson<{ listo: boolean; efecto?: string }>(`/api/proyectos/${proyectoId}/efecto`, cuerpo);
       setMsg(r.listo
         ? { tipo: "ok", texto: `Listo: «${r.efecto}» suena en el segundo ${numero(inicio, 1)}. Escúchalo en «En vivo»; si no te convence, quítalo en «Superposiciones y efectos de sonido».` }
@@ -57,8 +65,8 @@ export function PanelEfectosSonido({ proyectoId, escenas, total, ocupado, alCamb
       className={`rounded-full border px-3 py-1 text-sm ${activo ? "border-sky-500 bg-sky-950/40" : "border-borde hover:bg-white/5"}`}>{texto}</button>
   );
   const listo = eleccion && (eleccion.tipo !== "propio" || descripcion.trim().length >= 3);
-  // Uno ya creado entra al instante; uno nuevo se crea con toda la tarjeta de video.
-  const crea = !!eleccion && eleccion.tipo !== "biblioteca";
+  // Uno libre o ya creado entra al instante; uno nuevo se crea con toda la tarjeta de video.
+  const crea = !!eleccion && eleccion.tipo !== "biblioteca" && eleccion.tipo !== "libre";
   const faltaGuardar = crea ? faltanConGuardar(guarde) : [];
 
   return (
@@ -70,6 +78,25 @@ export function PanelEfectosSonido({ proyectoId, escenas, total, ocupado, alCamb
 
       <div className="space-y-2">
         <p className="etiqueta">1. ¿Qué sonido?</p>
+        {datos && datos.libres.length > 0 && (
+          <div className="space-y-2">
+            <label className="flex flex-wrap items-center gap-2 text-xs text-tenue" htmlFor="grupo-libre">
+              Listos al instante (vienen con Geeper, libres para usar en videos con fines comerciales):
+              <select id="grupo-libre" className="campo w-auto text-sm" value={grupo} onChange={(e) => setGrupo(e.target.value)}>
+                {Object.entries(datos.grupos).map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}
+              </select>
+            </label>
+            <div className="flex flex-wrap gap-1">
+              {datos.libres.filter((l) => l.grupo === grupo).map((l) =>
+                chip(eleccion?.tipo === "libre" && eleccion.id === l.id, `${l.nombre} · ${numero(l.segundos, 1)} s`, () => setEleccion({ tipo: "libre", id: l.id, nombre: l.nombre, muestra: l.muestra }), l.id))}
+            </div>
+            {eleccion?.tipo === "libre" && (
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                Escúchalo: <audio key={eleccion.id} controls autoPlay preload="auto" src={eleccion.muestra} className="h-7 max-w-56" aria-label={`Escuchar «${eleccion.nombre}»`} />
+              </div>
+            )}
+          </div>
+        )}
         {datos && datos.biblioteca.length > 0 && (
           <div className="space-y-1">
             <p className="text-xs text-tenue">Ya creados (entran al instante):</p>
@@ -85,7 +112,7 @@ export function PanelEfectosSonido({ proyectoId, escenas, total, ocupado, alCamb
         )}
         {datos?.instalado && (
           <>
-            <p className="text-xs text-tenue">Para crear (la primera vez tardan unos 3 minutos):</p>
+            <p className="text-xs text-tenue">Para crear con la tarjeta de video (la primera vez tardan unos 3 minutos):</p>
             <div className="flex flex-wrap gap-1">
               {datos.presets.filter((p) => !datos.biblioteca.some((b) => b.nombre === p.nombre)).map((p) =>
                 chip(eleccion?.tipo === "preset" && eleccion.id === p.id, p.nombre, () => setEleccion({ tipo: "preset", id: p.id, nombre: p.nombre }), p.id))}
@@ -126,7 +153,7 @@ export function PanelEfectosSonido({ proyectoId, escenas, total, ocupado, alCamb
       <div className="space-y-1">
         <button type="button" className="boton boton-primario" disabled={!listo || ocupado || enviando || faltaGuardar.length > 0}
           aria-describedby={faltaGuardar.length ? guarde.idFalta : undefined} onClick={() => void agregar()}>
-          {enviando ? "Agregando…" : eleccion?.tipo === "biblioteca" ? "3. Agregar al video" : "3. Crear y agregar al video"}
+          {enviando ? "Agregando…" : crea ? "3. Crear y agregar al video" : "3. Agregar al video"}
         </button>
         <LineaFalta id={guarde.idFalta} faltan={faltaGuardar} />
       </div>

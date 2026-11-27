@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { guardarProyecto, registrarAssetsEnDb } from "@/lib/almacen";
+import { agregarEfectoLibre, sonidoLibre } from "@/lib/audio-libre";
 import { encolar } from "@/lib/cola";
 import { db } from "@/lib/db";
 import { PRESETS, agregarEfecto, efectosInstalados, idEfecto, listarEfectos } from "@/lib/efectos-sonido";
@@ -9,7 +10,8 @@ import { dirProyecto } from "@/lib/rutas";
 
 const Pedido = z.object({
   inicio: z.number().min(0),
-  /** Uno de los tres: un efecto de la biblioteca, uno de los listos o una descripción propia. */
+  /** Uno de cuatro: uno libre (viene con Geeper), uno de la biblioteca, uno de los listos o una descripción propia. */
+  libre: z.string().regex(/^[a-z0-9-]+$/).optional(),
   biblioteca: z.string().regex(/^sfx-[0-9a-f]{12}$/).optional(),
   preset: z.string().optional(),
   descripcion: z.string().trim().min(3).max(300).optional(),
@@ -17,7 +19,7 @@ const Pedido = z.object({
 });
 
 /**
- * Agrega un efecto de sonido al video en el segundo `inicio`. Si ya está en la biblioteca, al instante;
+ * Agrega un efecto de sonido al video en el segundo `inicio`. Si es libre o ya está en la biblioteca, al instante;
  * si hay que crearlo, encola el trabajo (usa la tarjeta gráfica) y responde 202.
  */
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -26,6 +28,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const d = Pedido.parse(await req.json());
     const fila = await db.proyecto.findUniqueOrThrow({ where: { id } });
     if (fila.versionActual < 1) throw new Error("El video todavía no está armado.");
+    if (d.libre) {
+      const s = sonidoLibre(d.libre);
+      if (!s || s.tipo !== "efecto") throw new Error("Ese sonido no está entre los que vienen con Geeper.");
+      const { p } = await versionDeProyecto(id);
+      const nuevo = await agregarEfectoLibre(dirProyecto(fila.slug), p, s, d.inicio);
+      const version = await guardarProyecto(id, nuevo, `Efecto de sonido «${s.nombre}» en ${d.inicio.toFixed(1)} s`);
+      await registrarAssetsEnDb(id, nuevo);
+      return json({ listo: true, version, efecto: s.nombre });
+    }
     const biblioteca = await listarEfectos();
     const preset = PRESETS.find((p) => p.id === d.preset);
     const segundos = d.segundos ?? preset?.segundos ?? 3;

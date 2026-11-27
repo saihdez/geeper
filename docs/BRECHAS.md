@@ -10,7 +10,7 @@
 | E1 vista previa en vivo | **Hecho** en `feat/m5-publicar-redes` (player de Hyperframes) |
 | E2 edición por texto | **Hecho**: recortar y restaurar palabras, acortar silencios, quitar muletillas |
 | E5 confianza de la alineación | **Hecho**: confianza por palabra (acuerdo con whisper, silencios, duración) y regla de QC |
-| G3 música | **Parcial**: pulsos (`hyperframes beats`) y música alineada a los cortes; **efectos de sonido generados** con MOSS-SoundEffect (Apache 2.0) en una biblioteca compartida, en 3 pasos desde el editor (2026-11-20, DECISIONES §25). Falta la biblioteca de música con licencia clara |
+| G3 música | **Parcial**: pulsos (`hyperframes beats`) y música alineada a los cortes; **efectos de sonido generados** con MOSS-SoundEffect (Apache 2.0) en una biblioteca compartida, en 3 pasos desde el editor (2026-11-20, DECISIONES §25). **Música y 88 efectos libres (CC0)** que vienen con Geeper, sin tarjeta de video (`audio-libre/`, 2026-11-27, HEREDADO «Doory»). Falta: elegir la canción por el tema del video (hoy, por ánimo y estable por proyecto) |
 | Q1 licencias que bloquean | **Hecho** (`comercial: true`) |
 | Q2 pico real y zonas por plataforma | **Hecho**. Siguen pendientes el contraste WCAG y la decisión de 17 car./s |
 | Q4 máster de archivo | **Hecho** (`entrega.master`: MOV calidad alta) |

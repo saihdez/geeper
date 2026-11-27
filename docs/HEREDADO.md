@@ -823,3 +823,37 @@ que la sección de voz: cambia la voz y ofrece decir el guion de nuevo). El pres
 la voz se está diciendo de nuevo, y en pantalla completa también avisa si después cambió el audio de una
 escena (huella por escena). El panel muestra además una **vista previa a escala** de dónde queda el avatar,
 la forma de hablar en botones en español («Alegre y con energía», «Seria y profesional»…) y «Cancelar».
+
+## Doory (shaongitbd/doory, código con Attribution Assurance License; audio CC0) — revisión 2026-11-27
+
+Editor de diseño en el navegador, tipo Canva (React + Fabric.js, Django). Se revisó el commit `a05f1a8`.
+**Su código no se copia:** la Attribution Assurance License obliga a mostrar el crédito del autor al abrir
+el programa, y Geeper es Apache-2.0. Lo que no es código sí sirve.
+
+### Hecho
+
+| Qué | De dónde | Resultado |
+|---|---|---|
+| 24 pistas de música (8 ánimos) y 88 efectos de sonido, CC0, sintetizados | `backend/data/audio/`, `audio_library.json` | `audio-libre/` (7 MB, va en el instalador). Ver `audio-libre/LEEME.md` |
+| Efectos al instante, sin tarjeta de video | lo anterior | Panel «Efectos de sonido»: «Listos al instante», con 7 grupos y para escuchar antes de elegir. Antes, un whoosh o un pop pedía MOSS (14,5 GB de VRAM) |
+| Música con licencia clara en los estilos | lo anterior | «¿Qué música?» en el editor de estilos: `musica.carpeta = "libre:<ánimo>"` (`src/lib/audio-libre.ts`). El QC comercial la deja pasar (CC0) |
+
+### Útil, sin hacer
+
+- **Zonas seguras 9:16 con fuente oficial.** `size_presets.json` (meta `safe_zone`) cita la
+  [guía de zonas seguras de YouTube](https://services.google.com/fh/files/misc/universalsafezones-youtube.pdf)
+  para Shorts: arriba .15, derecha .18, abajo .35, izquierda .04. Nosotros usamos .15/.12/.35/.06
+  (explainroo). Para TikTok da derecha .28 (nosotros .20), pero sale de una guía de anuncios de terceros
+  (AdKit) y achicaría mucho los subtítulos. Los números son datos, no código: se pueden usar citando la
+  fuente. Antes de cambiarlos, revisar el PDF y medir el ancho que les queda a los subtítulos.
+- **Llenar un estilo por campos, en lote** (`fill_design`/`bulk_fill`: una fila de CSV, un diseño nuevo).
+  En Geeper sería un video por fila (tema, título, CTA) con el mismo estilo. Es sólo la idea.
+- **Créditos para publicar.** Doory sólo ofrece sonidos de Freesound CC0 o CC BY, y para los CC BY arma
+  las líneas de crédito que hay que poner al publicar. Geeper podría hacer lo mismo en «Publicar» a partir
+  de `Asset.licencia`.
+
+### Descartado
+
+- Quitar fondo en el navegador (u2netp/ISNet por rembg), el reescalado y las animaciones de entrada y
+  salida: son código de Doory o ya existen en Geeper (segmentación, Hyperframes).
+- Las ~1600 medidas de `size_presets.json`: Geeper sólo entrega 9:16, 16:9 y 1:1.

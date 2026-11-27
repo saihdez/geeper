@@ -221,6 +221,8 @@ async function main() {
   fs.writeFileSync(path.join(APP, "esquema.sql"), esquema.slice(esquema.indexOf("--")));
   copiar(path.join(REPO, "py"), path.join(APP, "py"));
   fs.rmSync(path.join(APP, "py", "__pycache__"), { recursive: true, force: true });
+  // Música y efectos libres (CC0, src/lib/audio-libre.ts): unos 7 MB.
+  copiar(path.join(REPO, "audio-libre"), path.join(APP, "audio-libre"));
   fs.mkdirSync(path.join(APP, "docs"), { recursive: true });
   fs.copyFileSync(path.join(REPO, "docs", "fuentes.json"), path.join(APP, "docs", "fuentes.json"));
 

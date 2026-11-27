@@ -91,6 +91,7 @@ export function faltantesApp(app: string): string[] {
     path.join("node_modules", "hyperframes", "bin", "hyperframes.mjs"),
     path.join("node_modules", "gsap", "dist", "gsap.min.js"),
     path.join("docs", "fuentes.json"),
+    path.join("audio-libre", "biblioteca.json"),
     "esquema.sql",
     path.join("standalone", "server.js"),
     "main.cjs",

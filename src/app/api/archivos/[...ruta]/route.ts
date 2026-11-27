@@ -11,7 +11,7 @@ import { CSP_SVG, esSvg } from "@/lib/svg";
 export const dynamic = "force-dynamic";
 
 const TIPOS: Record<string, string> = {
-  ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".mp4": "video/mp4", ".mp3": "audio/mpeg", ".wav": "audio/wav", ".m4a": "audio/mp4", ".jpg": "image/jpeg",
+  ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".mp4": "video/mp4", ".mp3": "audio/mpeg", ".wav": "audio/wav", ".m4a": "audio/mp4", ".ogg": "audio/ogg", ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg", ".png": "image/png", ".json": "application/json", ".log": "text/plain; charset=utf-8",
   ".webp": "image/webp", ".csv": "text/csv; charset=utf-8", ".srt": "application/x-subrip; charset=utf-8", ".woff2": "font/woff2",
 };

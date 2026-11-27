@@ -655,6 +655,26 @@
       "que": "Skills de Claude Code (MIT), no código de Geeper: 7 copias adaptadas en ~/.claude/skills (ci-test-reliability, trim-cot-leakage, record-browser-gif, agent-tool-design, defensive-patterns, responsive-ui, perf-evidence) + error-handling/empty-catch.md. Origen de cada una y lo descartado en ~/.claude/skills/DEEPSEEK-HARNESS.md.",
       "archivos": [],
       "pruebas": []
+    },
+    {
+      "id": "doory",
+      "repo": "shaongitbd/doory",
+      "tipo": "commits",
+      "como": [
+        "codigo"
+      ],
+      "commit": "a05f1a8",
+      "revisado": "2026-11-27",
+      "que": "Biblioteca de audio CC0 (24 pistas de música y 88 efectos, sintetizados) copiada a audio-libre/. El código de Doory (Attribution Assurance License) no se copia; ver docs/HEREDADO.md.",
+      "archivos": [
+        "audio-libre/biblioteca.json",
+        "src/lib/audio-libre.ts",
+        "src/lib/animos-musica.ts"
+      ],
+      "docs": "docs/HEREDADO.md",
+      "pruebas": [
+        "tests/audio-libre.test.ts"
+      ]
     }
   ]
 }

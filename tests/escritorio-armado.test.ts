@@ -91,8 +91,8 @@ describe("lo que la app lee al correr (ESC-01)", () => {
   it("nombra lo que falta: el runtime de Hyperframes, los .py, fuentes.json y esquema.sql", () => {
     const app = path.join(tmp, "app");
     fs.mkdirSync(app);
-    expect(faltantesApp(app)).toEqual(expect.arrayContaining([path.join("node_modules", "hyperframes", "dist", "hyperframe.runtime.iife.js"), path.join("node_modules", "gsap", "dist", "gsap.min.js"), path.join("docs", "fuentes.json"), "esquema.sql", path.join("py", "*.py")]));
-    for (const f of ["node_modules/hyperframes/dist/hyperframe.runtime.iife.js", "node_modules/hyperframes/bin/hyperframes.mjs", "node_modules/gsap/dist/gsap.min.js", "docs/fuentes.json", "esquema.sql", "standalone/server.js", "main.cjs", "worker.mjs", "preparar-db.mjs", "vigia.mjs", "py/reencuadre.py"]) escribir(path.join("app", f));
+    expect(faltantesApp(app)).toEqual(expect.arrayContaining([path.join("node_modules", "hyperframes", "dist", "hyperframe.runtime.iife.js"), path.join("node_modules", "gsap", "dist", "gsap.min.js"), path.join("docs", "fuentes.json"), path.join("audio-libre", "biblioteca.json"), "esquema.sql", path.join("py", "*.py")]));
+    for (const f of ["node_modules/hyperframes/dist/hyperframe.runtime.iife.js", "node_modules/hyperframes/bin/hyperframes.mjs", "node_modules/gsap/dist/gsap.min.js", "docs/fuentes.json", "audio-libre/biblioteca.json", "esquema.sql", "standalone/server.js", "main.cjs", "worker.mjs", "preparar-db.mjs", "vigia.mjs", "py/reencuadre.py"]) escribir(path.join("app", f));
     const fuentes = path.join(app, "standalone", "public", "fuentes");
     fs.mkdirSync(path.join(fuentes, "inter"), { recursive: true });
     fs.writeFileSync(path.join(fuentes, "fuentes.json"), JSON.stringify({ Inter: { carpeta: "inter", caras: [{ archivo: "inter/inter-normal-400-latin.woff2" }] } }));
@@ -107,7 +107,7 @@ describe("las letras viajan en el instalador (REN-10)", () => {
   const dir = path.join("standalone", "public", "fuentes");
   const armar = () => {
     const app = path.join(tmp, "app");
-    for (const f of ["node_modules/hyperframes/dist/hyperframe.runtime.iife.js", "node_modules/hyperframes/bin/hyperframes.mjs", "node_modules/gsap/dist/gsap.min.js", "docs/fuentes.json", "esquema.sql", "standalone/server.js", "main.cjs", "worker.mjs", "preparar-db.mjs", "vigia.mjs", "py/reencuadre.py"]) escribir(path.join("app", f));
+    for (const f of ["node_modules/hyperframes/dist/hyperframe.runtime.iife.js", "node_modules/hyperframes/bin/hyperframes.mjs", "node_modules/gsap/dist/gsap.min.js", "docs/fuentes.json", "audio-libre/biblioteca.json", "esquema.sql", "standalone/server.js", "main.cjs", "worker.mjs", "preparar-db.mjs", "vigia.mjs", "py/reencuadre.py"]) escribir(path.join("app", f));
     return app;
   };
 

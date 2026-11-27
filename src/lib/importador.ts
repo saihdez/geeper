@@ -10,6 +10,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describirAsset, guardarProyecto, registrarAssetsEnDb, crearCarpetas } from "./almacen";
+import { animoDeCarpeta, DIR_AUDIO_LIBRE, LICENCIA_LIBRE, musicaLibre, rutaSonidoLibre } from "./audio-libre";
 import { existe, escribirAtomico, sha256Archivo } from "./archivos";
 import { SCHEMA_VERSION, validarProyecto, type Asset, type Escena, type Palabra, type Proyecto } from "./esquema";
 import { licenciaImagenMpt, LICENCIAS } from "./licencias";
@@ -88,6 +89,29 @@ export async function elegirMusica(
   musica: DatosPlantilla["musica"],
 ): Promise<Asset | null> {
   if (!musica.carpeta) return null;
+  let animo: string | null | undefined;
+  try {
+    animo = animoDeCarpeta(musica.carpeta);
+  } catch (e) {
+    ctx.log(`Aviso: ${(e as Error).message} Sigo sin música.`);
+    return null;
+  }
+  if (animo !== undefined) {
+    const libres = musicaLibre(animo);
+    if (!libres.length) {
+      ctx.log(`Aviso: no encontré la música libre (${DIR_AUDIO_LIBRE}); sigo sin música`);
+      return null;
+    }
+    const s = libres[parseInt(createHash("sha256").update(proyectoId).digest("hex").slice(0, 8), 16) % libres.length]!;
+    await copiarSiCambia(rutaSonidoLibre(s), path.join(ctx.dir, "assets", "musica.ogg"));
+    return describirAsset(ctx.dir, "assets/musica.ogg", {
+      id: "musica",
+      tipo: "audio",
+      source: "archivo",
+      licencia: LICENCIA_LIBRE,
+      regenerar: { musicaLibre: s.id, titulo: s.nombre, bibliotecaLibre: s.archivo, sha256: s.sha256 },
+    });
+  }
   let archivos: string[];
   try {
     archivos = (await fs.readdir(musica.carpeta)).filter((f) => /\.(mp3|m4a|wav|ogg|flac)$/i.test(f)).sort();

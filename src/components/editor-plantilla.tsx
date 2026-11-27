@@ -1,4 +1,5 @@
 "use client";
+import { ANIMOS, LICENCIA_LIBRE, PREFIJO_LIBRE } from "@/lib/animos-musica";
 import { cssFuentesPantalla } from "@/lib/fuentes-css";
 import { useEffect, useMemo, useState } from "react";
 import { aHex, ajustarHasta, aTexto, contrastePeor, leerColor, legibilidad, opacidadHasta, textoSobre, type Roles } from "@/lib/colores-marca";
@@ -353,7 +354,22 @@ export function EditorPlantilla({ fila, alGuardar, alCerrar }: { fila: FilaPlant
             <input type="checkbox" checked={d.musica.ducking} onChange={(e) => cambiar((x) => { x.musica.ducking = e.target.checked; })} />
             Bajar la música mientras alguien habla
           </label>
-          {!d.musica.carpeta && <p className="text-xs text-tenue">Este estilo no tiene música. La carpeta de canciones se cambia en «Avanzado».</p>}
+          <label className="block text-sm">
+            <span className="etiqueta">¿Qué música?</span>
+            <select className="campo" value={d.musica.carpeta === null ? "" : d.musica.carpeta.startsWith(PREFIJO_LIBRE) ? d.musica.carpeta : "propia"}
+              onChange={(e) => cambiar((x) => {
+                const v = e.target.value;
+                if (v === "propia") return;
+                x.musica.carpeta = v || null;
+                x.musica.licencia = v ? LICENCIA_LIBRE : "sin música";
+              })}>
+              <option value="">Sin música</option>
+              <option value={PREFIJO_LIBRE}>Libre, de cualquier ánimo</option>
+              {Object.entries(ANIMOS).map(([id, nombre]) => <option key={id} value={`${PREFIJO_LIBRE}${id}`}>Libre: {nombre.toLowerCase()}</option>)}
+              {d.musica.carpeta !== null && !d.musica.carpeta.startsWith(PREFIJO_LIBRE) && <option value="propia">Mis canciones ({d.musica.carpeta})</option>}
+            </select>
+            <span className="text-xs text-tenue">La libre viene con Geeper y se puede usar en videos con fines comerciales. Cada video toma una canción, siempre la misma para ese video. Tu propia carpeta de canciones se pone en «Avanzado».</span>
+          </label>
         </Grupo>
 
         <details className="rounded-lg border border-borde p-3" onToggle={(e) => setJson((e.target as HTMLDetailsElement).open ? JSON.stringify(d, null, 2) : null)}>
