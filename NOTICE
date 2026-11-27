@@ -44,6 +44,29 @@ The MIT License applies to those parts:
   CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 -------------------------------------------------------------------------------
+Adapted, Apache License 2.0
+-------------------------------------------------------------------------------
+
+- nexu-io/open-design (Copyright the OpenDesign contributors), commit a7eb8e9:
+  src/lib/estilos-plantilla.ts derives video template styles from the generic design systems in
+  design-systems/ (tokens.css); src/lib/marca-web.ts ports a reduced version of the brand capture in
+  clipper/brand-capture.js (palette scoring, typography and logo detection). Both were modified.
+  Licensed under the Apache License, Version 2.0 (same text as LICENSE).
+
+-------------------------------------------------------------------------------
+Adapted, Creative Commons Attribution 4.0 (CC BY 4.0)
+-------------------------------------------------------------------------------
+
+Two avatar style prompts in src/lib/avatares.ts («natural» and «blanco-negro») adapt prompts from the
+OpenDesign prompt gallery (prompt-templates/image), which collects them from
+YouMind-OpenLab/awesome-gpt-image-2:
+- "Hyper-Realistic Selfie Texture Prompts" by Adrian Solarz
+  (https://x.com/adriansolarzz/status/2048950419204751574)
+- "Monochrome Studio Portrait" by K (https://x.com/ChillaiKalan__/status/2048828505497198838)
+Changes: shortened, casual framing and pose removed, combined with Geeper's own framing and lighting.
+License: https://creativecommons.org/licenses/by/4.0/
+
+-------------------------------------------------------------------------------
 Run as separate programs, not distributed with Geeper
 -------------------------------------------------------------------------------
 

@@ -29,6 +29,16 @@ describe("avatares: prompts", () => {
     expect(a).toContain("Replace the background with a softly lit studio");
   });
 
+  it("la foto de celular y el blanco y negro traen su propia luz, salvo que se elija otra", () => {
+    const natural = promptRetrato(Pedido.parse({ estilo: "natural" }));
+    expect(natural).toMatch(/^candid smartphone photo/);
+    expect(natural).toContain("window light");
+    expect(natural).not.toContain("studio lighting");
+    expect(natural).toContain(ENCUADRE_AVATAR);
+    expect(promptRetrato(Pedido.parse({ estilo: "blanco-negro" }))).toContain("directional studio light");
+    expect(promptRetrato(Pedido.parse({ estilo: "realista" }))).toContain("soft even studio lighting");
+  });
+
   it("el retoque conserva cara, estilo y encuadre", () => {
     expect(promptRetoque("  ponle lentes ")).toBe(
       "ponle lentes. Keep the same character, face, identity, art style, colors and proportions. Keep the exact same framing, zoom level, position and camera angle. Output one single clean image of the character. Keep the mouth closed and relaxed, facing the camera.",

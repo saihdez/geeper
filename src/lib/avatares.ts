@@ -72,6 +72,22 @@ export const ESTILOS = {
     detalle: "Muñeco de stop motion",
     prompt: "claymation character, handmade plasticine texture, stop-motion animation look",
   },
+  // Los dos que siguen adaptan prompts de la galería de OpenDesign (nexu-io/open-design,
+  // prompt-templates/image, CC-BY-4.0): «Hyper-Realistic Selfie Texture Prompts» de Adrian Solarz y
+  // «Monochrome Studio Portrait» de K (YouMind-OpenLab/awesome-gpt-image-2). Sin el encuadre casual ni la
+  // pose del original: el avatar necesita la cara de frente (ENCUADRE_AVATAR). Atribución en NOTICE.
+  natural: {
+    nombre: "Foto de celular",
+    detalle: "Natural, que no parece IA",
+    prompt: "candid smartphone photo, realistic skin texture, visible pores around nose and cheeks, natural slight unevenness, no filter, no retouching, filmed in a real environment",
+    luz: "soft natural window light from the side, natural indoor lighting, no harsh highlights",
+  },
+  "blanco-negro": {
+    nombre: "Blanco y negro",
+    detalle: "Retrato de estudio elegante",
+    prompt: "black and white studio portrait photograph, high-end commercial monochrome photography, rich tonal range, fine texture detail, sharp focus",
+    luz: "soft but dramatic directional studio light from the left",
+  },
 } as const;
 export type Estilo = keyof typeof ESTILOS;
 export const EstiloZ = z.enum(Object.keys(ESTILOS) as [Estilo, ...Estilo[]]);
@@ -106,12 +122,13 @@ export type Pedido = z.infer<typeof Pedido>;
 
 /** Prompt del retrato (función pura). */
 export function promptRetrato(p: Pedido): string {
+  const e = ESTILOS[p.estilo];
   const partes = [
-    ESTILOS[p.estilo].prompt,
+    e.prompt,
     p.descripcion.trim(),
     ENCUADRE_AVATAR,
     FONDOS[p.fondo].prompt,
-    p.luz ? LUCES[p.luz] : "soft even studio lighting",
+    p.luz ? LUCES[p.luz] : "luz" in e ? e.luz : "soft even studio lighting",
     p.look ? LOOKS[p.look] : "",
   ];
   return partes.filter(Boolean).join(". ");

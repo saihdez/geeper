@@ -1,10 +1,12 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { aHex, ajustarHasta, aTexto, contrastePeor, leerColor, legibilidad, opacidadHasta, textoSobre, type Roles } from "@/lib/colores-marca";
+import { aplicarEstilo, ESTILOS_PLANTILLA, FUENTES_ESTILOS, type EstiloPlantilla } from "@/lib/estilos-plantilla";
 import { esVector } from "@/lib/formatos-vector";
+import type { MarcaWeb } from "@/lib/marca-web";
 import type { DatosPlantilla } from "@/lib/plantillas";
 import { Campo } from "./anuncios/ui";
-import { Aviso, archivo, pedir } from "./comun";
+import { Aviso, archivo, pedir, postJson } from "./comun";
 import { Muestras, PaletaDeImagen, SubirImagen, subirParaPaleta, type Paleta } from "./paleta-imagen";
 
 export interface FilaPlantilla { slug: string; nombre: string; datos: DatosPlantilla; usos: number; logoRuta: string | null }
@@ -21,11 +23,12 @@ const ROLES: { id: RolColor; nombre: string; ayuda: string; transparencia?: bool
 ];
 
 /** Tipografías de Google Fonts: Hyperframes las descarga y las fija al renderizar. */
-const FUENTES = [
+const FUENTES = [...new Set([
   "Archivo Black", "Anton", "Bebas Neue", "Oswald", "Montserrat", "Inter", "Poppins", "Outfit", "Rubik",
   "Barlow", "DM Sans", "Work Sans", "Space Grotesk", "Nunito", "Lato", "Roboto", "Raleway",
   "Playfair Display", "Merriweather",
-];
+  ...FUENTES_ESTILOS,
+])];
 
 const PESOS = [
   { v: 400, n: "Normal" }, { v: 600, n: "Seminegrita" }, { v: 700, n: "Negrita" }, { v: 800, n: "Extranegrita" }, { v: 900, n: "La más gruesa" },
@@ -176,6 +179,82 @@ function ControlColor({ rol, valor, activo, alActivar, alCambiar }: { rol: (type
   );
 }
 
+/** Galería de estilos de partida (src/lib/estilos-plantilla.ts): cada uno se ve como un subtítulo del video. */
+function EstilosDePartida({ alElegir }: { alElegir: (e: EstiloPlantilla) => void }) {
+  useFuentes(FUENTES_ESTILOS);
+  return (
+    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+      {ESTILOS_PLANTILLA.map((e) => {
+        const c = e.colores;
+        return (
+          <button key={e.id} type="button" onClick={() => alElegir(e)} className="rounded-lg border border-borde bg-[#0f131a] p-2 text-left hover:border-slate-500">
+            <div className="mb-2 flex h-16 items-center justify-center rounded-md" style={{ background: "linear-gradient(160deg, #94a3b8, #334155)" }} aria-hidden>
+              <span className="rounded-lg px-2 py-1 text-sm uppercase" style={{ background: c.fondoPastilla, fontFamily: `"${e.tipografia.titulos}", sans-serif` }}>
+                <span style={{ color: c.tinta }}>Así </span><span style={{ color: c.activa }}>suena</span>
+              </span>
+            </div>
+            <span className="flex items-center gap-1.5 text-sm font-medium">
+              {[c.acento1, c.acento2].map((x, i) => <span key={i} className="h-3 w-3 rounded-full border border-white/20" style={{ background: x }} />)}
+              {e.nombre}
+            </span>
+            <span className="block text-xs text-tenue">{e.descripcion}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+interface RespuestaMarcaWeb { marca: MarcaWeb; logo: { logo: string; ruta: string } | null; avisos: string[] }
+
+/** «Copiar de mi página web»: lee colores, letras y logo de la página y los propone (no guarda nada). */
+function MarcaDeWeb({ slug, alElegir, alUsar }: { slug: string; alElegir: (hex: string) => void; alUsar: (r: RespuestaMarcaWeb) => void }) {
+  const [url, setUrl] = useState("");
+  const [leyendo, setLeyendo] = useState(false);
+  const [r, setR] = useState<RespuestaMarcaWeb | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function leer() {
+    setLeyendo(true);
+    setError(null);
+    setR(null);
+    try {
+      setR(await postJson<RespuestaMarcaWeb>(`/api/plantillas/${slug}/marca-web`, { url }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLeyendo(false);
+    }
+  }
+
+  const letra = (f: MarcaWeb["tipografia"]["titulos"]) => (f.exacta ? f.fuente : `${f.fuente} (la más parecida a «${f.original}» de tu página)`);
+  return (
+    <div className="space-y-2">
+      <form className="flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); if (url.trim() && !leyendo) void leer(); }}>
+        <input className="campo min-w-0 flex-1" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="mitienda.com" inputMode="url" autoComplete="url" aria-label="Link de tu página web" />
+        <button type="submit" className="boton" disabled={!url.trim() || leyendo}>{leyendo ? "Leyendo la página… (unos 10 s)" : "Copiar de mi página"}</button>
+      </form>
+      {error && <Aviso tipo="error">{error}</Aviso>}
+      {r && (
+        <div className="space-y-2 rounded-lg border border-cyan-900 bg-cyan-950/20 p-2 text-sm">
+          <p>Esto encontramos en <b>{r.marca.nombre || "tu página"}</b>. Toca un color para ponerlo en el recuadro elegido, o usa todo lo sugerido.</p>
+          {r.marca.colores.length > 0 ? <Muestras colores={r.marca.colores} alElegir={alElegir} titulo="Colores de tu página" /> : <p className="text-tenue">No encontramos colores de marca.</p>}
+          <p className="text-xs text-tenue">Letra de títulos: {letra(r.marca.tipografia.titulos)} · de textos: {letra(r.marca.tipografia.texto)}</p>
+          {r.logo && (
+            <div className="flex items-center gap-2 text-xs text-tenue">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={archivo(r.logo.ruta)} alt="Logo encontrado" className="h-10 max-w-40 rounded bg-white/5 object-contain p-1" />
+              Logo encontrado
+            </div>
+          )}
+          {r.avisos.map((a) => <p key={a} className="text-xs text-amber-300">{a}</p>)}
+          <button type="button" className="boton boton-primario" onClick={() => alUsar(r)}>Usar todo lo sugerido</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Grupo({ titulo, descripcion, children }: { titulo: string; descripcion?: string; children: React.ReactNode }) {
   return (
     <fieldset className="space-y-3 rounded-lg border border-borde p-3">
@@ -197,6 +276,7 @@ export function EditorPlantilla({ fila, alGuardar, alCerrar }: { fila: FilaPlant
   const [guardando, setGuardando] = useState(false);
   const [msg, setMsg] = useState<{ tipo: "ok" | "error"; t: string } | null>(null);
   const [json, setJson] = useState<string | null>(null);
+  const [verEstilos, setVerEstilos] = useState(false);
   useFuentes([d.tipografia.titulos, d.tipografia.texto]);
 
   const sucio = useMemo(() => JSON.stringify(d) !== JSON.stringify(fila.datos) || nombre !== fila.nombre, [d, nombre, fila]);
@@ -215,6 +295,24 @@ export function EditorPlantilla({ fila, alGuardar, alCerrar }: { fila: FilaPlant
     x.colores[r] = nuevo && viejo && viejo.a < 1 && nuevo.a === 1 ? aTexto({ ...nuevo, a: viejo.a }) : valor;
   });
   const usarRoles = (roles: Roles) => cambiar((x) => { for (const [k, v] of Object.entries(roles)) if (v) x.colores[k as RolColor] = v; });
+  const usarEstilo = (e: EstiloPlantilla) => {
+    setD((x) => aplicarEstilo(x, e));
+    setMsg({ tipo: "ok", t: `Estilo «${e.nombre}» puesto. Mira la vista previa, cambia lo que quieras y guarda.` });
+  };
+  const usarMarcaWeb = (r: RespuestaMarcaWeb) => {
+    cambiar((x) => {
+      for (const [k, v] of Object.entries(r.marca.roles)) if (v) x.colores[k as RolColor] = v;
+      x.tipografia.titulos = r.marca.tipografia.titulos.fuente;
+      x.tipografia.texto = r.marca.tipografia.texto.fuente;
+      if (r.marca.nombre) {
+        x.marca.texto = r.marca.nombre;
+        x.tarjetaFinal.titulo = r.marca.nombre;
+      }
+      if (r.logo) x.marca.logo = r.logo.logo;
+    });
+    if (r.logo) setLogoRuta(r.logo.ruta);
+    setMsg({ tipo: "ok", t: "Marca de tu página puesta. Revisa «Así se verá» (si algo cuesta leerse, usa «Arreglar») y guarda." });
+  };
 
   // Ruta del logo para verlo: sólo si está dentro de ~/geeper-data (lo que sube este editor).
   const logoUrl = logoRuta ? archivo(logoRuta) : null;
@@ -257,6 +355,11 @@ export function EditorPlantilla({ fila, alGuardar, alCerrar }: { fila: FilaPlant
     <div className="space-y-4">
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_400px]">
       <div className="space-y-4">
+        <details className="rounded-lg border border-borde p-3" onToggle={(e) => setVerEstilos((e.target as HTMLDetailsElement).open)}>
+          <summary className="cursor-pointer text-sm font-semibold">¿No sabes qué colores elegir? Empieza desde un estilo</summary>
+          <p className="mt-1 text-xs text-tenue">Pone los colores y la letra; tu marca, logo, voz y música no cambian. Todos se leen bien sobre videos claros y oscuros.</p>
+          {verEstilos && <div className="mt-3"><EstilosDePartida alElegir={usarEstilo} /></div>}
+        </details>
         <Grupo titulo="Marca">
           <div className="grid gap-3 sm:grid-cols-2">
             <Campo etiqueta="Nombre de la plantilla" ayuda="Sólo lo ves tú, para elegirla."><input className="campo" value={nombre} maxLength={80} onChange={(e) => setNombre(e.target.value)} /></Campo>
@@ -285,6 +388,11 @@ export function EditorPlantilla({ fila, alGuardar, alCerrar }: { fila: FilaPlant
                 )}
               </div>
             )}
+          </div>
+          <div>
+            <p className="etiqueta">Copiar de tu página web (opcional)</p>
+            <p className="mb-1.5 text-xs text-tenue">Escribe el link y tomamos sus colores, su letra y su logo. Nada se guarda hasta que pulses «Guardar cambios».</p>
+            <MarcaDeWeb slug={fila.slug} alElegir={(hex) => ponerColor(rol, hex)} alUsar={usarMarcaWeb} />
           </div>
         </Grupo>
 

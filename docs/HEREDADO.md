@@ -755,3 +755,41 @@ que la sección de voz: cambia la voz y ofrece decir el guion de nuevo). El pres
 la voz se está diciendo de nuevo, y en pantalla completa también avisa si después cambió el audio de una
 escena (huella por escena). El panel muestra además una **vista previa a escala** de dónde queda el avatar,
 la forma de hablar en botones en español («Alegre y con energía», «Seria y profesional»…) y «Cancelar».
+
+## OpenDesign (nexu-io/open-design, Apache-2.0) — revisión 2026-11-27 (commit `a7eb8e9`)
+
+Espacio de trabajo de diseño con IA (prototipos, presentaciones, sistemas de diseño). Casi todo es para
+páginas y presentaciones; de video sólo trae plantillas de HyperFrames, que ya seguimos en su fuente.
+
+**Integrado**
+
+- **Estilos de partida para las plantillas** (`src/lib/estilos-plantilla.ts`, editor de plantillas → «¿No
+  sabes qué colores elegir?»): 15 estilos (Noche azul, Blanco y negro, Amarillo brutal, Vibrante, Lujo,
+  Editorial cálido, Papel antiguo, Zen…) sacados de los 67 sistemas genéricos de `design-systems/`. Se
+  reducen a ~20 paletas distintas (muchos repiten la misma) y son para web (fondo blanco, un acento, letras
+  del sistema), así que se rehicieron para video: caja de subtítulos, palabra que suena, segundo acento y
+  letras de Google Fonts. Cada uno pasa la legibilidad del editor contra video claro y oscuro
+  (`tests/estilos-plantilla.test.ts`), sin el índigo de Tailwind que OpenDesign marca como «AI slop».
+- **Copiar la marca de tu página web** (`src/lib/marca-web.ts`, `POST /api/plantillas/<slug>/marca-web`,
+  editor de plantillas → Marca): versión reducida de `clipper/brand-capture.js`. Abre la página en el Chrome
+  headless, puntúa colores por área y por estar en botones, lee la letra de títulos y textos y busca el logo
+  (imagen o SVG del encabezado, después el ícono de la app). La paleta va a `proponerRoles` como la de un
+  logo, cada letra se cambia por la de Google Fonts más parecida, se descartan los colores que pone el
+  navegador (enlaces sin estilo) y el logo se guarda como uno subido a mano (`guardarImagenSubida`: SVG
+  revisado). Sólo links http/https. Probado contra páginas públicas: 2–5 s, logo en 3 de 4.
+- **Dos estilos de avatar** (`src/lib/avatares.ts`): «Foto de celular» (piel con poros, sin filtro, luz de
+  ventana) y «Blanco y negro» (retrato de estudio), de dos prompts CC-BY-4.0 de su galería (autores en
+  `NOTICE`). Cada estilo puede traer su propia luz.
+
+**Descartado o pendiente**
+
+- Sistemas de marcas reales (~90: Apple, Nike, Stripe, Ferrari…) y el catálogo «OpenMotion» (videos de
+  Figma, etc.): es la identidad de otros; no se copia.
+- Prompts de video (58; 40 para Seedance 2.0 de 15 s con tomas por segundo): Wan 2.2 hace tomas de ~5 s sin
+  guion por tiempo, habría que reescribirlos. Los 18 de HyperFrames vienen de heygen-com/hyperframes, que ya
+  seguimos.
+- `skills/chat-motion-overlay` (conversación de chat animada para shorts): interesante, pero es Remotion
+  (licencia de pago para empresas) y no trae licencia propia. Si se quiere, rehacerlo en HyperFrames.
+- La mayoría de `skills/` son fichas que apuntan a otro repo (youtube-clipper, copywriting, enhance-prompt…);
+  el resto es de diseño web, presentaciones o servicios de pago (fal, Venice, Replicate).
+- Reglas «anti-AI-slop» (`craft/anti-ai-slop.md`): sólo se usó la del índigo, como prueba de los estilos.

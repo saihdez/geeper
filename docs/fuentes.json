@@ -585,6 +585,30 @@
       "que": "Skills de Claude Code (MIT), no código de Geeper: 7 copias adaptadas en ~/.claude/skills (ci-test-reliability, trim-cot-leakage, record-browser-gif, agent-tool-design, defensive-patterns, responsive-ui, perf-evidence) + error-handling/empty-catch.md. Origen de cada una y lo descartado en ~/.claude/skills/DEEPSEEK-HARNESS.md.",
       "archivos": [],
       "pruebas": []
+    },
+    {
+      "id": "open-design",
+      "repo": "nexu-io/open-design",
+      "tipo": "commits",
+      "como": [
+        "codigo"
+      ],
+      "commit": "a7eb8e9",
+      "revisado": "2026-11-27",
+      "que": "Espacio de diseño con IA (Apache-2.0). Se tomaron los sistemas de diseño genéricos (estilos de partida de las plantillas), la captura de marca del clipper (copiar colores, letras y logo de una web) y dos prompts de avatar CC-BY-4.0. Descartado: marcas reales, prompts de Seedance, chat animado en Remotion.",
+      "archivos": [
+        "src/lib/estilos-plantilla.ts",
+        "src/lib/marca-web.ts",
+        "src/app/api/plantillas/[slug]/marca-web/route.ts",
+        "src/components/editor-plantilla.tsx",
+        "src/lib/avatares.ts"
+      ],
+      "docs": "docs/HEREDADO.md#opendesign-nexu-ioopen-design-apache-20--revisión-2026-11-27-commit-a7eb8e9",
+      "pruebas": [
+        "tests/estilos-plantilla.test.ts",
+        "tests/marca-web.test.ts",
+        "tests/avatares.test.ts"
+      ]
     }
   ]
 }
