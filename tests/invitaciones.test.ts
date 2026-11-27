@@ -5,10 +5,13 @@ import { unzipSync } from "fflate";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { instanteUTC, partesCuentaAtras, semanasDelMes, textosFecha, utcCompacto } from "@/lib/invitaciones/calendario";
 import { compilar, iniciales, urlOg } from "@/lib/invitaciones/compilar";
-import { bloquesLatinos, guardarInvitacion, leerInvitacion, listarInvitaciones, ponerUrlPublica } from "@/lib/invitaciones/construir";
+import { bloquesLatinos, guardarInvitacion, leerInvitacion, listarInvitaciones, ponerUrlPublica, vistaPrevia } from "@/lib/invitaciones/construir";
 import { ics, leerEnlaceMusica, mensajeConfirmacion, plegarIcs, urlGoogleCalendar, urlMaps, urlWhatsApp } from "@/lib/invitaciones/enlaces";
 import { Entrada, fechaPasada, Invitacion, PLANTILLAS, TIPOS } from "@/lib/invitaciones/esquema";
 import { leerMensajes } from "@/lib/invitaciones/mensaje";
+import { estiloDe } from "@/lib/invitaciones/estilo";
+import { ADORNOS, asegurarContraste, contraste, normalizarTema, PARTICULAS, promptTema, TemaIa, temaPorPalabras } from "@/lib/invitaciones/tema";
+import { esquemaParaOllama } from "@/lib/llm-local";
 
 const base = {
   tipo: "boda" as const, nombres: "Adeline & Marcos", fecha: "2030-12-15", hora: "15:30", zona: "America/Caracas",
@@ -201,5 +204,99 @@ describe("guardar en disco", () => {
 
   it("no acepta slugs con rutas", async () => {
     await expect(leerInvitacion("../../etc")).rejects.toThrow(/no encontrada/);
+  });
+});
+
+describe("tema a medida", () => {
+  it("arma un tema sin IA con las palabras de la idea", () => {
+    const t = temaPorPalabras("Un bosque encantado con luciérnagas", "boda");
+    expect(t).toMatchObject({ nombre: "Bosque encantado", adorno: "hojas", particulas: "luciernagas", fondo: "bruma" });
+    expect(t.idea).toBe("Un bosque encantado con luciérnagas");
+    expect(temaPorPalabras("bajo el mar con sirenas", "xv").particulas).toBe("burbujas");
+    const libre = temaPorPalabras("algo muy mío", "cumpleanos");
+    expect(libre.nombre).toBe("Algo muy mío");
+    expect(libre.colores.fondo).toBe("#111111");
+  });
+
+  it("corrige el contraste del texto y deja los adornos", () => {
+    const c = asegurarContraste({ fondo: "#0f2418", fondo2: "#1f4430", tarjeta: "#f4efe2", tinta: "#d8d0c0", claro: "#2a3a2a", acento: "#d8b55b", sobre: "#2f5a3d", sello: "#c9a24a" });
+    expect(contraste(c.tinta, c.tarjeta)).toBeGreaterThanOrEqual(4.5);
+    expect(contraste(c.claro, "#0f2418")).toBeGreaterThanOrEqual(4.5);
+    expect(contraste(c.claro, "#1f4430")).toBeGreaterThanOrEqual(4.5);
+    expect(c.acento).toBe("#d8b55b");
+  });
+
+  it("recorta y limpia lo que devuelve la IA", () => {
+    const base = temaPorPalabras("bosque", "boda");
+    const t = normalizarTema({
+      nombre: "Un bosque <b>muy</b> encantado y lleno de magia antigua", colores: base.colores, letras: base.letras, adorno: "hongos", particulas: "luciernagas", fondo: "bruma",
+      textos: { pista: "Toca el sello", saludo: "Bienvenidos al bosque encantado de los sueños perdidos", cancion: "", faltan: "Faltan", ubicacion: "El claro", dress: "Vestimenta", rsvp: "¿Vienes?", regalos: "Regalos" },
+      mensaje: "Te esperamos {entre} los árboles.", dress: ["#112233", "#445566", "#778899", "#aabbcc", "#ddeeff"], dressEstilo: "Verde bosque",
+    }, "bosque");
+    expect(t.nombre.length).toBeLessThanOrEqual(40);
+    expect(t.nombre).not.toMatch(/[<>]/);
+    expect(t.textos.saludo!.length).toBeLessThanOrEqual(40);
+    expect(t.textos.cancion).toBeUndefined();
+    expect(t.mensaje).toBe("Te esperamos entre los árboles.");
+    expect(t.dress).toHaveLength(4);
+  });
+
+  it("el esquema que se manda a la IA entra en la gramática de Ollama", () => {
+    expect(() => esquemaParaOllama(TemaIa)).not.toThrow();
+    expect(promptTema({ idea: "bosque «encantado»", tipo: "boda", nombres: "Ana" })).toContain("«bosque encantado»");
+  });
+
+  it("la página usa los colores, letras, textos, adornos y partículas del tema", () => {
+    const t = temaPorPalabras("bosque encantado", "boda");
+    const { html } = compilar(inv({ plantilla: "tema", tema: t }), { fuentesCss: "" });
+    expect(html).toContain(`--fondo:${t.colores.fondo}`);
+    expect(html).toContain("'Cinzel Decorative'");
+    expect(html).toContain("Toca el sello y entra al bosque");
+    expect(html).toContain("Falta poco para la magia");
+    expect(html).toContain('class="esquina e1"');
+    expect(html).toContain("canvas");
+    expect(html).toContain('"forma":"luz"');
+    const js = /<script>([\s\S]*)<\/script><\/body>/.exec(html)![1]!;
+    expect(() => new Function(js)).not.toThrow();
+  });
+
+  it("los textos del tema también se escapan", () => {
+    const t = temaPorPalabras("bosque", "boda");
+    const malo = { ...t, nombre: "x", textos: { ...t.textos, saludo: "<img src=x onerror=alert(1)>" } };
+    expect(compilar(inv({ plantilla: "tema", tema: malo }), { fuentesCss: "" }).html).not.toContain("<img src=x");
+  });
+
+  it("todos los adornos y partículas compilan", () => {
+    const t = temaPorPalabras("bosque", "boda");
+    for (const adorno of ADORNOS) for (const particulas of PARTICULAS) {
+      const { html } = compilar(inv({ plantilla: "tema", tema: { ...t, adorno, particulas } }), { fuentesCss: "" });
+      const js = /<script>([\s\S]*)<\/script><\/body>/.exec(html)![1]!;
+      expect(() => new Function(js)).not.toThrow();
+    }
+  });
+
+  it("sin tema guardado cae al estilo recomendado del tipo", () => {
+    expect(estiloDe({ plantilla: "tema", tema: undefined, tipo: "boda" }).colores.fondo).toBe("#3b0a14");
+  });
+
+  it("guardar pide el tema si se eligió «tema» y lo guarda con contraste corregido", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "geeper-tema-"));
+    const antes = process.env.GEEPER_DATA;
+    process.env.GEEPER_DATA = dir;
+    try {
+      await expect(guardarInvitacion({ ...base, plantilla: "tema" }, {})).rejects.toThrow(/tema/);
+      const t = temaPorPalabras("bosque", "boda");
+      const { inv: i } = await guardarInvitacion({ ...base, plantilla: "tema", tema: { ...t, colores: { ...t.colores, tinta: t.colores.tarjeta } } }, {});
+      expect(i.tema?.nombre).toBe("Bosque encantado");
+      expect(contraste(i.tema!.colores.tinta, i.tema!.colores.tarjeta)).toBeGreaterThanOrEqual(4.5);
+      expect((await listarInvitaciones())[0]).toMatchObject({ tema: "Bosque encantado", colores: { fondo: t.colores.fondo } });
+      const html = await vistaPrevia({ tipo: "xv", plantilla: "tema", tema: t, nombres: "", lugar: { nombre: "" }, whatsapp: "" });
+      expect(html).toContain("Tus nombres");
+      expect(html).toContain("entra al bosque");
+    } finally {
+      if (antes === undefined) delete process.env.GEEPER_DATA;
+      else process.env.GEEPER_DATA = antes;
+      await fs.rm(dir, { recursive: true, force: true });
+    }
   });
 });

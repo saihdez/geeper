@@ -2,7 +2,8 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { PLANTILLAS_INFO, TIPOS_INFO } from "@/lib/invitaciones/catalogo";
-import { PLANTILLAS, TIPOS, type Invitacion, type PlantillaId, type Tipo } from "@/lib/invitaciones/esquema";
+import { PLANTILLAS, TIPOS, type EstiloId, type Invitacion, type Tipo } from "@/lib/invitaciones/esquema";
+import { NOMBRE_ADORNO, NOMBRE_PARTICULAS, type Tema } from "@/lib/invitaciones/tema";
 import { Aviso, postJson } from "./comun";
 
 const zonaLocal = () => {
@@ -13,9 +14,10 @@ const zonaLocal = () => {
   }
 };
 
-/** Muestra chiquita de cada estilo: fondo, tarjeta y sello. */
-function MuestraEstilo({ id }: { id: PlantillaId }) {
-  const c = PLANTILLAS_INFO[id].colores;
+const IDEAS = ["Un bosque encantado con luciérnagas", "Bajo el mar, con sirenas", "Noche de estrellas", "Cuento de princesas", "Gala dorada estilo años 20", "Jardín en flor"];
+
+/** Muestra chiquita de un estilo: fondo, sobre y sello. */
+function MuestraEstilo({ c }: { c: { fondo: string; fondo2: string; sobre: string; sello: string } }) {
   return (
     <div className="flex h-24 items-center justify-center rounded-lg" style={{ background: `radial-gradient(circle at 50% 0%, ${c.fondo2}, ${c.fondo})` }} aria-hidden>
       <div className="relative h-12 w-[4.5rem] rounded" style={{ background: c.sobre }}>
@@ -37,7 +39,13 @@ export function FormInvitacion({ inicial }: { inicial?: Invitacion }) {
   const [direccion, setDireccion] = useState(inicial?.lugar.direccion ?? "");
   const [mapa, setMapa] = useState(inicial?.lugar.mapa ?? "");
   const [whatsapp, setWhatsapp] = useState(inicial?.whatsapp ?? "");
-  const [plantilla, setPlantilla] = useState<PlantillaId | "">(inicial?.plantilla ?? "");
+  const [plantilla, setPlantilla] = useState<EstiloId | "">(inicial?.plantilla ?? "");
+  const [tema, setTema] = useState<Tema | null>(inicial?.tema ?? null);
+  const [idea, setIdea] = useState(inicial?.tema?.idea ?? "");
+  const [disenando, setDisenando] = useState(false);
+  const [avisoTema, setAvisoTema] = useState<string | null>(null);
+  const [previa, setPrevia] = useState<string | null>(null);
+  const [cargandoPrevia, setCargandoPrevia] = useState(false);
   const [mensaje, setMensaje] = useState(inicial?.mensaje ?? "");
   const [ideasIa, setIdeasIa] = useState<string[]>([]);
   const [pensando, setPensando] = useState(false);
@@ -61,8 +69,9 @@ export function FormInvitacion({ inicial }: { inicial?: Invitacion }) {
   const [error, setError] = useState<string | null>(null);
 
   const info = TIPOS_INFO[tipo];
-  const estilo: PlantillaId = plantilla || info.plantilla;
-  const coloresDress = usarColores ? (colores.length ? colores : PLANTILLAS_INFO[estilo].dress) : [];
+  const estilo: EstiloId = plantilla === "tema" && !tema ? info.plantilla : plantilla || info.plantilla;
+  const dressSugerido = estilo === "tema" && tema ? (tema.dress.length ? tema.dress : PLANTILLAS_INFO[info.plantilla].dress) : PLANTILLAS_INFO[estilo === "tema" ? info.plantilla : estilo].dress;
+  const coloresDress = usarColores ? (colores.length ? colores : dressSugerido) : [];
   const hoy = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const tieneAudioPropio = inicial?.musica.tipo === "archivo";
   const digitos = whatsapp.replace(/\D/g, "");
@@ -81,18 +90,65 @@ export function FormInvitacion({ inicial }: { inicial?: Invitacion }) {
     }
   }
 
-  async function enviar(e: React.FormEvent) {
-    e.preventDefault();
-    setEnviando(true);
-    setError(null);
-    const datos = {
+  function datosFormulario() {
+    return {
       tipo, nombres, fecha, hora, zona, duracionHoras: Number(duracion) || 5,
       lugar: { nombre: lugarNombre, direccion, mapa },
-      whatsapp, plantilla: estilo, mensaje,
+      whatsapp, plantilla: estilo, tema: estilo === "tema" && tema ? tema : undefined, mensaje,
       musicaEnlace: musicaModo === "enlace" ? musicaEnlace : "",
       dressCode: { estilo: dressEstilo, colores: coloresDress, evitar },
       confirmarAntes, pases: pases ? Number(pases) : undefined, regalos, hashtag,
     };
+  }
+
+  /** Pone el tema y, si la persona no los escribió, su mensaje y su dress code. */
+  function usarTema(t: Tema) {
+    setTema(t);
+    setPlantilla("tema");
+    setPrevia(null);
+    if (t.mensaje && (!mensaje.trim() || mensaje === tema?.mensaje || info.mensajes.includes(mensaje))) setMensaje(t.mensaje);
+    if (t.dress.length && !colores.length) setUsarColores(true);
+    if (t.dressEstilo && (!dressEstilo.trim() || dressEstilo === tema?.dressEstilo)) setDressEstilo(t.dressEstilo);
+  }
+
+  async function disenarTema(sinIa = false) {
+    setDisenando(true);
+    setAvisoTema(null);
+    try {
+      const r = await postJson<{ tema: Tema; conIa: boolean; aviso?: string }>("/api/invitaciones/tema", { idea, tipo, nombres, sinIa });
+      usarTema(r.tema);
+      setAvisoTema(r.aviso ?? null);
+    } catch (e) {
+      setAvisoTema(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDisenando(false);
+    }
+  }
+
+  function cambiarColorTema(clave: keyof Tema["colores"], valor: string) {
+    if (!tema) return;
+    setTema({ ...tema, colores: { ...tema.colores, [clave]: valor } });
+    setPrevia(null);
+  }
+
+  async function verPrevia() {
+    setCargandoPrevia(true);
+    setError(null);
+    try {
+      const r = await postJson<{ html: string }>("/api/invitaciones/vista-previa", { ...datosFormulario(), whatsapp: whatsapp || undefined });
+      setPrevia(r.html);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCargandoPrevia(false);
+    }
+  }
+
+  async function enviar(e: React.FormEvent) {
+    e.preventDefault();
+    setEnviando(true);
+    setError(null);
+    const datos = datosFormulario();
     const fd = new FormData();
     fd.set("datos", JSON.stringify(datos));
     if (foto) fd.set("foto", foto);
@@ -171,16 +227,58 @@ export function FormInvitacion({ inicial }: { inicial?: Invitacion }) {
         </p>
       </section>
 
+      <section>
+        <h2 className="mb-2 font-medium">6. ¿Tienes una idea de tema? (opcional)</h2>
+        <label className="etiqueta" htmlFor="inv-idea">Descríbelo como quieras: Geeper elige los colores, las letras, los adornos, la animación y los textos</label>
+        <textarea id="inv-idea" className="campo min-h-20" maxLength={300} value={idea} onChange={(e) => setIdea(e.target.value)}
+          placeholder="Un bosque encantado con luciérnagas, hongos y tonos verdes con dorado" />
+        <div className="mt-2 flex flex-wrap gap-2" aria-label="Ideas de ejemplo">
+          {IDEAS.map((i) => <button key={i} type="button" className="rounded-full border border-borde px-3 py-1 text-xs text-tenue hover:text-white" onClick={() => setIdea(i)}>{i}</button>)}
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button type="button" className="boton boton-primario" disabled={disenando || idea.trim().length < 3} onClick={() => disenarTema()}>
+            {disenando ? "Diseñando… (la primera vez hasta 3 min)" : tema && estilo === "tema" ? "✨ Otra versión" : "✨ Diseñar mi tema"}
+          </button>
+          {tema && estilo === "tema" && <button type="button" className="boton" onClick={() => setPlantilla(info.plantilla)}>Quitar tema</button>}
+        </div>
+        <p className="mt-1 text-xs text-tenue">Usa la IA de tu PC un momento. Si está ocupada, se arma con las palabras que escribiste.</p>
+        {avisoTema && <div className="mt-2"><Aviso tipo="alerta">{avisoTema}</Aviso></div>}
+        {tema && estilo === "tema" && (
+          <div className="tarjeta mt-3 flex flex-wrap items-center gap-4 p-3">
+            <div className="w-28 shrink-0"><MuestraEstilo c={tema.colores} /></div>
+            <div className="min-w-0 flex-1 space-y-1 text-sm">
+              <p className="font-medium">{tema.nombre}</p>
+              <p className="text-xs text-tenue">Adornos: {NOMBRE_ADORNO[tema.adorno]} · {tema.particulas === "ninguna" ? NOMBRE_PARTICULAS.ninguna : `fondo con ${NOMBRE_PARTICULAS[tema.particulas]}`} · letras {tema.letras.titulos}</p>
+              <div className="flex flex-wrap items-center gap-3 pt-1">
+                {([["fondo", "Fondo"], ["tarjeta", "Tarjetas"], ["acento", "Detalles"], ["sobre", "Sobre"], ["sello", "Sello"]] as const).map(([k, n]) => (
+                  <label key={k} className="flex items-center gap-1 text-xs text-tenue">
+                    <input type="color" aria-label={`Color: ${n}`} value={tema.colores[k]} onChange={(e) => cambiarColorTema(k, e.target.value)} className="h-7 w-9 cursor-pointer rounded" />{n}
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
+
       <details className="tarjeta p-4" open={!!inicial}>
         <summary className="cursor-pointer font-medium">Más detalles (opcional: todo tiene un valor listo)</summary>
         <div className="mt-4 space-y-6">
           <fieldset>
             <legend className="etiqueta">Estilo</legend>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className={`grid gap-3 ${tema ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
+              {tema && (
+                <label className={`tarjeta cursor-pointer p-2 ${estilo === "tema" ? "ring-2 ring-cyan-600" : ""}`}>
+                  <input type="radio" name="inv-estilo" className="sr-only" checked={estilo === "tema"} onChange={() => setPlantilla("tema")} />
+                  <MuestraEstilo c={tema.colores} />
+                  <span className="mt-2 block text-sm font-medium">✨ {tema.nombre}</span>
+                  <span className="block text-xs text-tenue">Tu tema</span>
+                </label>
+              )}
               {PLANTILLAS.map((p) => (
                 <label key={p} className={`tarjeta cursor-pointer p-2 ${estilo === p ? "ring-2 ring-cyan-600" : ""}`}>
-                  <input type="radio" name="inv-estilo" className="sr-only" checked={estilo === p} onChange={() => setPlantilla(p)} />
-                  <MuestraEstilo id={p} />
+                  <input type="radio" name="inv-estilo" className="sr-only" checked={estilo === p} onChange={() => { setPlantilla(p); setPrevia(null); }} />
+                  <MuestraEstilo c={PLANTILLAS_INFO[p].colores} />
                   <span className="mt-2 block text-sm font-medium">{PLANTILLAS_INFO[p].nombre}{p === info.plantilla ? " (recomendado)" : ""}</span>
                   <span className="block text-xs text-tenue">{PLANTILLAS_INFO[p].desc}</span>
                 </label>
@@ -200,7 +298,7 @@ export function FormInvitacion({ inicial }: { inicial?: Invitacion }) {
           <fieldset>
             <legend className="etiqueta">Mensaje</legend>
             <div className="space-y-2">
-              {[...info.mensajes, ...ideasIa].map((m) => (
+              {[...new Set([...(estilo === "tema" && tema?.mensaje ? [tema.mensaje] : []), ...info.mensajes, ...ideasIa])].map((m) => (
                 <label key={m} className={`tarjeta flex cursor-pointer gap-2 p-3 text-sm ${mensaje === m ? "ring-2 ring-cyan-600" : ""}`}>
                   <input type="radio" name="inv-mensaje" className="mt-1" checked={mensaje === m} onChange={() => setMensaje(m)} />
                   <span>{m}</span>
@@ -291,8 +389,22 @@ export function FormInvitacion({ inicial }: { inicial?: Invitacion }) {
         </div>
       </details>
 
+      {previa && (
+        <section className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="font-medium">Así va quedando</h2>
+            <button type="button" className="boton" onClick={() => setPrevia(null)}>Cerrar vista</button>
+          </div>
+          <div className="mx-auto max-w-full rounded-[2.2rem] border-[8px] border-neutral-800 bg-black" style={{ width: 406, height: 760 }}>
+            <iframe title="Vista previa de la invitación" srcDoc={previa} className="h-full w-full rounded-[1.7rem] bg-white" sandbox="allow-scripts" />
+          </div>
+          <p className="text-center text-xs text-tenue">Toca el sello para abrirla. La foto y tu audio aparecen al crearla.</p>
+        </section>
+      )}
+
       {error && <Aviso tipo="error">{error}</Aviso>}
       <div className="flex flex-wrap items-center gap-3">
+        <button type="button" className="boton" disabled={cargandoPrevia} onClick={verPrevia}>{cargandoPrevia ? "Armando la vista…" : previa ? "Actualizar vista" : "Ver cómo queda"}</button>
         <button className="boton boton-primario" disabled={enviando || !listo}>{enviando ? "Creando…" : inicial ? "Guardar cambios" : "Crear invitación"}</button>
         <span className="text-xs text-tenue">Tarda unos segundos. No usa la tarjeta de video.</span>
       </div>

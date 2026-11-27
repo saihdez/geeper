@@ -13,11 +13,13 @@ import { renderSVG } from "uqr";
 import { escribirAtomico } from "../archivos";
 import { correr } from "../proceso";
 import { CACHE_HF, dirDatos, FFMPEG } from "../rutas";
-import { PLANTILLAS_INFO, TIPOS_INFO } from "./catalogo";
+import { TIPOS_INFO } from "./catalogo";
+import { estiloDe } from "./estilo";
+import { asegurarContraste } from "./tema";
 import { compilar, esc, iniciales, titulos } from "./compilar";
 import { instanteUTC, textosFecha } from "./calendario";
-import { resolverEnlaceMusica } from "./enlaces";
-import { Entrada, fechaPasada, Invitacion, SLUG, type PlantillaId } from "./esquema";
+import { leerEnlaceMusica, resolverEnlaceMusica } from "./enlaces";
+import { Entrada, fechaPasada, Invitacion, SLUG, type EstiloId } from "./esquema";
 
 export const ARCHIVOS_PUBLICOS = ["index.html", "invitacion.ics", "portada-og.jpg", "qr.svg", "invitacion.zip"] as const;
 export const EXT_FOTO = new Set([".jpg", ".jpeg", ".png", ".webp", ".heic", ".avif"]);
@@ -50,7 +52,10 @@ export interface ResumenInvitacion {
   nombres: string;
   tipo: string;
   fecha: string;
-  plantilla: PlantillaId;
+  plantilla: EstiloId;
+  /** Para la miniatura de la lista. */
+  colores: { fondo: string; sello: string };
+  tema?: string;
   publicada: boolean;
   actualizada: string;
 }
@@ -62,7 +67,7 @@ export async function listarInvitaciones(): Promise<ResumenInvitacion[]> {
     if (!SLUG.test(n)) continue;
     try {
       const i = await leerInvitacion(n);
-      out.push({ slug: i.slug, nombres: i.nombres, tipo: TIPOS_INFO[i.tipo].nombre, fecha: i.fecha, plantilla: i.plantilla, publicada: !!i.urlPublica, actualizada: i.actualizada });
+      out.push({ slug: i.slug, nombres: i.nombres, tipo: TIPOS_INFO[i.tipo].nombre, fecha: i.fecha, plantilla: i.plantilla, colores: { fondo: estiloDe(i).colores.fondo, sello: estiloDe(i).colores.sello }, tema: i.plantilla === "tema" ? i.tema?.nombre : undefined, publicada: !!i.urlPublica, actualizada: i.actualizada });
     } catch {
       /* carpeta a medias o de otra versión: se ignora */
     }
@@ -91,31 +96,44 @@ export function bloquesLatinos(cssGoogle: string): { css: string; url: string }[
   return out;
 }
 
-/** `@font-face` con las letras de la plantilla en base64, guardado en caché. "" si no hay internet. */
-export async function fuentesPlantilla(id: PlantillaId, op: { signal?: AbortSignal } = {}): Promise<{ css: string; aviso?: string }> {
-  const cache = path.join(dirDatos(), "_cache", "fuentes-invitaciones", `${id}.css`);
+/** Hoja de Google Fonts de una familia; si no tiene esos pesos o cursivas, se pide más sencilla. */
+async function hojaGoogle(familia: string, variantes: string[], signal: AbortSignal): Promise<string> {
+  for (const v of variantes) {
+    const url = `https://fonts.googleapis.com/css2?family=${familia.replace(/ /g, "+")}${v}&display=swap`;
+    const r = await fetch(url, { headers: { "user-agent": UA_WOFF2 }, signal });
+    if (r.ok) return r.text();
+  }
+  throw new Error(`sin la letra ${familia}`);
+}
+
+/** `@font-face` de una familia con sus woff2 en base64, guardado en caché por familia. */
+async function fuenteFamilia(familia: string, variantes: string[], signal: AbortSignal): Promise<string> {
+  const cache = path.join(dirDatos(), "_cache", "fuentes-invitaciones", `${familia.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.css`);
   const guardada = await fs.readFile(cache, "utf8").catch(() => null);
-  if (guardada) return { css: guardada };
+  if (guardada) return guardada;
+  const bloques = bloquesLatinos(await hojaGoogle(familia, variantes, signal));
+  if (!bloques.length) throw new Error("sin letras");
+  let css = "";
+  for (const b of bloques) {
+    const r = await fetch(b.url, { signal });
+    if (!r.ok) throw new Error(`letra ${r.status}`);
+    const b64 = Buffer.from(await r.arrayBuffer()).toString("base64");
+    css += b.css.replace(/src:[^;]+;/, `src:url(data:font/woff2;base64,${b64}) format('woff2');`);
+  }
+  await escribirAtomico(cache, css);
+  return css;
+}
+
+/** Las dos letras del estilo en base64. "" si no hay internet (quedan las del sistema, con aviso). */
+export async function fuentesDe(letras: { titulos: string; texto: string }, op: { signal?: AbortSignal } = {}): Promise<{ css: string; aviso?: string }> {
   if (process.env.VITEST && !process.env.GEEPER_INVITACIONES_FUENTES) return { css: "" };
-  const { titulos: tit, texto } = PLANTILLAS_INFO[id].letras;
-  const fam = (f: string, pesos: string) => `family=${f.replace(/ /g, "+")}${pesos}`;
-  const url = `https://fonts.googleapis.com/css2?${fam(tit, "")}&${fam(texto, ":ital,wght@0,400;0,600;1,400")}&display=swap`;
+  const signal = op.signal ?? AbortSignal.timeout(30_000);
   try {
-    const sig = op.signal ?? AbortSignal.timeout(20_000);
-    const hoja = await (await fetch(url, { headers: { "user-agent": UA_WOFF2 }, signal: sig })).text();
-    const bloques = bloquesLatinos(hoja);
-    if (!bloques.length) throw new Error("sin letras");
-    let css = "";
-    for (const b of bloques) {
-      const r = await fetch(b.url, { signal: sig });
-      if (!r.ok) throw new Error(`letra ${r.status}`);
-      const b64 = Buffer.from(await r.arrayBuffer()).toString("base64");
-      css += b.css.replace(/src:[^;]+;/, `src:url(data:font/woff2;base64,${b64}) format('woff2');`);
-    }
-    await escribirAtomico(cache, css);
-    return { css };
+    const titulos = await fuenteFamilia(letras.titulos, [""], signal);
+    const texto = letras.texto === letras.titulos ? "" : await fuenteFamilia(letras.texto, [":ital,wght@0,400;0,600;1,400", ":wght@400;600", ""], signal);
+    return { css: titulos + texto };
   } catch {
-    return { css: "", aviso: "No se pudieron bajar las letras de la plantilla (¿sin internet?): se usaron las del sistema. Vuelve a guardar con internet para tenerlas." };
+    return { css: "", aviso: "No se pudieron bajar las letras del estilo (¿sin internet?): se usaron las del sistema. Vuelve a guardar con internet para tenerlas." };
   }
 }
 
@@ -193,7 +211,8 @@ export async function guardarInvitacion(entrada: unknown, subidas: Subidas, slug
   if (!foto) await fs.rm(path.join(dir, "foto.webp"), { force: true });
 
   const ahora = new Date().toISOString();
-  const { plantilla, musicaEnlace, ...resto } = e;
+  const { plantilla, musicaEnlace, tema, ...resto } = e;
+  if (plantilla === "tema" && !tema) throw new Error("Falta diseñar el tema: escribe tu idea y toca «Diseñar mi tema», o elige uno de los estilos.");
   const inv = Invitacion.parse({
     ...resto,
     version: 1,
@@ -201,6 +220,7 @@ export async function guardarInvitacion(entrada: unknown, subidas: Subidas, slug
     creada: previa?.creada ?? ahora,
     actualizada: ahora,
     plantilla: plantilla ?? TIPOS_INFO[e.tipo].plantilla,
+    tema: plantilla === "tema" && tema ? { ...tema, colores: asegurarContraste(tema.colores) } : undefined,
     musica,
     musicaEnlace: musica.tipo === "spotify" || musica.tipo === "youtube" ? musicaEnlace : undefined,
     foto,
@@ -209,6 +229,40 @@ export async function guardarInvitacion(entrada: unknown, subidas: Subidas, slug
   await escribirAtomico(path.join(dir, "invitacion.json"), JSON.stringify(inv, null, 2));
   const avisos = await construir(inv);
   return { inv, avisos };
+}
+
+/** Datos de ejemplo para la vista previa mientras el formulario está a medio llenar. */
+function borradorConDefectos(entrada: unknown): Record<string, unknown> {
+  const d = (entrada && typeof entrada === "object" ? entrada : {}) as Record<string, unknown>;
+  const lleno = (v: unknown) => (typeof v === "string" ? v.trim() !== "" : v !== undefined && v !== null);
+  const dentroDe30 = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
+  const lugar = (d.lugar && typeof d.lugar === "object" ? d.lugar : {}) as Record<string, unknown>;
+  return {
+    ...Object.fromEntries(Object.entries(d).filter(([, v]) => lleno(v))),
+    tipo: lleno(d.tipo) ? d.tipo : "boda",
+    nombres: lleno(d.nombres) ? d.nombres : "Tus nombres",
+    fecha: lleno(d.fecha) ? d.fecha : dentroDe30,
+    hora: lleno(d.hora) ? d.hora : "18:00",
+    zona: lleno(d.zona) ? d.zona : "America/Mexico_City",
+    lugar: { ...lugar, nombre: lleno(lugar.nombre) ? lugar.nombre : "Tu lugar", mapa: lleno(lugar.mapa) ? lugar.mapa : undefined },
+    whatsapp: typeof d.whatsapp === "string" && d.whatsapp.replace(/\D/g, "").length >= 8 ? d.whatsapp : "520000000000",
+  };
+}
+
+/** HTML de la invitación tal como va, sin guardar nada (sin foto ni audio propio). */
+export async function vistaPrevia(entrada: unknown): Promise<string> {
+  const e = Entrada.parse(borradorConDefectos(entrada));
+  const { plantilla, musicaEnlace, tema, ...resto } = e;
+  const musica = (musicaEnlace && leerEnlaceMusica(musicaEnlace)) || { tipo: "ninguna" as const };
+  const usaTema = plantilla === "tema" && !!tema;
+  const inv = Invitacion.parse({
+    ...resto, version: 1, slug: "vista-previa", creada: "", actualizada: "",
+    plantilla: usaTema ? "tema" : plantilla && plantilla !== "tema" ? plantilla : TIPOS_INFO[e.tipo].plantilla,
+    tema: usaTema ? { ...tema, colores: asegurarContraste(tema.colores) } : undefined,
+    musica,
+  });
+  const fuentes = await fuentesDe(estiloDe(inv).letras);
+  return compilar(inv, { fuentesCss: fuentes.css }).html;
 }
 
 /** Guarda la dirección donde quedó publicada y reconstruye (QR y vista previa con la URL absoluta). */
@@ -225,7 +279,7 @@ export async function construir(inv: Invitacion, op: { portada?: boolean } = {})
   const pub = path.join(dir, "publicar");
   await fs.mkdir(pub, { recursive: true });
   const avisos: string[] = [];
-  const fuentes = await fuentesPlantilla(inv.plantilla);
+  const fuentes = await fuentesDe(estiloDe(inv).letras);
   if (fuentes.aviso) avisos.push(fuentes.aviso);
   const fotoB64 = inv.foto ? (await fs.readFile(path.join(dir, inv.foto))).toString("base64") : undefined;
   const musicaB64 = inv.musica.tipo === "archivo" ? (await fs.readFile(path.join(dir, "musica.mp3"))).toString("base64") : undefined;
@@ -283,7 +337,7 @@ function chrome(): string | undefined {
 }
 
 export function htmlPortada(inv: Invitacion, fuentesCss: string, fotoB64?: string): string {
-  const p = PLANTILLAS_INFO[inv.plantilla];
+  const p = estiloDe(inv);
   const c = p.colores;
   const f = textosFecha(instanteUTC(inv.fecha, inv.hora, inv.zona), inv.zona);
   const { corto } = titulos(inv);

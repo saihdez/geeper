@@ -5,10 +5,11 @@
  * Todo texto de la persona pasa por `esc` (o va en el JSON de datos con `<` escapado) y los enlaces se
  * arman aquí con valores ya validados por el esquema: nada del usuario entra como HTML.
  */
-import { ciudadDeZona, PLANTILLAS_INFO, TIPOS_INFO } from "./catalogo";
+import { ciudadDeZona, TIPOS_INFO } from "./catalogo";
 import { instanteUTC, partesCuentaAtras, semanasDelMes, textosFecha } from "./calendario";
 import { ics, mensajeConfirmacion, urlGoogleCalendar, urlMaps, urlReproductor, urlWaze, type Evento } from "./enlaces";
 import type { Invitacion } from "./esquema";
+import { divisor, esquinas, estiloDe, pilaLetra, scriptParticulas, texturaFondo, type Estilo } from "./estilo";
 
 export interface Recursos {
   /** `@font-face` con las letras en base64 ("" si no hubo internet: quedan las del sistema). */
@@ -62,17 +63,17 @@ const ICONO = {
   corazon: '<svg viewBox="0 0 24 24" aria-hidden="true" class="corazon"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>',
 };
 
-const ADORNO = '<svg class="adorno" viewBox="0 0 200 20" aria-hidden="true"><path d="M2 10h70M128 10h70"/><path d="M100 3c-6 0-10 7-18 7 8 0 12 7 18 7s10-7 18-7c-8 0-12-7-18-7z"/><circle cx="76" cy="10" r="2"/><circle cx="124" cy="10" r="2"/></svg>';
-
-function css(inv: Invitacion): string {
-  const p = PLANTILLAS_INFO[inv.plantilla];
-  const c = p.colores;
+function css(e: Estilo): string {
+  const c = e.colores;
   return `
 :root{--fondo:${c.fondo};--fondo2:${c.fondo2};--tarjeta:${c.tarjeta};--tinta:${c.tinta};--claro:${c.claro};--acento:${c.acento};--sobre:${c.sobre};--sello:${c.sello};
---f-titulos:'${p.letras.titulos}','Snell Roundhand','Apple Chancery',cursive;--f-texto:'${p.letras.texto}',Georgia,'Times New Roman',serif}
+--f-titulos:${pilaLetra(e.letras.titulos)};--f-texto:${pilaLetra(e.letras.texto)}}
 *{box-sizing:border-box}html{-webkit-text-size-adjust:100%;background:var(--fondo)}
-body{margin:0;min-height:100vh;background:radial-gradient(120% 900px at 50% 0%,var(--fondo2),var(--fondo)) no-repeat var(--fondo);color:var(--claro);font-family:var(--f-texto);font-size:18px;line-height:1.55}
-.pagina{max-width:480px;margin:0 auto;padding:0 18px 96px;overflow-x:hidden}
+body{margin:0;min-height:100vh;background:${texturaFondo(e.fondo)}radial-gradient(120% 900px at 50% 0%,var(--fondo2),var(--fondo)) no-repeat var(--fondo);color:var(--claro);font-family:var(--f-texto);font-size:18px;line-height:1.55}
+.pagina{position:relative;z-index:1;max-width:480px;margin:0 auto;padding:0 18px 96px;overflow-x:hidden}
+canvas.particulas{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}
+.portada{position:relative}.esquina{position:absolute;width:118px;height:118px;pointer-events:none;opacity:.55}.esquina svg{width:100%;height:100%;fill:color-mix(in srgb,var(--acento) 30%,transparent);stroke:var(--acento);stroke-width:1.2;stroke-linecap:round;stroke-linejoin:round}
+.e1{top:14px;left:-10px}.e2{bottom:14px;right:-10px;transform:rotate(180deg)}
 .portada{min-height:100svh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:40px 0}
 .pre{letter-spacing:.32em;text-transform:uppercase;font-size:.78rem;margin:0}
 .script{font-family:var(--f-titulos);font-weight:400;line-height:1.1;margin:0}
@@ -98,7 +99,7 @@ background:radial-gradient(circle at 35% 30%,color-mix(in srgb,var(--sello) 55%,
 .arco{border-radius:190px 190px 22px 22px;padding-top:52px}
 .tarjeta h2{font-family:var(--f-titulos);font-weight:400;font-size:2.5rem;line-height:1.1;margin:0 0 10px}
 .adorno{width:150px;height:16px;fill:none;stroke:var(--acento);stroke-width:1.5;display:block;margin:6px auto 14px}
-.adorno path:nth-child(2){fill:var(--acento)}
+.adorno .relleno{fill:color-mix(in srgb,var(--acento) 35%,transparent);stroke-linecap:round;stroke-linejoin:round}
 .mayus{letter-spacing:.24em;text-transform:uppercase;font-size:.8rem}
 .grande{font-size:1.25rem;font-weight:600}
 .botones{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:16px}
@@ -183,7 +184,9 @@ if(f)f.addEventListener('submit',function(e){e.preventDefault();var fd=new FormD
 }
 
 export function compilar(inv: Invitacion, r: Recursos, ahora = Date.now()): { html: string; ics: string } {
-  const p = PLANTILLAS_INFO[inv.plantilla];
+  const e = estiloDe(inv);
+  const tx = e.textos;
+  const ADORNO = divisor(e.adorno);
   const t = TIPOS_INFO[inv.tipo];
   const ev = armarEvento(inv);
   const { corto, largo } = titulos(inv);
@@ -193,37 +196,37 @@ export function compilar(inv: Invitacion, r: Recursos, ahora = Date.now()): { ht
   const og = urlOg(inv);
   const reproductor = urlReproductor(inv.musica);
   const colores = inv.dressCode.colores.length ? inv.dressCode.colores : [];
-  const datos = { inicio: ev.inicio, fin: ev.fin, zona: inv.zona, whatsapp: inv.whatsapp, evento: largo, acento: p.colores.acento, claro: p.colores.claro, tarjeta: p.colores.tarjeta };
+  const datos = { inicio: ev.inicio, fin: ev.fin, zona: inv.zona, whatsapp: inv.whatsapp, evento: largo, acento: e.colores.acento, claro: e.colores.claro, tarjeta: e.colores.tarjeta };
   const maxPersonas = inv.pases ?? 6;
   const fechaLimite = inv.confirmarAntes ? textosFecha(instanteUTC(inv.confirmarAntes, "12:00", inv.zona), inv.zona).fecha : null;
   const descripcionOg = `${f.fecha} · ${inv.lugar.nombre}`;
 
   const secciones: string[] = [];
-  secciones.push(`<section id="mensaje" class="tarjeta arco aparece"><h2>¡Hola!</h2>${ADORNO}<p>${esc(mensaje)}</p><p class="script" style="font-size:2rem;margin-top:14px">${esc(inv.nombres)}</p></section>`);
+  secciones.push(`<section id="mensaje" class="tarjeta arco aparece"><h2>${esc(tx.saludo)}</h2>${ADORNO}<p>${esc(mensaje)}</p><p class="script" style="font-size:2rem;margin-top:14px">${esc(inv.nombres)}</p></section>`);
   if (reproductor) {
     const alto = inv.musica.tipo === "spotify" ? 152 : 200;
-    secciones.push(`<section class="tarjeta aparece"><h2>Nuestra canción</h2>${ADORNO}<p class="nota">Toca ▶ para escucharla</p><iframe class="reproductor" title="Canción de la invitación" src="${esc(reproductor)}" height="${alto}" loading="lazy" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"></iframe></section>`);
+    secciones.push(`<section class="tarjeta aparece"><h2>${esc(tx.cancion)}</h2>${ADORNO}<p class="nota">Toca ▶ para escucharla</p><iframe class="reproductor" title="Canción de la invitación" src="${esc(reproductor)}" height="${alto}" loading="lazy" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"></iframe></section>`);
   }
   secciones.push(`<section class="tarjeta aparece" aria-labelledby="t-fecha"><h2 id="t-fecha" class="sr">Fecha</h2>${calendarioHtml(ev.inicio, inv.zona)}
 <p class="grande" style="margin-top:14px">${esc(f.fecha)}</p><p>${esc(f.hora)} <span class="nota nota-zona" hidden>(hora de ${esc(ciudad)})</span></p>
 <div class="botones"><a class="boton lleno" href="${esc(urlGoogleCalendar(ev))}" target="_blank" rel="noopener">${ICONO.cal}Google Calendar</a><a class="boton" href="invitacion.ics" download="invitacion.ics">${ICONO.cal}Agregar al calendario</a></div></section>`);
-  secciones.push(`<section class="tarjeta aparece" aria-labelledby="t-cuenta"><h2 id="t-cuenta">Faltan</h2>
+  secciones.push(`<section class="tarjeta aparece" aria-labelledby="t-cuenta"><h2 id="t-cuenta">${esc(tx.faltan)}</h2>
 <div class="cuenta" role="timer" aria-live="off"><div><b id="c-dias">0</b><span>días</span></div><div><b id="c-horas">0</b><span>horas</span></div><div><b id="c-min">0</b><span>min</span></div><div><b id="c-seg">0</b><span>seg</span></div></div><p id="c-estado" class="grande" style="margin:14px 0 0" aria-live="polite"></p></section>`);
-  secciones.push(`<section class="tarjeta aparece" aria-labelledby="t-lugar"><h2 id="t-lugar">Ubicación</h2>${ADORNO}<p class="mayus">${esc(inv.lugar.nombre)}</p>${inv.lugar.direccion ? `<p>${esc(inv.lugar.direccion)}</p>` : ""}
+  secciones.push(`<section class="tarjeta aparece" aria-labelledby="t-lugar"><h2 id="t-lugar">${esc(tx.ubicacion)}</h2>${ADORNO}<p class="mayus">${esc(inv.lugar.nombre)}</p>${inv.lugar.direccion ? `<p>${esc(inv.lugar.direccion)}</p>` : ""}
 <div class="botones"><a class="boton lleno" href="${esc(urlMaps(inv.lugar))}" target="_blank" rel="noopener">${ICONO.mapa}Cómo llegar</a><a class="boton" href="${esc(urlWaze(inv.lugar))}" target="_blank" rel="noopener">${ICONO.mapa}Waze</a></div></section>`);
   if (colores.length || inv.dressCode.estilo || inv.dressCode.evitar) {
-    secciones.push(`<section class="tarjeta aparece" aria-labelledby="t-dress"><h2 id="t-dress">Dress code</h2>${ADORNO}${inv.dressCode.estilo ? `<p class="mayus">${esc(inv.dressCode.estilo)}</p>` : ""}
+    secciones.push(`<section class="tarjeta aparece" aria-labelledby="t-dress"><h2 id="t-dress">${esc(tx.dress)}</h2>${ADORNO}${inv.dressCode.estilo ? `<p class="mayus">${esc(inv.dressCode.estilo)}</p>` : ""}
 ${colores.length ? `<div class="colores" role="list" aria-label="Colores sugeridos">${colores.map((c) => `<span role="listitem" style="background:${c}" aria-label="color ${c}"></span>`).join("")}</div>` : ""}${inv.dressCode.evitar ? `<p class="nota">${esc(inv.dressCode.evitar)}</p>` : ""}</section>`);
   }
   const opcionesPersonas = Array.from({ length: maxPersonas }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join("");
-  secciones.push(`<section class="tarjeta arco aparece" aria-labelledby="t-rsvp"><h2 id="t-rsvp">Confirma tu asistencia</h2>${ADORNO}
+  secciones.push(`<section class="tarjeta arco aparece" aria-labelledby="t-rsvp"><h2 id="t-rsvp">${esc(tx.rsvp)}</h2>${ADORNO}
 ${fechaLimite ? `<p class="nota">Por favor, antes del ${esc(fechaLimite)}</p>` : ""}${inv.pases ? `<p class="nota">Pases para ${inv.pases} ${inv.pases === 1 ? "persona" : "personas"}</p>` : ""}
 <form id="rsvp"><label for="r-nombre">Tu nombre</label><input id="r-nombre" name="nombre" type="text" autocomplete="name" required maxlength="80">
 <fieldset><legend>¿Asistirás?</legend><div class="opciones"><label><input type="radio" name="asiste" value="si" checked> Sí, ahí estaré</label><label><input type="radio" name="asiste" value="no"> No podré</label></div></fieldset>
 <label for="r-personas">¿Cuántas personas?</label><select id="r-personas" name="personas">${opcionesPersonas}</select>
 <label for="r-nota">Mensaje (opcional)</label><textarea id="r-nota" name="nota" rows="2" maxlength="300"></textarea>
 <button class="boton lleno" type="submit">${ICONO.wa}Enviar por WhatsApp</button></form></section>`);
-  if (inv.regalos) secciones.push(`<section class="tarjeta aparece"><h2>Regalos</h2>${ADORNO}<p>${esc(inv.regalos)}</p></section>`);
+  if (inv.regalos) secciones.push(`<section class="tarjeta aparece"><h2>${esc(tx.regalos)}</h2>${ADORNO}<p>${esc(inv.regalos)}</p></section>`);
   if (inv.hashtag) secciones.push(`<section class="tarjeta aparece"><h2>Comparte</h2><p class="grande">#${esc(inv.hashtag.replace(/^#/, ""))}</p></section>`);
 
   const carta = r.fotoB64
@@ -235,20 +238,20 @@ ${fechaLimite ? `<p class="nota">Por favor, antes del ${esc(fechaLimite)}</p>` :
 
   const html = `<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>${esc(largo)}</title><meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="${p.colores.fondo}">
+<title>${esc(largo)}</title><meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="${e.colores.fondo}">
 <meta name="description" content="${esc(descripcionOg)}"><meta property="og:type" content="website"><meta property="og:title" content="${esc(largo)}"><meta property="og:description" content="${esc(descripcionOg)}">
 ${og ? `<meta property="og:image" content="${esc(og)}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:url" content="${esc(inv.urlPublica!)}"><meta name="twitter:card" content="summary_large_image">` : ""}
-<style>${r.fuentesCss}${css(inv)}</style><noscript><style>.cerrado .resto{display:block}.aparece{opacity:1;transform:none}.sello,.pista{display:none}</style></noscript></head>
+<style>${r.fuentesCss}${css(e)}</style><noscript><style>.cerrado .resto{display:block}.aparece{opacity:1;transform:none}.sello,.pista{display:none}</style></noscript></head>
 <body class="cerrado"><main class="pagina">
-<section class="portada"><p class="pre">${esc(corto)}</p><h1 class="script nombres">${esc(inv.nombres)}</h1>
+<section class="portada">${esquinas(e.adorno)}<p class="pre">${esc(corto)}</p><h1 class="script nombres">${esc(inv.nombres)}</h1>
 <div class="sobre"><div class="sobre-fondo"></div><div class="carta">${carta}</div><div class="frente"></div><div class="solapa"></div>
 <button id="sello" class="sello" type="button" aria-label="Abrir la invitación">${esc(iniciales(inv.nombres))}</button></div>
-<p class="pista">Toca el sello para abrir</p></section>
+<p class="pista">${esc(tx.pista)}</p></section>
 <div class="resto">${secciones.join("\n")}
 <footer class="pie aparece"><p class="script">${esc(inv.nombres)}</p><p class="mayus">${esc(f.fecha)}</p></footer></div>
 </main>${audio}
 <script type="application/json" id="datos">${JSON.stringify(datos).replace(/</g, "\\u003c")}</script>
-<script>${script()}</script></body></html>`;
+<script>${script()}${scriptParticulas(e)}</script></body></html>`;
 
   return { html, ics: ics(ev, ahora) };
 }

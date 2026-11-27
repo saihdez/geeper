@@ -2,8 +2,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { PLANTILLAS_INFO } from "@/lib/invitaciones/catalogo";
-import type { Invitacion, PlantillaId } from "@/lib/invitaciones/esquema";
+import type { Invitacion } from "@/lib/invitaciones/esquema";
 import { Aviso, pedir, useSondeo } from "./comun";
 import { FormInvitacion } from "./form-invitacion";
 
@@ -12,7 +11,9 @@ interface Resumen {
   nombres: string;
   tipo: string;
   fecha: string;
-  plantilla: PlantillaId;
+  plantilla: string;
+  colores: { fondo: string; sello: string };
+  tema?: string;
   publicada: boolean;
 }
 
@@ -36,14 +37,14 @@ export function PaginaInvitaciones() {
       )}
       <ul className="grid gap-3 sm:grid-cols-2">
         {datos?.invitaciones.map((i) => {
-          const c = PLANTILLAS_INFO[i.plantilla].colores;
+          const c = i.colores;
           return (
             <li key={i.slug}>
               <Link href={`/invitaciones/${i.slug}`} className="tarjeta flex items-center gap-3 p-3 hover:bg-white/5">
                 <span className="h-12 w-12 shrink-0 rounded-full" style={{ background: `radial-gradient(circle at 35% 30%, ${c.sello}, ${c.fondo})` }} aria-hidden />
                 <span className="min-w-0">
                   <span className="block truncate font-medium">{i.nombres}</span>
-                  <span className="block text-xs text-tenue">{i.tipo} · {i.fecha} · {i.publicada ? "publicada" : "sin publicar"}</span>
+                  <span className="block text-xs text-tenue">{i.tipo}{i.tema ? ` · ${i.tema}` : ""} · {i.fecha} · {i.publicada ? "publicada" : "sin publicar"}</span>
                 </span>
               </Link>
             </li>

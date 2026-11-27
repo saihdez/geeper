@@ -1,5 +1,6 @@
 /** Textos por tipo de evento y las tres plantillas (colores y letras de Google Fonts, licencia OFL). */
 import type { PlantillaId, Tipo } from "./esquema";
+import type { ADORNOS, FONDOS, LETRAS_TEXTO, LETRAS_TITULOS, PARTICULAS } from "./tema";
 
 export interface InfoTipo {
   nombre: string;
@@ -72,7 +73,10 @@ export interface InfoPlantilla {
   desc: string;
   /** Colores: fondo de la página, tarjetas, tinta sobre tarjeta, texto sobre fondo, acento, sobre y sello. */
   colores: { fondo: string; fondo2: string; tarjeta: string; tinta: string; claro: string; acento: string; sobre: string; sello: string };
-  letras: { titulos: string; texto: string };
+  letras: { titulos: (typeof LETRAS_TITULOS)[number]; texto: (typeof LETRAS_TEXTO)[number] };
+  adorno: (typeof ADORNOS)[number];
+  particulas: (typeof PARTICULAS)[number];
+  fondo: (typeof FONDOS)[number];
   /** Colores sugeridos para el dress code si la persona no elige. */
   dress: string[];
 }
@@ -81,19 +85,19 @@ export const PLANTILLAS_INFO: Record<PlantillaId, InfoPlantilla> = {
   "vino-oro": {
     nombre: "Vino y oro", desc: "Elegante, de noche: bodas y XV.",
     colores: { fondo: "#3b0a14", fondo2: "#5a1222", tarjeta: "#f3e9dc", tinta: "#4a0d1a", claro: "#f6ece0", acento: "#c9a24a", sobre: "#6b1427", sello: "#b8892f" },
-    letras: { titulos: "Pinyon Script", texto: "Cormorant Garamond" },
+    letras: { titulos: "Pinyon Script", texto: "Cormorant Garamond" }, adorno: "clasico", particulas: "ninguna", fondo: "liso",
     dress: ["#4a0d1a", "#6e5a5e", "#c8b99a", "#efe6d6"],
   },
   jardin: {
     nombre: "Jardín", desc: "Fresco y suave: bautizos, baby showers, bodas de día.",
     colores: { fondo: "#e7ece3", fondo2: "#d5dfcf", tarjeta: "#fffdf8", tinta: "#33402f", claro: "#33402f", acento: "#b0686f", sobre: "#a9bba0", sello: "#b0686f" },
-    letras: { titulos: "Great Vibes", texto: "Lora" },
+    letras: { titulos: "Great Vibes", texto: "Lora" }, adorno: "flores", particulas: "ninguna", fondo: "liso",
     dress: ["#a9bba0", "#e8c7c3", "#f4ecdf", "#8a9a86"],
   },
   minimal: {
     nombre: "Minimal", desc: "Moderno y directo: cumpleaños, graduaciones, eventos.",
     colores: { fondo: "#111111", fondo2: "#1d1d1d", tarjeta: "#fafafa", tinta: "#111111", claro: "#f5f5f5", acento: "#e0b04a", sobre: "#2a2a2a", sello: "#e0b04a" },
-    letras: { titulos: "Playfair Display", texto: "Inter" },
+    letras: { titulos: "Playfair Display", texto: "Inter" }, adorno: "geometrico", particulas: "ninguna", fondo: "liso",
     dress: ["#111111", "#ffffff", "#e0b04a", "#7a7a7a"],
   },
 };

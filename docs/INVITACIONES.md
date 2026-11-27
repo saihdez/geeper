@@ -159,6 +159,23 @@ mensaje por defecto, etiqueta de pases. Español primero; el catálogo deja luga
 
 ---
 
+### Tema a medida (hecho el 2026-11-27)
+
+Paso 6 del formulario: la persona escribe una idea («un bosque encantado con luciérnagas») y toca
+**Diseñar mi tema**. La IA local (`pedirJson`, con la tarjeta tomada un momento) elige, **sólo de listas
+cerradas**, los 8 colores, una letra de títulos y una de texto (Google Fonts OFL), el adorno SVG de los
+separadores y las esquinas, la animación del fondo (luciérnagas, estrellas, pétalos, hojas, nieve,
+burbujas, destellos, confeti), la textura y los textos de cada sección; además propone el mensaje y el
+dress code. La IA no escribe HTML ni CSS. Después `asegurarContraste` corrige tinta y texto claro hasta
+4,5:1, y todo texto pasa por el mismo escape que el resto.
+
+Si la IA no puede (tarjeta ocupada, modelo apagado, respuesta rara), `temaPorPalabras` arma uno con
+las palabras de la idea (13 temas: bosque, mar, estrellas, princesas, invierno, jardín, otoño, gala,
+halloween, rancho, safari, fiesta infantil, romántico) y se avisa. La persona puede ajustar 5 colores y
+pedir **Otra versión**. **Ver cómo queda** muestra la invitación sin guardarla (`/api/invitaciones/vista-previa`).
+Código: `tema.ts` (esquema, listas, contraste, respaldo), `estilo.ts` (estilo resuelto, adornos,
+texturas, partículas). La animación se apaga con «reducir movimiento» y se pausa con la pestaña oculta.
+
 ## 5. Video para estados (opcional, el fuerte de Geeper)
 
 Botón **«Hacer video para estados»**: 12–15 s, 1080×1920, con Hyperframes y la misma plantilla:

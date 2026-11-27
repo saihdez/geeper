@@ -3,12 +3,16 @@
  * la página, el .ics, la portada y el zip se rehacen desde aquí cada vez que algo cambia.
  */
 import { z } from "zod";
+import { Tema } from "./tema";
 
 export const TIPOS = ["boda", "xv", "cumpleanos", "bautizo", "babyshower", "graduacion", "otro"] as const;
 export const PLANTILLAS = ["vino-oro", "jardin", "minimal"] as const;
 
 export const Tipo = z.enum(TIPOS);
 export const PlantillaId = z.enum(PLANTILLAS);
+/** Un estilo fijo o «tema»: el que se diseñó con una idea (ver tema.ts). */
+export const EstiloId = z.enum([...PLANTILLAS, "tema"]);
+export type EstiloId = z.infer<typeof EstiloId>;
 export type Tipo = z.infer<typeof Tipo>;
 export type PlantillaId = z.infer<typeof PlantillaId>;
 
@@ -57,7 +61,8 @@ export const Entrada = z.object({
     mapa: httpsUrl.optional().or(z.literal("").transform(() => undefined)),
   }),
   whatsapp: z.string().transform((v) => v.replace(/[\s()+.-]/g, "")).pipe(z.string().regex(/^\d{8,15}$/, "el WhatsApp debe tener sólo números, con el código de país (8 a 15 dígitos)")),
-  plantilla: PlantillaId.optional(),
+  plantilla: EstiloId.optional(),
+  tema: Tema.optional(),
   mensaje: opcional(600),
   musicaEnlace: opcional(500),
   dressCode: z.object({
@@ -77,7 +82,7 @@ export const Invitacion = Entrada.omit({ musicaEnlace: true, plantilla: true }).
   slug: z.string().regex(SLUG),
   creada: z.string(),
   actualizada: z.string(),
-  plantilla: PlantillaId,
+  plantilla: EstiloId,
   musica: Musica,
   /** Enlace a la canción tal como lo pegó la persona (para volver a mostrarlo en el formulario). */
   musicaEnlace: opcional(500),
