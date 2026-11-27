@@ -112,7 +112,7 @@ export function FormNuevo() {
       {!importa && (
         <fieldset className="space-y-2">
           <legend className="etiqueta">¿Qué tan real?</legend>
-          <div className="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="¿Qué tan real?">
+          <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="¿Qué tan real?">
             {Object.values(ESTILOS_GENERACION).map((d) => (
               <button key={d.id} type="button" role="radio" aria-checked={estilo === d.id} onClick={() => elegirEstilo(d.id)}
                 className={`tarjeta p-3 text-left ${estilo === d.id ? "ring-2 ring-cyan-600" : "hover:bg-white/5"}`}>
@@ -133,8 +133,8 @@ export function FormNuevo() {
               </button>
             ))}
           </div>
-          <PanelSetup setup={setup} preset={ESTILOS_GENERACION[estilo].setup} nombrePreset={ESTILOS_GENERACION[estilo].nombre} conAvatar={!!avatar} alCambiar={setSetup} />
-          <p className="text-xs text-tenue">{avatar ? "Con tu avatar de protagonista el video ya es video de verdad: esto sólo cambia el acabado (grano, viñeta) y no suma tiempo." : tiempoEstimado(setup)}</p>
+          {estilo !== "3d" && <PanelSetup setup={setup} preset={ESTILOS_GENERACION[estilo].setup} nombrePreset={ESTILOS_GENERACION[estilo].nombre} conAvatar={!!avatar} alCambiar={setSetup} />}
+          <p className="text-xs text-tenue">{estilo === "3d" ? `${tiempoEstimado("3d")} Necesita Blender (se instala con un clic en Sistema).` : avatar ? "Con tu avatar de protagonista el video ya es video de verdad: esto sólo cambia el acabado (grano, viñeta) y no suma tiempo." : tiempoEstimado(setup)}</p>
         </fieldset>
       )}
       <details className="tarjeta p-3">

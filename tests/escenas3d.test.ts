@@ -19,7 +19,7 @@ describe("Pedido3d", () => {
   });
   it("rechaza colores que no son #RRGGBB y duraciones fuera de rango", () => {
     expect(() => pedido({ colores: { ...colores, fondo: "red" } })).toThrow();
-    expect(() => pedido({ duracion: 60 })).toThrow();
+    expect(() => pedido({ duracion: 90 })).toThrow();
     expect(() => pedido({ archivo: "../../etc/passwd" })).toThrow();
   });
 });

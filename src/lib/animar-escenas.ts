@@ -18,6 +18,7 @@ import { EstiloGeneracion, ESTILOS_GENERACION } from "./estilos-generacion";
 import type { Proyecto } from "./esquema";
 import { escenasEnLinea } from "./linea";
 import { faltaCamara3d, generarCamara3dEscena } from "./camara3d";
+import { dirigir3d } from "./director3d";
 import { generarPlanoEscena, planearPlano, type ContextoPlano } from "./plano";
 import { versionDeProyecto } from "./render";
 import { dirProyecto } from "./rutas";
@@ -65,6 +66,14 @@ export interface AvanceEscenas {
 export async function animarEscenasDelVideo(ctx: ContextoPlano, proyectoId: string, slug: string, alEmpezar: (a: AvanceEscenas) => void | Promise<void>): Promise<{ estilo: EstiloGeneracion | null; hechas: number[] }> {
   const g = await leerEstiloGeneracion(slug);
   if (!g) return { estilo: null, hechas: [] };
+  // «Todo en 3D»: el director arma cada escena en Blender (director3d.ts).
+  if (g.estilo === "3d") {
+    if (await faltaCamara3d()) {
+      ctx.log("Sin Blender no se puede hacer «Todo en 3D»: las escenas quedan con sus imágenes (instálalo en Sistema).");
+      return { estilo: g.estilo, hechas: [] };
+    }
+    return { estilo: g.estilo, hechas: await dirigir3d(ctx, proyectoId, slug, alEmpezar) };
+  }
   const nombre = g.personalizado ? `${ESTILOS_GENERACION[g.estilo].nombre}, personalizado` : ESTILOS_GENERACION[g.estilo].nombre;
   let { p } = await versionDeProyecto(proyectoId);
   const conAcabado = conEstiloVideo(p, g.setup);

@@ -12,6 +12,11 @@
  *   (luz natural, piel con textura, cámara en mano leve) y un grano fino en todo el video, que esconde lo
  *   «demasiado limpio». LTX-2.3/2.5 no: su licencia no permite uso comercial sin revisarla.
  *
+ * - **Todo en 3D** (id `3d`, decisión del dueño 2026-11-27): el director de Geeper (director3d.ts) arma cada
+ *   escena en Blender con piezas probadas: un personaje que habla al abrir y al cerrar, gráficos con las
+ *   cifras del guion, títulos 3D sobre la imagen de la escena y la cámara 3D sobre las fotos. El modelo local
+ *   sólo elige pieza y frase. Su setup es el de «Rápido» (no anima con Wan) y no se personaliza.
+ *
  * Cada preset es un setup ya armado (setup-video.ts): modelo, fluidez, cámara y acabado. En «Nuevo» se
  * puede partir de uno y personalizarlo.
  *
@@ -26,7 +31,7 @@ import type { AjustesWan2gp } from "./wan2gp";
 
 export { NEGATIVO_REALISTA, PROMPT_REALISTA };
 
-export const EstiloGeneracion = z.enum(["rapido", "equilibrado", "real"]);
+export const EstiloGeneracion = z.enum(["rapido", "equilibrado", "real", "3d"]);
 export type EstiloGeneracion = z.infer<typeof EstiloGeneracion>;
 
 export interface DefinicionEstilo {
@@ -77,7 +82,7 @@ function preset(d: { id: EstiloGeneracion; nombre: string; descripcion: string; 
   };
 }
 
-export const ESTILOS_GENERACION: Record<EstiloGeneracion, DefinicionEstilo> = {
+export const ESTILOS_GENERACION = {
   rapido: preset({
     id: "rapido",
     nombre: "Rápido",
@@ -97,6 +102,21 @@ export const ESTILOS_GENERACION: Record<EstiloGeneracion, DefinicionEstilo> = {
     setup: { modelo: "i2v", fluidez: true, camara: { movimiento: "mano", look: "documental" }, desenfoqueMovimiento: true, grano: "fino", vineta: false, realista: true },
     recomendado: true,
   }),
+} as Record<EstiloGeneracion, DefinicionEstilo>;
+
+ESTILOS_GENERACION["3d"] = {
+  id: "3d",
+  nombre: "Todo en 3D",
+  descripcion: "Cada escena hecha en 3D, como una animación: un personaje que habla al abrir y al cerrar, gráficos con tus cifras y títulos en 3D sobre las imágenes.",
+  setup: ESTILOS_GENERACION.rapido.setup,
+  minutosPorEscena: 3,
+  medido: false,
+  animar: null,
+  pasos: [
+    ...BASE,
+    { paso: "Escenas 3D", workflow: "Blender: personaje, gráficos, títulos y cámara 3D" },
+    { paso: "Boca del personaje", workflow: "Rhubarb Lip Sync" },
+  ],
 };
 
 export const ESTILO_POR_DEFECTO: EstiloGeneracion = "rapido";
@@ -108,7 +128,8 @@ export function promptEstilo(estilo: EstiloGeneracion, base: string): { prompt: 
 
 /** Lo que tarda, dicho para el formulario («unos 45 minutos más», «estimado» si no se midió). */
 export function tiempoEstimado(estilo: EstiloGeneracion | SetupVideo, escenas = 6): string {
-  const t = minutosPorEscena(typeof estilo === "string" ? ESTILOS_GENERACION[estilo].setup : estilo);
+  const d = typeof estilo === "string" ? ESTILOS_GENERACION[estilo] : null;
+  const t = d?.id === "3d" ? { minutos: d.minutosPorEscena, medido: d.medido } : minutosPorEscena(d ? d.setup : (estilo as SetupVideo));
   if (t.minutos === null) return "Unos 3 minutos por tema.";
   const total = 3 + t.minutos * escenas;
   const texto = total >= 90 ? `unas ${Math.round(total / 60)} horas` : total >= 60 ? "una hora" : `unos ${Math.round(total / 5) * 5} minutos`;
@@ -122,6 +143,7 @@ export function tiempoEstimado(estilo: EstiloGeneracion | SetupVideo, escenas = 
  * acabado sólo lo que va encima del video (grano, viñeta).
  */
 export function pasosDe(estilo: EstiloGeneracion | SetupVideo, conAvatar: boolean): DefinicionEstilo["pasos"] {
+  if (estilo === "3d") return conAvatar ? [...ESTILOS_GENERACION["3d"].pasos, ...PASOS_AVATAR] : ESTILOS_GENERACION["3d"].pasos;
   const setup = typeof estilo === "string" ? ESTILOS_GENERACION[estilo].setup : estilo;
   if (!conAvatar) return [...BASE, ...pasosSetup(setup)];
   const encima = pasosSetup({ ...setup, modelo: "zoom", desenfoqueMovimiento: false }).filter((x) => x.paso === "Acabado");

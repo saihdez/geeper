@@ -23,7 +23,7 @@ export async function GET() {
       select: { id: true, estado: true, etapa: true, progreso: true, payload: true, proyectoId: true },
       orderBy: { creado: "asc" },
     });
-    const corridas = (await listarCorridas3d()).slice(0, 40).map((c) => ({ ...c, ...archivosCorrida3d(c) }));
+    const corridas = (await listarCorridas3d()).filter((c) => !c.deVideo).slice(0, 40).map((c) => ({ ...c, ...archivosCorrida3d(c) }));
     return json({
       blender: { listo: !!version, version, instalacion },
       describirConIa: llamaDisponible(),

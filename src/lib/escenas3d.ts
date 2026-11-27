@@ -43,7 +43,8 @@ export const Pedido3d = z.object({
   estilo_fondo: z.enum(ids(FONDOS_3D)).default("burbujas"),
   colores_logo: z.enum(ids(COLORES_LOGO)).default("originales"),
   formato: z.enum(ids(FORMATOS_3D)).default("9:16"),
-  duracion: z.number().min(DURACION_3D.min).max(DURACION_3D.max).default(DURACION_3D.porDefecto),
+  // La página ofrece hasta DURACION_3D.max; el director pide lo que dure la escena (hasta un minuto).
+  duracion: z.number().min(DURACION_3D.min).max(MAX_SEGUNDOS_PERSONAJE).default(DURACION_3D.porDefecto),
   calidad: z.enum(["rapida", "normal", "alta"]).default("normal"),
   /** Nombre del archivo subido (foto o logo) dentro de `entradas/`. */
   archivo: z.string().regex(/^[\w.-]+$/).nullable().default(null),
@@ -72,6 +73,8 @@ export const Corrida3d = z.object({
   pedido: Pedido3d,
   segundos: z.number().optional(),
   dispositivo: z.string().optional(),
+  /** Hecha por el director de «Todo en 3D» para este proyecto: no se muestra en «Tus escenas 3D». */
+  deVideo: z.string().optional(),
   error: z.string().optional(),
 });
 export type Corrida3d = z.infer<typeof Corrida3d>;
@@ -169,7 +172,7 @@ export async function borrarCorrida3d(id: string) {
 }
 
 /** Guarda el pedido (y la foto o logo) como corrida «preparada». El trabajo la renderiza. */
-export async function prepararCorrida3d(pedido: Pedido3d, archivo?: { nombre: string; datos: Buffer }, fondo?: { nombre: string; datos: Buffer }, voz?: { nombre: string; datos: Buffer }): Promise<Corrida3d> {
+export async function prepararCorrida3d(pedido: Pedido3d, archivo?: { nombre: string; datos: Buffer }, fondo?: { nombre: string; datos: Buffer }, voz?: { nombre: string; datos: Buffer }, op: { deVideo?: string } = {}): Promise<Corrida3d> {
   const id = nuevaCorrida3d(pedido.plantilla);
   const dir = dirCorrida3d(id);
   let p: Pedido3d = { ...pedido, archivo: null, archivo_fondo: null, archivo_voz: null };
@@ -187,7 +190,7 @@ export async function prepararCorrida3d(pedido: Pedido3d, archivo?: { nombre: st
     await fs.rm(dir, { recursive: true, force: true });
     throw new Error(falta);
   }
-  const c: Corrida3d = { id, titulo: tituloDe(p), creada: new Date().toISOString(), estado: "preparada", pedido: p };
+  const c: Corrida3d = { id, titulo: tituloDe(p), creada: new Date().toISOString(), estado: "preparada", pedido: p, ...(op.deVideo ? { deVideo: op.deVideo } : {}) };
   await escribirCorrida3d(c);
   return c;
 }
