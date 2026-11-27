@@ -28,6 +28,19 @@ export function charCount(s: string): number {
   return [...s].length;
 }
 
+/**
+ * Strips WebVTT/SRT formatting tags (`<i>`, `<font ...>`, `<c.class>`,
+ * `{\\an8}` ...) so they don't count as characters. Only tag-like
+ * sequences and `{\...}` override blocks are stripped, so plain text
+ * like `3 < 5` or `{name}` still counts. Only the counting ignores the
+ * tags; the cue text itself is unchanged.
+ */
+export function stripFormatting(s: string): string {
+  return s
+    .replace(/<\/?(?:[a-z][\w.-]*(?:\s[^<>]*)?|\d{1,2}:\d{2}(?::\d{2})?\.\d{3})>/gi, "")
+    .replace(/\{\\[^}]*\}/g, "");
+}
+
 export interface CueProblem {
   cue: Cue;
   lines: number;
@@ -45,9 +58,10 @@ export function reviewCues(cues: readonly Cue[], t: Targets) {
   const problems: CueProblem[] = [];
   for (const cue of cues) {
     const lines = cue.text.split("\n").map((l) => l.trim()).filter(Boolean);
-    const longestLine = Math.max(0, ...lines.map(charCount));
+    const counted = lines.map(stripFormatting);
+    const longestLine = Math.max(0, ...counted.map(charCount));
     const dur = cue.end - cue.start;
-    const cps = dur > 0 ? charCount(lines.join(" ")) / dur : Infinity;
+    const cps = dur > 0 ? charCount(counted.join(" ")) / dur : Infinity;
     worstLine = Math.max(worstLine, longestLine);
     worstLines = Math.max(worstLines, lines.length);
     worstCps = Math.max(worstCps, cps);

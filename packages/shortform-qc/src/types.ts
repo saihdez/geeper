@@ -1,5 +1,5 @@
 export type Format = "9:16" | "16:9" | "1:1";
-export type Platform = "tiktok" | "youtube" | "instagram" | "facebook";
+export type Platform = "tiktok" | "youtube" | "instagram" | "facebook" | "snapchat" | "pinterest";
 
 export interface Box {
   x: number;

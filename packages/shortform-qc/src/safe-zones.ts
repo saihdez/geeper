@@ -11,12 +11,24 @@ export const CANVAS: Record<Format, { width: number; height: number; safe: Box }
 /**
  * Share of a 9:16 frame each platform's UI covers (top, right, bottom, left). Adapted from
  * vincentsch/explainroo `src/project.js` (MIT). Facebook Reels uses the Instagram Reels layout.
+ * Snapchat Spotlight: Snap's ad specs recommend keeping 150px clear at the top and bottom
+ * (https://businesshelp.snapchat.com/s/article/commercial-specs). Spotlight's own UI covers more of
+ * the bottom and the right edge, so these margins are wider: 150px top / 360px bottom / 65px left /
+ * 162px right, measured from Spotlight templates by a third party
+ * (https://shotcraft.video/reference/platform-safe-zones/).
+ * Pinterest (vertical video Pins): 270px top / 790px bottom / 65px left / 195px right on 1080x1920,
+ * from Pinterest's organic Pin specs (https://help.pinterest.com/en/article/review-pin-specs).
+ * Pinterest's ad specs use a 440px bottom margin for Idea ads
+ * (https://help.pinterest.com/en/business/article/pinterest-product-specs); the organic value is
+ * used here because the other platforms in this table are organic layouts too.
  */
 export const PLATFORM_UI_9X16: Record<Platform, { top: number; right: number; bottom: number; left: number }> = {
   tiktok: { top: 0.125, right: 0.2, bottom: 0.34, left: 0.11 },
   youtube: { top: 0.15, right: 0.12, bottom: 0.35, left: 0.06 },
   instagram: { top: 0.14, right: 0.11, bottom: 0.35, left: 0.06 },
   facebook: { top: 0.14, right: 0.11, bottom: 0.35, left: 0.06 },
+  snapchat: { top: 0.078, right: 0.15, bottom: 0.188, left: 0.06 },
+  pinterest: { top: 0.141, right: 0.181, bottom: 0.411, left: 0.06 },
 };
 
 export function intersect(a: Box, b: Box): Box {

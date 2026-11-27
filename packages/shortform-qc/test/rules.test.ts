@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { commercialUse, evaluate, parseFreezes, parseRate, parseSrt, reviewCues, safeZone, DEFAULT_TARGETS, type Measurements } from "../src/index.js";
+import { commercialUse, evaluate, parseFreezes, parseRate, parseSrt, platformZone, reviewCues, safeZone, DEFAULT_TARGETS, type Measurements } from "../src/index.js";
 
 const good: Measurements = {
   loudness: { integrated: -14.2, truePeak: -1.4, lra: 6 },
@@ -120,6 +120,34 @@ three
     const cues = [{ start: 0, end: 1, text: "é".repeat(42) }];
     expect(reviewCues(cues, DEFAULT_TARGETS).worstLine).toBe(42);
   });
+
+  it("ignores WebVTT/SRT formatting tags when counting characters", () => {
+    const cues = [
+      { start: 0, end: 2, text: "<i>Hello</i>" },
+      { start: 0, end: 2, text: "{\\an8}Hello" },
+      { start: 0, end: 2, text: "<font color=\"#fff\">Hello</font> <c.red>world</c>" },
+    ];
+    const r = reviewCues(cues, DEFAULT_TARGETS);
+    expect(r.worstLine).toBe(11); // "Hello world" — the tags add no characters
+    expect(r.worstCps).toBeCloseTo(5.5, 2); // 11 chars over 2 s
+    expect(r.problems).toEqual([]);
+  });
+
+  it("keeps plain text with <, > and braces when counting characters", () => {
+    // `3 < 5` is not a tag and `{name}` is not an ASS override block.
+    const cues = [{ start: 0, end: 2, text: "3 < 5 and {name} said hi" }];
+    const r = reviewCues(cues, DEFAULT_TARGETS);
+    expect(r.worstLine).toBe(24);
+    expect(r.problems).toEqual([]);
+  });
+
+  it("does not flag a cue that only exceeds the limits because of its tags", () => {
+    // 40 visible characters plus `<i></i>`: 47 raw characters would exceed
+    // the 42 chars/line limit, but the tags are not visible text.
+    // 3 s keeps it under the 17 chars/s reading-speed limit (40 / 3 ≈ 13.3).
+    const cues = [{ start: 0, end: 3, text: "<i>" + "x".repeat(40) + "</i>" }];
+    expect(reviewCues(cues, DEFAULT_TARGETS).problems).toEqual([]);
+  });
 });
 
 describe("safe zones", () => {
@@ -129,6 +157,27 @@ describe("safe zones", () => {
     expect(z.x).toBe(119); // TikTok's left 11 %
     expect(z.y).toBe(288); // YouTube's top 15 %
     expect(z.x + z.w).toBeLessThanOrEqual(1080 * 0.8);
+  });
+
+  it("adds Snapchat Spotlight and Pinterest zones", () => {
+    // Snapchat: 150px top / 360px bottom, 65px left / 162px right on 1080x1920.
+    const snap = platformZone("snapchat");
+    expect(snap.x).toBeCloseTo(64.8, 2);
+    expect(snap.y).toBeCloseTo(149.76, 2);
+    expect(snap.w).toBeCloseTo(853.2, 2);
+    expect(snap.h).toBeCloseTo(1409.28, 2);
+    // Pinterest (organic video Pins): 270px top / 790px bottom, 65px left / 195px right.
+    const pin = platformZone("pinterest");
+    expect(pin.x).toBeCloseTo(64.8, 2);
+    expect(pin.y).toBeCloseTo(270.72, 2);
+    expect(pin.w).toBeCloseTo(819.72, 2);
+    expect(pin.h).toBeCloseTo(860.16, 2);
+  });
+
+  it("narrows 9:16 for Snapchat and Pinterest", () => {
+    expect(safeZone("9:16", ["snapchat"])).toEqual({ x: 65, y: 168, w: 853, h: 1162 });
+    expect(safeZone("9:16", ["pinterest"])).toEqual({ x: 65, y: 271, w: 819, h: 860 });
+    expect(safeZone("9:16", ["snapchat", "pinterest"])).toEqual({ x: 65, y: 271, w: 819, h: 860 });
   });
 
   it("ignores platforms outside 9:16", () => {
