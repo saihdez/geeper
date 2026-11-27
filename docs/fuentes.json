@@ -703,6 +703,28 @@
       "pruebas": [
         "tests/audio-libre.test.ts"
       ]
+    },
+    {
+      "id": "avnac-studio",
+      "repo": "striker561/Avnac-Studio",
+      "tipo": "commits",
+      "como": [
+        "codigo"
+      ],
+      "commit": "8db48f3",
+      "revisado": "2026-11-27",
+      "que": "Editor de diseño de escritorio (Wails + Go, GPL-3.0: sólo ideas, nunca código ni textos). Se tomó la idea de validar con medidas el diseño ya armado y de mirarlo chico: revisión de portadas (letra en vista chica, contraste medido alrededor del título, esquina de la duración, márgenes, veredicto), centro óptico, recorte con foco (la cara) y el método de crítica para el agente. Revisar frontend/src/lib/mcp/validate.ts e image-fit.ts y internal/skill/critique.",
+      "archivos": [
+        "src/lib/revisar-portada.ts",
+        "src/lib/portada.ts",
+        "src/components/panel-portada.tsx",
+        ".claude/agents/geeper-experto.md"
+      ],
+      "docs": "docs/HEREDADO.md#avnac-studio-striker561-gpl-30--revisión-2026-11-27-commit-8db48f3",
+      "pruebas": [
+        "tests/revisar-portada.test.ts",
+        "tests/portadas-color.test.ts"
+      ]
     }
   ]
 }

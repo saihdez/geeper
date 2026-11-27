@@ -5,9 +5,7 @@ import { correr } from "./proceso";
 import { apiViva } from "./mpt";
 import { CACHE_HF, FFMPEG, GPU_LOCK_BIN, GPU_LOCK_FILE, HYPERFRAMES_VERSION, MPT_API, PHOTOCRAFT_CLI, PHOTOCRAFT_VERSION, PYTHON_VOZ, RAIZ_REPO, ESTUDIO, VECTORCRAFT_CLI, VECTORCRAFT_VERSION, dirDatos } from "./rutas";
 import { correrHf } from "./hyperframes";
-import { existsSync } from "node:fs";
 import { ESCRITORIO, PYTHON_SISTEMA, SISTEMA } from "./plataforma";
-import { BLENDER_VERSION, binBlender, rutaHdri, versionBlender } from "./blender";
 import { MODELO_WHISPER } from "./voz";
 import { versionPhotocraft } from "./photocraft";
 import { versionVectorcraft } from "./vectorcraft";
@@ -26,6 +24,9 @@ import { juzgar, leerAjustes, salidaActual, verificarSalida } from "./redes/sali
 import { REDES_IDS } from "./redes/tipos";
 import { envModelos, PYTHON_CARAS } from "./caras";
 import { estadoModelos, faltaEnInstalacion, instalacionWan2gp, MODELOS_PLANO } from "./wan2gp";
+import { existsSync } from "node:fs";
+import { BLENDER_VERSION, binBlender, rutaHdri, versionBlender } from "./blender";
+import { LLAMA_MODELO, LLAMA_SERVER, llamaDisponible, nombreMotorLlama } from "./llama-local";
 
 export interface Chequeo {
   nombre: string;
@@ -130,6 +131,17 @@ export async function diagnosticar(): Promise<Chequeo[]> {
     })(),
     arreglo: faltaWan ? (ESCRITORIO ? "Sólo si quieres animar escenas: botón «Instalar con un clic» aquí abajo." : "Sólo si quieres animar escenas: botón «Instalar con un clic» aquí abajo (o pnpm tsx scripts/instalar-wan2gp.ts).") : undefined,
   });
+  // Texto local (títulos, ganchos, traducción): llama.cpp si está; si no, el Ollama de MPT (llama-local.ts).
+  if (!ESCRITORIO) {
+    const llama = llamaDisponible();
+    c.push({
+      nombre: "Texto local con llama.cpp (opcional)", ok: llama, aviso: true,
+      detalle: llama ? `${nombreMotorLlama()}; si falla, se usa Ollama`
+        : process.env.GEEPER_LLM === "ollama" ? "apagado con GEEPER_LLM=ollama: se usa Ollama"
+        : !existsSync(LLAMA_SERVER) ? "sin llama-server: se usa Ollama" : `falta ${LLAMA_MODELO}: se usa Ollama`,
+      arreglo: llama ? undefined : "Con Docker encendido: llama traer-de-ollama gemma4:26b (copia el modelo de Ollama, no baja nada).",
+    });
+  }
   const whisper = await existe(path.join(CACHE_HF, "whisper", "models", `ggml-${MODELO_WHISPER}.bin`));
   c.push({
     nombre: `whisper ${MODELO_WHISPER} (Hyperframes)`, ok: whisper, detalle: whisper ? "modelo en caché" : "falta el modelo",

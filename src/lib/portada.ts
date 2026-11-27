@@ -9,12 +9,13 @@ import path from "node:path";
 import { escribirAtomico, existe, sha256Texto } from "./archivos";
 import { textoSobre } from "./colores-marca";
 import { db } from "./db";
-import type { Formato, Proyecto } from "./esquema";
+import type { Asset, Formato, Proyecto } from "./esquema";
 import { escenasEnLinea } from "./linea";
 import { ffmpeg } from "./media";
-import { cli, componer, type Capa, type Paso, type Resultado } from "./photocraft";
+import { cli, componer, leerCapas, variablesDe, type Capa, type Paso, type Resultado } from "./photocraft";
 import { obtenerPlantilla, type DatosPlantilla } from "./plantillas";
 import { versionDeProyecto } from "./render";
+import { filtroRecorte, medirContrasteTitulo, revisarPortada, ZONA_RELOJ, type Caja, type RevisionPortada } from "./revisar-portada";
 import { dirDatos, dirProyecto, PHOTOCRAFT_VERSION } from "./rutas";
 import type { Propuesta } from "./titulos";
 
@@ -33,7 +34,7 @@ export const ESTILOS_PORTADA = {
 export type EstiloPortada = keyof typeof ESTILOS_PORTADA;
 
 /** Versión del diseño de las plantillas base: cambiarla regenera las bases guardadas. */
-const DISENO_BASE = 3;
+const DISENO_BASE = 4;
 
 /** Negro o blanco, lo que se lea mejor sobre un color `#rrggbb` (luminancia WCAG). */
 export function tintaSobre(hex: string): "#ffffff" | "#111111" {
@@ -64,6 +65,8 @@ export function pasosPlantillaBase(
   const titulo = f === "16:9" ? 84 : vertical ? 112 : 92;
   const marca = Math.round(titulo * 0.4);
   const pie = vertical ? Math.round(alto * 0.14) : 0; // en 9:16, por encima de los botones de la app
+  // En 16:9, YouTube pone la duración abajo a la derecha: el título no llega a esa esquina.
+  const reloj = f === "16:9" ? { y: Math.round(alto * ZONA_RELOJ.y) - 8, x: Math.round(ancho * ZONA_RELOJ.x) - 8 } : null;
   const fuente = { font: d.tipografia.titulos, weight: 800, size: titulo };
   const imagen: Paso[] = [
     { cmd: "file.placeEmbedded", params: { path: hueco } },
@@ -89,7 +92,7 @@ export function pasosPlantillaBase(
         ...imagen,
         // Oscurece toda la imagen por igual.
         { cmd: "layer.newFillLayer.gradient", params: { from: "#000000", to: "#000000", angle: 90, transparency: [[0, 55], [1, 55]] } },
-        { cmd: "type.create", params: { box: [m, Math.round((alto - cajaAlto) / 2), ancho - 2 * m, cajaAlto], text: "TÍTULO", name: "@titulo", ...fuente, color: d.colores.tinta, align: "center" } },
+        { cmd: "type.create", params: { box: [m, Math.round((alto - cajaAlto) / 2 - alto * 0.03), ancho - 2 * m, cajaAlto], text: "TÍTULO", name: "@titulo", ...fuente, color: d.colores.tinta, align: "center" } },
         marcaTexto(marcaLegible, "center"),
       ],
     };
@@ -106,13 +109,16 @@ export function pasosPlantillaBase(
         // Franja sólida del color de la marca: degradado con un corte duro.
         { cmd: "layer.newFillLayer.gradient", params: { from: d.colores.acento1, to: d.colores.acento1, angle: 90, transparency: [[0, 100], [banda, 100], [banda + 0.002, 0]] } },
         sombraArriba,
-        { cmd: "type.create", params: { box: [m, top + Math.round(m * 0.6), ancho - 2 * m, cajaAlto], text: "TÍTULO", name: "@titulo", ...fuente, color: tintaSobre(d.colores.acento1), align: "left" } },
+        { cmd: "type.create", params: { box: [m, top + Math.round(m * 0.6), (reloj ? reloj.x : ancho - m) - m, cajaAlto], text: "TÍTULO", name: "@titulo", ...fuente, color: tintaSobre(d.colores.acento1), align: "left" } },
         marcaTexto(d.colores.tinta, "left"),
       ],
     };
   }
-  const cajaAlto = Math.round(alto * (vertical ? 0.27 : 0.39));
-  const cajaY = alto - cajaAlto - (vertical ? pie : Math.round(m * 0.8));
+  const altoBase = Math.round(alto * (vertical ? 0.27 : 0.39));
+  const fondo = alto - (vertical ? pie : Math.round(m * 0.8));
+  const cajaY = fondo - altoBase;
+  // Misma altura de arranque; en 16:9 la caja termina antes de la esquina de la duración (2 líneas).
+  const cajaAlto = (reloj ? Math.min(fondo, reloj.y) : fondo) - cajaY;
   return {
     nuevo,
     pasos: [
@@ -149,13 +155,16 @@ export async function plantillaBase(slug: string, f: Formato, d: DatosPlantilla,
   return destino;
 }
 
-/** Recorta la imagen (al centro) a la proporción de un objeto inteligente, que si no la deformaría. */
-async function recortarA(ruta: string, capa: Capa, dir: string): Promise<string> {
+/**
+ * Recorta la imagen a la proporción de un objeto inteligente, que si no la deformaría: al centro, o en
+ * torno a la cara si el clip tiene una estable (así no queda cortada).
+ */
+async function recortarA(ruta: string, capa: Capa, dir: string, foco?: { x: number; y: number } | null): Promise<string> {
   if (!capa.limites) return ruta;
   const [, , w, h] = capa.limites;
   if (w <= 0 || h <= 0) return ruta;
   const salida = path.join(dir, `recorte-${capa.id}.png`);
-  await ffmpeg(["-v", "error", "-i", ruta, "-vf", `crop='min(iw,ih*${w}/${h})':'min(ih,iw*${h}/${w})'`, "-frames:v", "1", salida]);
+  await ffmpeg(["-v", "error", "-i", ruta, "-vf", filtroRecorte(w, h, foco), "-frames:v", "1", salida]);
   return salida;
 }
 
@@ -164,21 +173,30 @@ async function recortarA(ruta: string, capa: Capa, dir: string): Promise<string>
  * escena, no el render, que trae subtítulos y el chip de marca quemados. Si el clip es más corto que la
  * escena vuelve a empezar, como en el render.
  */
-export function origenDeFotograma(p: Proyecto, t: number): { ruta: string; tipo: "video" | "imagen"; segundo: number; escena: number } {
+export function origenDeFotograma(p: Proyecto, t: number): { ruta: string; tipo: "video" | "imagen"; segundo: number; escena: number; foco: { x: number; y: number } | null } {
   const escenas = escenasEnLinea(p);
   if (!escenas.length) throw new Error("El proyecto no tiene escenas");
   const e = escenas.find((x) => t >= x.inicio && t < x.inicio + x.duracion) ?? (t < escenas[0]!.inicio ? escenas[0]! : escenas.at(-1)!);
   const a = p.assets[e.visual.asset];
   if (!a || a.tipo === "audio") throw new Error(`La escena ${e.indice + 1} no tiene un asset visual`);
-  if (a.tipo === "imagen") return { ruta: a.ruta, tipo: "imagen", segundo: 0, escena: e.indice };
+  const foco = focoEstable(a.foco);
+  if (a.tipo === "imagen") return { ruta: a.ruta, tipo: "imagen", segundo: 0, escena: e.indice, foco };
   const dentro = Math.max(0, Math.min(t - e.inicio, e.duracion)) * (e.visual.velocidad ?? 1);
   const largo = Math.min(e.visual.rango.duracion, a.duracion ?? Infinity);
   const segundo = e.visual.rango.inicio + (largo > 0 && Number.isFinite(largo) ? dentro % largo : dentro);
-  return { ruta: a.ruta, tipo: "video", segundo: +segundo.toFixed(3), escena: e.indice };
+  return { ruta: a.ruta, tipo: "video", segundo: +segundo.toFixed(3), escena: e.indice, foco };
+}
+
+/**
+ * La cara sirve de foco del recorte si aparece en la mitad de las muestras o más y casi no se mueve
+ * (el foco es la mediana del clip: con una cara que va y viene, el fotograma elegido podría no tenerla).
+ */
+export function focoEstable(f: Asset["foco"]): { x: number; y: number } | null {
+  return f && f.cobertura >= 0.5 && f.dispersion <= 0.12 ? { x: f.x, y: f.y } : null;
 }
 
 /** Una imagen candidata por escena (la mitad de cada escena), para la galería (función pura). */
-export function imagenesPorEscena(p: Proyecto): { escena: number; t: number; ruta: string; tipo: "video" | "imagen"; segundo: number }[] {
+export function imagenesPorEscena(p: Proyecto): { escena: number; t: number; ruta: string; tipo: "video" | "imagen"; segundo: number; foco: { x: number; y: number } | null }[] {
   return escenasEnLinea(p).map((e) => {
     const t = +(e.inicio + e.duracion / 2).toFixed(3);
     return { ...origenDeFotograma(p, t), t };
@@ -198,6 +216,8 @@ export interface MetaPortada extends Resultado {
   version: number;
   motor: string;
   creada: string;
+  /** Revisión medida (letra en chico, contraste, esquina de la duración); falta en portadas viejas. */
+  revision?: RevisionPortada;
 }
 
 export interface EstadoPortada {
@@ -268,11 +288,13 @@ export async function crearOpciones(proyectoId: string, op: { titulos: string[];
     const imagen = elegida.tipo === "imagen" ? rutaOrigen : path.join(trabajo, "fotograma.png");
     if (elegida.tipo === "video") await ffmpeg(["-v", "error", "-ss", elegida.segundo.toFixed(3), "-i", rutaOrigen, "-frames:v", "1", imagen]);
 
+    const guia = await guiaRevision(plantilla, propia ? null : pasosPlantillaBase(formato, datos, "@imagen.png", estilo).pasos);
     const sello = Date.now().toString(36);
     const opciones: MetaPortada[] = [];
     for (const [i, titulo] of titulos.entries()) {
       const tmp = path.join(trabajo, `opcion-${i}.jpg`);
-      const r = await componer({ plantilla, valores: { titulo, imagen, marca: datos.marca.texto }, salida: tmp, prepararImagen: (ruta, capa) => recortarA(ruta, capa, trabajo) });
+      const r = await componer({ plantilla, valores: { titulo, imagen, marca: datos.marca.texto }, salida: tmp, prepararImagen: (ruta, capa) => recortarA(ruta, capa, trabajo, elegida.foco) });
+      const revision = await revisar(tmp, titulo, r, guia, formato);
       const salida = path.join(carpeta, "opciones", `opcion-${sello}-${i + 1}.jpg`);
       await fs.rename(tmp, salida);
       opciones.push({
@@ -287,6 +309,7 @@ export async function crearOpciones(proyectoId: string, op: { titulos: string[];
         version: numero,
         motor: `photocraft-cli ${PHOTOCRAFT_VERSION}`,
         creada: new Date().toISOString(),
+        revision,
       });
     }
     const antes = await leerPortada(fila.slug);
@@ -298,6 +321,45 @@ export async function crearOpciones(proyectoId: string, op: { titulos: string[];
   } finally {
     await fs.rm(trabajo, { recursive: true, force: true });
   }
+}
+
+interface GuiaRevision {
+  caja: Caja | null;
+  tamano: number | null;
+  /** Color del título (sólo en los diseños base; el de un PSD propio no se conoce). */
+  color: string | null;
+}
+
+/**
+ * Dónde está el título y de qué color, para revisar las opciones. En los diseños base sale de los pasos
+ * que los arman (la caja entera, no el contorno del texto de muestra); en un PSD propio, de su capa.
+ */
+async function guiaRevision(plantilla: string, pasosBase: Paso[] | null): Promise<GuiaRevision> {
+  const base = pasosBase?.find((p) => p.params.name === "@titulo")?.params;
+  if (base && Array.isArray(base.box) && base.box.length === 4) {
+    return { caja: base.box as Caja, tamano: typeof base.size === "number" ? base.size : null, color: typeof base.color === "string" ? base.color : null };
+  }
+  try {
+    const capa = variablesDe((await leerCapas(plantilla)).capas).get("titulo");
+    return { caja: capa?.limites ?? null, tamano: capa?.tamano ?? null, color: null };
+  } catch {
+    return { caja: null, tamano: null, color: null }; // sin medidas: la revisión sólo mira el texto
+  }
+}
+
+async function revisar(imagen: string, titulo: string, r: Resultado, g: GuiaRevision, f: Formato): Promise<RevisionPortada> {
+  const { ancho, alto } = medidasPortada(f);
+  const contraste = g.caja && g.color ? await medirContrasteTitulo(imagen, g.caja, g.color, ancho, alto) : null;
+  return revisarPortada({
+    formato: f,
+    ancho,
+    alto,
+    titulo,
+    caja: g.caja,
+    tamano: r.achicados.titulo ?? g.tamano,
+    contraste,
+    desborda: r.desbordan.includes("titulo"),
+  });
 }
 
 /** La opción `indice` pasa a ser la portada del proyecto (`portada/portada.jpg`). */

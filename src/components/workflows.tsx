@@ -435,6 +435,13 @@ function Resultados({ corridas, trabajos, cambio }: { corridas: CorridaV[]; trab
                     <Aviso tipo="error">{c.estado === "preparada" ? "Se cortó antes de terminar." : c.error?.split("\n")[0] ?? "No se pudo crear."}</Aviso>
                   )}
                   {c.trabajo && <Reintentar trabajo={c.trabajo} cambio={cambio} />}
+                  <button type="button" className="boton text-xs"
+                    onClick={async () => {
+                      await pedir(`/api/workflows/corridas/${encodeURIComponent(c.id)}`, { method: "DELETE" }).catch((e: Error) => alert(e.message));
+                      cambio();
+                    }}>
+                    Quitar
+                  </button>
                 </div>
               ) : (
                 <div className="space-y-2">

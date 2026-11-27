@@ -892,3 +892,33 @@ el programa, y Geeper es Apache-2.0. Lo que no es código sí sirve.
 - Quitar fondo en el navegador (u2netp/ISNet por rembg), el reescalado y las animaciones de entrada y
   salida: son código de Doory o ya existen en Geeper (segmentación, Hyperframes).
 - Las ~1600 medidas de `size_presets.json`: Geeper sólo entrega 9:16, 16:9 y 1:1.
+
+## Avnac Studio (striker561, GPL-3.0) — revisión 2026-11-27 (commit `8db48f3`)
+
+Versión de escritorio (Wails + Go, React) de Avnac, un editor de diseño para pósters, piezas de redes y
+documentos, con un servidor MCP para que un agente diseñe en el lienzo y una biblioteca de reglas de
+diseño (~130 fichas: jerarquía, color, tipografía, imprenta, logos…). **Licencia GPL-3.0 en todo el repo,
+también las fichas**: Geeper va a Apache-2.0, así que **no se copia código ni texto**; sólo se toman ideas,
+reescritas. Casi todo es de diseño estático e imprenta; a Geeper le sirve lo que toca a la **portada**.
+
+**Integrado**
+
+| Idea de Avnac | En Geeper |
+|---|---|
+| `canvas op=validate` (`frontend/src/lib/mcp/validate.ts`): cada aviso sale de una medida (márgenes, letra mínima, contraste, centrado) | **Revisión medida de portadas** (`src/lib/revisar-portada.ts`): cada opción sale con un veredicto (lista / se puede usar / conviene cambiarla) y avisos en palabras simples. Mide la letra del título **a lo más chico que se ve** (168 px de ancho en la columna de YouTube, 180 en el estante de Shorts, 130 en una cuadrícula: ≥ 10 px se lee, < 8 no), el **contraste del título contra los píxeles que lo rodean** en la imagen ya exportada (peor 10 % de un anillo de 2–10 px alrededor de las letras, así cuenta un pedazo de cielo claro detrás), si el título llega a la **esquina donde YouTube pone la duración**, los márgenes y más de 6 palabras. El contraste se mide en los diseños base (se conoce el color del título); en un PSD propio, sólo la caja |
+| Revisar el artefacto chico (sus `thumb-160/320/640.png`) | **«Así se ve en chico»**: cada opción se muestra también a ese ancho en el panel de portada |
+| Crítica: lo grave primero, siempre nombrar algo que funciona, veredicto accionable (`internal/skill/critique`) | En la revisión (`bien`) y en el agente `geeper-experto` (cómo criticar una portada) |
+| Centro óptico (`04-balance`: lo centrado se ve bajo) | Estilo «Título al centro»: la caja sube un 3 % del alto (`DISENO_BASE` 4 regenera las bases) |
+| Recorte con punto focal (`image-fit.ts`, `focalPoint`) | El recorte de la imagen de la portada sigue la cara de YuNet (`asset.foco`) si es estable (cobertura ≥ 0,5, dispersión ≤ 0,12), con la cara al 40 % del alto; si no, al centro como antes |
+| Zonas seguras | En 16:9, «Título abajo» y «Banda de color» ya no llegan a la esquina de la duración |
+
+**Descartado**
+
+- El motor Saraswati, los tableros vectoriales y el editor: Geeper compone portadas con PhotoCraft y el
+  video con su compilador; un segundo editor de lienzo no suma.
+- El servidor MCP dentro de la app (14 herramientas, token en el llavero): idea buena para más adelante
+  (que un agente arme portadas o escenas desde Claude Code), pero hoy el agente trabaja con la skill
+  `geeper` y `scripts/proponer.ts`, con el «sí» de la persona. Anotado como posible.
+- Unsplash, quitar fondos, fuentes de Google en vivo: necesitan red o ya los tenemos (`segmentar.ts`).
+- Las ~130 fichas de reglas: GPL, no se copian; las pocas que aplican a video ya están en nuestras reglas
+  (subtítulos, contraste, banda segura).

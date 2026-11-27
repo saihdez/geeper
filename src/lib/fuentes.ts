@@ -6,6 +6,7 @@
  * No graba directos en vivo (decisión DECISIONES.md §21): sólo VODs ya publicados o archivos propios.
  */
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -14,7 +15,7 @@ import { probar } from "./media";
 import { correr, type Registro } from "./proceso";
 import { SEPARADOR_DETALLE } from "./textos";
 import { ESCRITORIO, pythonDeVenv } from "./plataforma";
-import { dirDatos, VENV_CLIPS } from "./rutas";
+import { dirDatos, FFMPEG, VENV_CLIPS } from "./rutas";
 
 /** Python con OpenCV, numpy y yt-dlp para clips (venv propio, ver README). */
 export const PYTHON_CLIPS = process.env.GEEPER_PYTHON_CLIPS ?? pythonDeVenv(VENV_CLIPS);
@@ -133,8 +134,10 @@ function errorExplicado(simple: string, e: unknown): Error {
 
 async function ytdlp(args: string[], log?: Registro, signal?: AbortSignal) {
   const js = runtimeJsYtdlp();
+  // Para unir video y audio yt-dlp usa ffmpeg; en la app no está en el PATH, así que se le dice cuál.
+  const ff = existsSync(FFMPEG) ? ["--ffmpeg-location", path.dirname(FFMPEG)] : [];
   try {
-    return await correr(PYTHON_CLIPS, ["-I", "-m", "yt_dlp", "--no-warnings", "--no-progress", ...js.args, ...args], { log, signal, env: js.env });
+    return await correr(PYTHON_CLIPS, ["-I", "-m", "yt_dlp", "--no-warnings", "--no-progress", ...ff, ...js.args, ...args], { log, signal, env: js.env });
   } catch (e) {
     if (signal?.aborted) throw e; // cancelado: no hay nada que explicar
     throw errorExplicado(explicarFalloYtdlp(e instanceof Error ? e.message : String(e)), e);
@@ -216,7 +219,9 @@ export async function traerFuente(src: string, o: { maxMinutos?: number; log?: R
       o.log?.(`El VOD dura ${(info.duracion / 60).toFixed(0)} min: se bajan los primeros ${o.maxMinutos ?? 90} (usa --max-minutos para más)`);
     }
     await ytdlp([...args, info.url], o.log, o.signal);
-    await fs.rename(path.join(dir, ".fuente.mp4"), video);
+    const bajado = path.join(dir, ".fuente.mp4");
+    if (!(await existe(bajado))) throw new Error("Se bajó el video pero no se pudo unir con su audio (falta ffmpeg). Revisa Sistema y vuelve a intentarlo.");
+    await fs.rename(bajado, video);
   }
 
   // Chat de un directo ya terminado (YouTube): sirve como señal de momentos.

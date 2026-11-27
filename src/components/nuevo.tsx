@@ -43,6 +43,10 @@ export function Nuevo() {
           <span className="block text-sm font-medium">Desde un video largo →</span>
           <span className="block text-xs text-tenue">Saca clips de un directo, VOD o grabación.</span>
         </Link>
+        <Link href="/invitaciones/nueva" className="tarjeta p-3 hover:bg-white/5">
+          <span className="block text-sm font-medium">Invitación interactiva →</span>
+          <span className="block text-xs text-tenue">Boda, XV, cumpleaños: se abre como un sobre, con música y confirmación por WhatsApp.</span>
+        </Link>
       </div>
       {/* Los dos quedan montados (UX-42): cambiar de tarjeta no borra lo que ya se escribió. */}
       <div hidden={modo !== "tema"}><FormNuevo /></div>

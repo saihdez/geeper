@@ -15,12 +15,13 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     const { id } = await ctx.params;
     const fila = await db.proyecto.findUniqueOrThrow({ where: { id } });
     const estado = await leerPortada(fila.slug);
-    let escenas: { escena: number; miniatura: string }[] = [];
+    let escenas: { escena: number; miniatura: string; cara: boolean }[] = [];
     if (fila.versionActual >= 1) {
       const { p } = await versionDeProyecto(id);
       escenas = imagenesPorEscena(p).map((x) => ({
         escena: x.escena,
         miniatura: `/api/miniatura?p=${encodeURIComponent(fila.slug)}&ruta=${encodeURIComponent(x.ruta)}&t=${x.segundo.toFixed(1)}`,
+        cara: x.foco !== null,
       }));
     }
     const { datos } = await obtenerPlantilla(fila.plantilla);
