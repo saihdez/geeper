@@ -1,0 +1,93 @@
+/**
+ * Datos de una invitación interactiva (docs/INVITACIONES.md). `invitacion.json` es la fuente de verdad:
+ * la página, el .ics, la portada y el zip se rehacen desde aquí cada vez que algo cambia.
+ */
+import { z } from "zod";
+
+export const TIPOS = ["boda", "xv", "cumpleanos", "bautizo", "babyshower", "graduacion", "otro"] as const;
+export const PLANTILLAS = ["vino-oro", "jardin", "minimal"] as const;
+
+export const Tipo = z.enum(TIPOS);
+export const PlantillaId = z.enum(PLANTILLAS);
+export type Tipo = z.infer<typeof Tipo>;
+export type PlantillaId = z.infer<typeof PlantillaId>;
+
+export const SLUG = /^[a-z0-9][a-z0-9-]{2,80}$/;
+
+/** ¿Es una zona horaria que entiende el sistema (IANA)? */
+export function zonaValida(zona: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: zona });
+    return /\//.test(zona) || zona === "UTC";
+  } catch {
+    return false;
+  }
+}
+
+const texto = (max: number) => z.string().trim().max(max);
+const opcional = (max: number) => texto(max).optional().transform((v) => (v ? v : undefined));
+const httpsUrl = z.string().trim().max(2000).refine((v) => {
+  try {
+    return new URL(v).protocol === "https:";
+  } catch {
+    return false;
+  }
+}, "debe ser un enlace que empiece con https://");
+
+export const Musica = z.discriminatedUnion("tipo", [
+  z.object({ tipo: z.literal("ninguna") }),
+  z.object({ tipo: z.literal("spotify"), clase: z.enum(["track", "album", "playlist"]), id: z.string().regex(/^[A-Za-z0-9]{22}$/) }),
+  z.object({ tipo: z.literal("youtube"), id: z.string().regex(/^[A-Za-z0-9_-]{11}$/) }),
+  z.object({ tipo: z.literal("archivo"), archivo: z.literal("musica.mp3") }),
+]);
+export type Musica = z.infer<typeof Musica>;
+
+/** Lo que manda el formulario (la música llega como enlace y el servidor la convierte en `Musica`). */
+export const Entrada = z.object({
+  tipo: Tipo,
+  nombres: texto(80).min(1, "escribe los nombres"),
+  titulo: opcional(60),
+  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "fecha inválida"),
+  hora: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "hora inválida"),
+  duracionHoras: z.number().min(1).max(24).default(5),
+  zona: z.string().refine(zonaValida, "zona horaria desconocida"),
+  lugar: z.object({
+    nombre: texto(100).min(1, "escribe el nombre del lugar"),
+    direccion: opcional(200),
+    mapa: httpsUrl.optional().or(z.literal("").transform(() => undefined)),
+  }),
+  whatsapp: z.string().transform((v) => v.replace(/[\s()+.-]/g, "")).pipe(z.string().regex(/^\d{8,15}$/, "el WhatsApp debe tener sólo números, con el código de país (8 a 15 dígitos)")),
+  plantilla: PlantillaId.optional(),
+  mensaje: opcional(600),
+  musicaEnlace: opcional(500),
+  dressCode: z.object({
+    estilo: opcional(40),
+    colores: z.array(z.string().regex(/^#[0-9a-fA-F]{6}$/)).max(4).default([]),
+    evitar: opcional(120),
+  }).default({ estilo: undefined, colores: [], evitar: undefined }),
+  confirmarAntes: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal("").transform(() => undefined)),
+  pases: z.number().int().min(1).max(20).optional(),
+  regalos: opcional(300),
+  hashtag: opcional(40),
+});
+export type Entrada = z.input<typeof Entrada>;
+
+export const Invitacion = Entrada.omit({ musicaEnlace: true, plantilla: true }).extend({
+  version: z.literal(1),
+  slug: z.string().regex(SLUG),
+  creada: z.string(),
+  actualizada: z.string(),
+  plantilla: PlantillaId,
+  musica: Musica,
+  /** Enlace a la canción tal como lo pegó la persona (para volver a mostrarlo en el formulario). */
+  musicaEnlace: opcional(500),
+  foto: z.literal("foto.webp").optional(),
+  urlPublica: httpsUrl.optional(),
+});
+export type Invitacion = z.infer<typeof Invitacion>;
+
+/** «2026-12-15» ya pasó en esa zona horaria (se compara la fecha del evento con la de hoy allí). */
+export function fechaPasada(fecha: string, zona: string, ahora = new Date()): boolean {
+  const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: zona, year: "numeric", month: "2-digit", day: "2-digit" }).format(ahora);
+  return fecha < hoy;
+}

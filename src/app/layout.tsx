@@ -23,6 +23,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <Link href="/escenas-3d" className="text-tenue hover:text-white">Escenas 3D</Link>
             <Link href="/trabajos" className="text-tenue hover:text-white">Trabajos</Link>
             <Link href="/anuncios" className="text-tenue hover:text-white">Anuncios</Link>
+            <Link href="/invitaciones" className="text-tenue hover:text-white">Invitaciones</Link>
             <Link href="/plantillas" className="text-tenue hover:text-white">Plantillas</Link>
             <Link href="/media" className="text-tenue hover:text-white">Media</Link>
             <Link href="/cuentas" className="text-tenue hover:text-white">Cuentas</Link>
