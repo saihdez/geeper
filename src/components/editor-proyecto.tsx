@@ -12,6 +12,8 @@ import { PanelPortada } from "./panel-portada";
 import { InformeTraduccion, PanelTraducir, type InformeTraduccionV } from "./panel-traducir";
 import { ElegirVoz, type MotorVoz } from "./elegir-voz";
 import { PanelEfectosSonido } from "./panel-efectos-sonido";
+import { PanelCreditos } from "./panel-creditos";
+import { PanelMusica } from "./panel-musica";
 import { PanelPresentador } from "./panel-presentador";
 import { PanelRehacer } from "./panel-rehacer";
 import { PanelAvatarEscena, PanelAvatarVideo } from "./panel-avatar";
@@ -812,6 +814,7 @@ export function EditorProyecto({ id }: { id: string }) {
             <>
               <PanelEstilo estilo={v.extras.estilo} escenas={escenas} formato={p.formato} imgs={escenas.slice(0, 2).map((e) => miniatura(fila.slug, e))}
                 editar={editar} editarVarias={editarVarias} ocupado={ocupado} />
+              <PanelMusica proyectoId={id} ocupado={ocupado} alCambiar={() => void recargar()} />
               <PanelEfectosSonido proyectoId={id} escenas={escenas.map((e) => ({ numero: e.indice + 1, inicio: e.inicio }))} total={v.total} ocupado={ocupado} alCambiar={() => void recargar()} />
               <Plegable titulo="Más opciones" detalle="Para qué redes es, silencios y muletillas, música, textos en pantalla y superposiciones.">
                 <PanelAvanzado extras={v.extras} formato={p.formato} total={v.total} escenas={escenas.map((e) => ({ numero: e.indice + 1, inicio: e.inicio, duracion: e.duracion }))} editar={editar} alinearMusica={alinearMusica} subirLibre={subirLibre} ocupado={ocupado} slug={fila.slug} />
@@ -833,7 +836,10 @@ export function EditorProyecto({ id }: { id: string }) {
           <p className="min-w-0 flex-1 text-sm text-tenue">Cuando el video pase la revisión, aquí lo descargas y lo publicas.</p>
         </div>
         {render?.estado === "aprobado" ? (
-          <PanelPublicar proyectoId={id} render={render} nombre={fila.nombre} tema={v.extras?.clip?.descripcion || fila.tema} publicaciones={fila.publicaciones} alCambiar={() => void recargar()} />
+          <>
+            <PanelCreditos proyectoId={id} />
+            <PanelPublicar proyectoId={id} render={render} nombre={fila.nombre} tema={v.extras?.clip?.descripcion || fila.tema} publicaciones={fila.publicaciones} alCambiar={() => void recargar()} />
+          </>
         ) : fila.publicaciones.length > 0 && (
           <section className="tarjeta space-y-2 p-4">
             <h2 className="font-medium">Publicaciones de este proyecto</h2>

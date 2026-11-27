@@ -13,8 +13,9 @@ import path from "node:path";
 import { z } from "zod";
 import { describirAsset } from "./almacen";
 import { aplicarEdicion, registrarAsset } from "./ediciones";
-import { ANIMO_ES, ANIMOS, LICENCIA_LIBRE, PREFIJO_LIBRE } from "./animos-musica";
-import type { Proyecto } from "./esquema";
+import { ANIMO_ES, ANIMOS, animoSugerido, LICENCIA_LIBRE, PREFIJO_LIBRE, SIN_MUSICA } from "./animos-musica";
+import { validarProyecto, type Proyecto } from "./esquema";
+import { escenasEnLinea } from "./linea";
 import { RAIZ_REPO } from "./rutas";
 
 /**
@@ -24,7 +25,7 @@ import { RAIZ_REPO } from "./rutas";
 export const PISTA_EFECTOS = "efectos";
 export const VOLUMEN_EFECTO = 0.6;
 
-export { ANIMOS, LICENCIA_LIBRE, PREFIJO_LIBRE };
+export { ANIMOS, animoSugerido, LICENCIA_LIBRE, PREFIJO_LIBRE, SIN_MUSICA };
 export const DIR_AUDIO_LIBRE = process.env.GEEPER_AUDIO_LIBRE ?? path.join(RAIZ_REPO, "audio-libre");
 
 const Pista = z.object({
@@ -212,4 +213,96 @@ export async function agregarEfectoLibre(dir: string, p: Proyecto, s: SonidoLibr
     regenerar: { efecto: s.nombre, bibliotecaLibre: s.archivo, sha256: s.sha256 },
   });
   return aplicarEdicion(registrarAsset(p, asset), { tipo: "agregarClipLibre", pista: PISTA_EFECTOS, asset: id, inicio: Math.max(0, inicio), desde: 0, volumen: VOLUMEN_EFECTO });
+}
+
+/** Volumen de la música si el proyecto no tenía (el de los estilos va de 0,12 a 0,16). */
+export const VOLUMEN_MUSICA = 0.15;
+
+/** La canción libre que suena en el proyecto, si es una de audio-libre/. */
+export function musicaLibreActual(p: Proyecto): SonidoLibre | null {
+  const a = p.assets.musica;
+  const id = a?.regenerar?.musicaLibre;
+  if (typeof id === "string") return sonidoLibre(id) ?? null;
+  return sonidosLibres().find((s) => s.tipo === "musica" && s.sha256 === a?.hash) ?? null;
+}
+
+/** Sin la música ni sus pulsos (marcadores de la canción anterior). No guarda. */
+export function quitarMusica(original: Proyecto): Proyecto {
+  const p = structuredClone(original);
+  p.pistas = p.pistas.filter((x) => x.id !== "musica");
+  delete p.assets.musica;
+  p.marcadores = p.marcadores.filter((m) => m.tipo !== "pulso");
+  return validarProyecto(p);
+}
+
+/**
+ * Pone una canción libre como música del video (en lugar de la que hubiera), desde el principio y con el
+ * volumen que ya tenía la música. No guarda.
+ */
+export async function ponerMusicaLibre(dir: string, original: Proyecto, s: SonidoLibre): Promise<Proyecto> {
+  if (s.tipo !== "musica") throw new Error("Eso es un efecto de sonido, no una canción.");
+  const volumen = original.pistas.find((x) => x.id === "musica")?.clips[0]?.volumen ?? VOLUMEN_MUSICA;
+  const ruta = `assets/musica-${s.id}.ogg`;
+  await fs.mkdir(path.join(dir, "assets"), { recursive: true });
+  await fs.copyFile(rutaSonidoLibre(s), path.join(dir, ruta));
+  const asset = await describirAsset(dir, ruta, {
+    id: "musica",
+    tipo: "audio",
+    source: "archivo",
+    licencia: LICENCIA_LIBRE,
+    regenerar: { musicaLibre: s.id, titulo: s.nombre, bibliotecaLibre: s.archivo, sha256: s.sha256 },
+  });
+  const p = structuredClone(quitarMusica(original));
+  p.assets.musica = asset;
+  p.pistas.push({ id: "musica", tipo: "audio", clips: [{ id: "musica-1", asset: "musica", rango: { inicio: 0, duracion: asset.duracion ?? s.segundos }, volumen }] });
+  return validarProyecto(p);
+}
+
+/** Pista de los sonidos que pone «Poner sonidos solos»: se quitan juntos, sin tocar los elegidos a mano. */
+export const PISTA_SONIDOS_SOLOS = "efectos-auto";
+/** Un whoosh suave en cada cambio de escena (un poco antes, para que el corte caiga en su centro). */
+export const SONIDO_CAMBIO = { id: "whoosh-soft", antes: 0.25, volumen: 0.4 };
+/** Un pop pequeño cuando aparece un texto en pantalla. */
+export const SONIDO_TEXTO = { id: "pop-small", antes: 0, volumen: 0.5 };
+
+/** Cuándo suena cada sonido solo: los cambios de escena y los textos en pantalla, sin repetir el mismo instante. */
+export function momentosSonidosSolos(p: Proyecto): { id: string; inicio: number; volumen: number }[] {
+  let cambios: number[] = [];
+  try {
+    cambios = escenasEnLinea(p).slice(1).map((e) => e.inicio);
+  } catch {
+    // Un clip de un video largo puede no tener escenas: sólo los textos.
+  }
+  const out = [
+    ...cambios.map((t) => ({ id: SONIDO_CAMBIO.id, inicio: Math.max(0, t - SONIDO_CAMBIO.antes), volumen: SONIDO_CAMBIO.volumen })),
+    ...p.textos.map((x) => ({ id: SONIDO_TEXTO.id, inicio: Math.max(0, x.inicio - SONIDO_TEXTO.antes), volumen: SONIDO_TEXTO.volumen })),
+  ].sort((a, b) => a.inicio - b.inicio);
+  // Dos sonidos a menos de medio segundo se pisan: queda el primero (se compara con el último que quedó).
+  const quedan: typeof out = [];
+  for (const m of out) if (!quedan.length || m.inicio - quedan[quedan.length - 1]!.inicio >= 0.5) quedan.push(m);
+  return quedan;
+}
+
+/** Sin los sonidos que puso «Poner sonidos solos». No guarda. */
+export function quitarSonidosSolos(original: Proyecto): Proyecto {
+  const p = structuredClone(original);
+  p.pistas = p.pistas.filter((x) => x.id !== PISTA_SONIDOS_SOLOS);
+  return validarProyecto(p);
+}
+
+/** Pone (o vuelve a poner) los sonidos solos. Devuelve el proyecto y cuántos puso. No guarda. */
+export async function ponerSonidosSolos(dir: string, original: Proyecto): Promise<{ p: Proyecto; puestos: number }> {
+  let p = quitarSonidosSolos(original);
+  const momentos = momentosSonidosSolos(p);
+  await fs.mkdir(path.join(dir, "assets"), { recursive: true });
+  for (const id of new Set(momentos.map((m) => m.id))) {
+    const s = sonidoLibre(id);
+    if (!s) throw new Error(`Falta el sonido libre «${id}» (audio-libre/).`);
+    const asset = `libre-${s.id}`;
+    const ruta = `assets/${asset}.ogg`;
+    await fs.copyFile(rutaSonidoLibre(s), path.join(dir, ruta));
+    p = registrarAsset(p, await describirAsset(dir, ruta, { id: asset, tipo: "audio", source: "archivo", licencia: LICENCIA_LIBRE, regenerar: { efecto: s.nombre, bibliotecaLibre: s.archivo, sha256: s.sha256 } }));
+  }
+  for (const m of momentos) p = aplicarEdicion(p, { tipo: "agregarClipLibre", pista: PISTA_SONIDOS_SOLOS, asset: `libre-${m.id}`, inicio: m.inicio, desde: 0, volumen: m.volumen });
+  return { p, puestos: momentos.length };
 }

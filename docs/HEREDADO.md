@@ -31,6 +31,7 @@ Las rutas son dentro de cada repo. Todo lo listado es local y gratis salvo que d
    comprobar primero que 0.9.27 lo soporta.
 6. **Zonas seguras por plataforma** (explainroo `src/project.js:33-35`, fracciones arriba/der/abajo/izq):
    TikTok .125/.20/.34/.11 · Shorts .15/.12/.35/.06 · Reels .14/.11/.35/.06. Hoy usamos una banda única.
+   (2026-11-27: Shorts pasó a la guía oficial de YouTube, ver «Doory».)
 
 ## Para los clips de directos (Kick/Twitch)
 
@@ -837,20 +838,16 @@ el programa, y Geeper es Apache-2.0. Lo que no es código sí sirve.
 | 24 pistas de música (8 ánimos) y 88 efectos de sonido, CC0, sintetizados | `backend/data/audio/`, `audio_library.json` | `audio-libre/` (7 MB, va en el instalador). Ver `audio-libre/LEEME.md` |
 | Efectos al instante, sin tarjeta de video | lo anterior | Panel «Efectos de sonido»: «Listos al instante», con 7 grupos y para escuchar antes de elegir. Antes, un whoosh o un pop pedía MOSS (14,5 GB de VRAM) |
 | Música con licencia clara en los estilos | lo anterior | «¿Qué música?» en el editor de estilos: `musica.carpeta = "libre:<ánimo>"` (`src/lib/audio-libre.ts`). El QC comercial la deja pasar (CC0) |
+| Música por video, escuchando | lo anterior | Panel «Música» del proyecto: el ánimo que sugiere el tema viene marcado, se escuchan las canciones y «Usar esta» o «Quitar la música», al instante |
+| Ningún video mudo por error | lo anterior | Si el estilo no tiene música o su carpeta no existe (Windows), `elegirMusica` usa música libre con el ánimo del tema (`animoSugerido`). «Sin música» a propósito: `musica.carpeta = "ninguna"` |
+| «Poner sonidos solos» | lo anterior | Un clic: whoosh suave en cada cambio de escena y pop en cada texto, en la pista `efectos-auto`; «Quitar los automáticos» no toca los elegidos a mano |
+| Créditos al publicar | idea de Doory (créditos de Freesound CC BY); código propio | `src/lib/creditos.ts` + panel «Créditos» en el paso 4: dice si hace falta dar crédito y da el texto; al publicar desde Geeper va solo en la descripción. Lo de licencia desconocida o no comercial sale como aviso |
+| Zonas seguras de YouTube Shorts | PDF oficial que cita `size_presets.json` (verificado: 288/192/672/48 px en 1080×1920) | `ZONAS_9X16.youtube` pasa de .15/.12/.35/.06 a .15/.178/.35/.044 |
+| Varios videos desde una tabla | idea de `bulk_fill`; código propio | En «Nuevo»: pegar filas de Excel/Sheets o subir un .csv (Tema, Título, Guion, Final), con vista previa y ejemplo para descargar. `src/lib/tabla-videos.ts`; la frase final va en `pedido.json` y el importador la pone en `p.cta` |
 
-### Útil, sin hacer
+### Pendiente
 
-- **Zonas seguras 9:16 con fuente oficial.** `size_presets.json` (meta `safe_zone`) cita la
-  [guía de zonas seguras de YouTube](https://services.google.com/fh/files/misc/universalsafezones-youtube.pdf)
-  para Shorts: arriba .15, derecha .18, abajo .35, izquierda .04. Nosotros usamos .15/.12/.35/.06
-  (explainroo). Para TikTok da derecha .28 (nosotros .20), pero sale de una guía de anuncios de terceros
-  (AdKit) y achicaría mucho los subtítulos. Los números son datos, no código: se pueden usar citando la
-  fuente. Antes de cambiarlos, revisar el PDF y medir el ancho que les queda a los subtítulos.
-- **Llenar un estilo por campos, en lote** (`fill_design`/`bulk_fill`: una fila de CSV, un diseño nuevo).
-  En Geeper sería un video por fila (tema, título, CTA) con el mismo estilo. Es sólo la idea.
-- **Créditos para publicar.** Doory sólo ofrece sonidos de Freesound CC0 o CC BY, y para los CC BY arma
-  las líneas de crédito que hay que poner al publicar. Geeper podría hacer lo mismo en «Publicar» a partir
-  de `Asset.licencia`.
+- TikTok: Doory da derecha .28 (nosotros .20), pero de una guía de anuncios de terceros (AdKit). Sin fuente oficial, no se cambió.
 
 ### Descartado
 

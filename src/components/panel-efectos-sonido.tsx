@@ -29,6 +29,7 @@ export function PanelEfectosSonido({ proyectoId, escenas, total, ocupado, alCamb
   alCambiar: () => void;
 }) {
   const { datos } = useSondeo<Datos>("/api/efectos", 30_000);
+  const solos = useSondeo<{ puestos: number; posibles: number }>(`/api/proyectos/${proyectoId}/sonidos-solos`, 60_000);
   const [eleccion, setEleccion] = useState<Eleccion | null>(null);
   const [grupo, setGrupo] = useState("transicion");
   const [descripcion, setDescripcion] = useState("");
@@ -60,6 +61,21 @@ export function PanelEfectosSonido({ proyectoId, escenas, total, ocupado, alCamb
     }
   }
 
+  async function sonidosSolos(quitar: boolean) {
+    setEnviando(true);
+    setMsg(null);
+    try {
+      const r = await postJson<{ puestos: number }>(`/api/proyectos/${proyectoId}/sonidos-solos`, { quitar });
+      setMsg({ tipo: "ok", texto: quitar ? "Listo: quité los sonidos automáticos. Los que elegiste a mano siguen." : `Listo: puse ${r.puestos} sonidos. Escúchalo en «En vivo».` });
+      await solos.recargar();
+      alCambiar();
+    } catch (e) {
+      setMsg({ tipo: "error", texto: (e as Error).message });
+    } finally {
+      setEnviando(false);
+    }
+  }
+
   const chip = (activo: boolean, texto: string, onClick: () => void, key: string) => (
     <button key={key} type="button" onClick={onClick} aria-pressed={activo}
       className={`rounded-full border px-3 py-1 text-sm ${activo ? "border-sky-500 bg-sky-950/40" : "border-borde hover:bg-white/5"}`}>{texto}</button>
@@ -76,8 +92,22 @@ export function PanelEfectosSonido({ proyectoId, escenas, total, ocupado, alCamb
         <p className="text-sm text-tenue">Un whoosh al cambiar de escena, un golpe cuando aparece un título, olas de fondo… Se suman a la voz y la música.</p>
       </div>
 
+      {datos && datos.libres.length > 0 && solos.datos && (solos.datos.posibles > 0 || solos.datos.puestos > 0) && (
+        <div className="space-y-2 rounded-lg border border-borde p-3">
+          <p className="text-sm"><strong>Lo más fácil:</strong> un whoosh suave en cada cambio de escena y un pop cuando aparece un texto.
+            {solos.datos.puestos > 0 ? ` Ya hay ${solos.datos.puestos} puestos así.` : ` Serían ${solos.datos.posibles}.`}</p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="boton boton-primario" disabled={ocupado || enviando} onClick={() => void sonidosSolos(false)}>
+              {solos.datos.puestos > 0 ? "Ponerlos de nuevo" : "Poner sonidos solos"}
+            </button>
+            {solos.datos.puestos > 0 && <button type="button" className="boton" disabled={ocupado || enviando} onClick={() => void sonidosSolos(true)}>Quitar los automáticos</button>}
+          </div>
+          <p className="text-xs text-tenue">Al instante, sin tarjeta de video. Quitarlos no toca los que elijas abajo.</p>
+        </div>
+      )}
+
       <div className="space-y-2">
-        <p className="etiqueta">1. ¿Qué sonido?</p>
+        <p className="etiqueta">{datos && datos.libres.length > 0 ? "O elige uno por uno — 1. ¿Qué sonido?" : "1. ¿Qué sonido?"}</p>
         {datos && datos.libres.length > 0 && (
           <div className="space-y-2">
             <label className="flex flex-wrap items-center gap-2 text-xs text-tenue" htmlFor="grupo-libre">

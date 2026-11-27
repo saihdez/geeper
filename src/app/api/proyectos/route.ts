@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { Formato } from "@/lib/esquema";
 import { json, manejar } from "@/lib/http";
 import { crearLote, crearProyecto, importarTareaMpt } from "@/lib/servicios";
+import { MAX_CTA, MAX_FILAS } from "@/lib/tabla-videos";
 
 export const dynamic = "force-dynamic";
 
@@ -23,8 +24,17 @@ export async function GET() {
   return json({ proyectos });
 }
 
+const Fila = z.object({
+  tema: z.string().trim().min(1),
+  titulo: z.string().trim().max(120).optional(),
+  guion: z.string().trim().max(5000).optional(),
+  cta: z.string().trim().max(MAX_CTA).optional(),
+});
+
 const Pedido = z.object({
   temas: z.string().min(1, "Escribe al menos un tema"),
+  /** Varios videos desde una tabla (tabla-videos.ts): uno por fila, con título, guion y frase final. */
+  filas: z.array(Fila).min(1).max(MAX_FILAS).optional(),
   formato: Formato,
   plantilla: z.string().min(1),
   nombreLote: z.string().optional(),
@@ -42,6 +52,15 @@ export async function POST(req: Request) {
   return manejar(async () => {
     const d = Pedido.parse(await req.json());
     const temas = d.temas.split("\n").map((t) => t.trim()).filter(Boolean);
+    if (d.filas && !d.mptTaskId?.trim()) {
+      const limpias = d.filas.map((f) => ({ tema: f.tema, titulo: f.titulo || undefined, guion: f.guion || undefined, cta: f.cta || undefined }));
+      if (limpias.length === 1) {
+        const f = limpias[0]!;
+        return json({ proyectos: [await crearProyecto({ tema: f.tema, nombre: f.titulo, guion: f.guion, cta: f.cta, formato: d.formato, plantilla: d.plantilla, avatar: d.avatar, estilo: d.estilo, cuerpo: d.cuerpo })] }, 201);
+      }
+      const r = await crearLote(limpias, d.formato, d.plantilla, d.nombreLote, d.avatar, d.estilo, d.cuerpo);
+      return json({ lote: r.lote, proyectos: r.proyectos }, 201);
+    }
     if (d.mptTaskId?.trim()) {
       const p = await importarTareaMpt(d.mptTaskId.trim(), { tema: temas[0]!, formato: d.formato, plantilla: d.plantilla }, d.rehacerVoz);
       return json({ proyectos: [p] }, 201);

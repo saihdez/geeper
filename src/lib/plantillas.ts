@@ -43,7 +43,11 @@ export const DatosPlantilla = z.object({
   musica: z.object({
     volumen: z.number().min(0).max(1),
     ducking: z.boolean(),
-    /** Carpeta con pistas de música (se elige una por proyecto, de forma estable). null = sin música. */
+    /**
+     * Carpeta con pistas de música (se elige una por proyecto, de forma estable), «libre:<ánimo>» para la
+     * música libre (audio-libre/) o «ninguna» para un estilo sin música. null = Geeper elige música libre
+     * según el tema (importador.ts, elegirMusica).
+     */
     carpeta: z.string().nullable(),
     /** Licencia de esa música: se copia a cada asset y el QC avisa si no está verificada. */
     licencia: z.string(),

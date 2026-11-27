@@ -5,6 +5,8 @@ import { SugerenciasBusqueda, cambiarUltimaLinea, ultimaLinea } from "./sugerenc
 import { Aviso, AvisoTarjeta, FALTA_GUARDAR, LineaFalta, postJson, useGuardeAntes, useSondeo } from "./comun";
 import { ESTILOS_GENERACION, tiempoEstimado, type EstiloGeneracion } from "@/lib/estilos-generacion";
 import { FORMAS } from "@/lib/glosario";
+import { leerTabla, pareceTabla } from "@/lib/tabla-videos";
+import { TablaVideos } from "./tabla-videos";
 
 interface Plantilla {
   slug: string;
@@ -27,6 +29,9 @@ export function FormNuevo() {
   const router = useRouter();
   const { datos } = useSondeo<{ plantillas: Plantilla[] }>("/api/plantillas", 60_000);
   const [temas, setTemas] = useState("");
+  // Varios videos desde una tabla (tabla-videos.ts): si hay tabla, manda ella.
+  const [tabla, setTabla] = useState("");
+  const [verTabla, setVerTabla] = useState(false);
   const [formato, setFormato] = useState("9:16");
   const [plantilla, setPlantilla] = useState("gta-vi-shorts");
   const [mptTaskId, setMpt] = useState("");
@@ -40,8 +45,9 @@ export function FormNuevo() {
   const [cuerpo, setCuerpo] = useState<"medio" | "completo">("medio");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const lista = temas.split("\n").map((t) => t.trim()).filter(Boolean);
   const importa = mptTaskId.trim().length > 0;
+  const filas = tabla.trim() && !importa ? leerTabla(tabla).filas : [];
+  const lista = filas.length ? filas.map((f) => f.tema) : temas.split("\n").map((t) => t.trim()).filter(Boolean);
   const codigoMal = importa && !CODIGO_MPT.test(mptTaskId.trim());
   const necesitaGpu = !importa;
   const faltan = [...faltaNuevo({ temas: lista.length, necesitaGpu, aceptoGpu: guarde.guardado }), ...(codigoMal ? ["un código de video completo"] : [])];
@@ -51,7 +57,7 @@ export function FormNuevo() {
     setEnviando(true);
     setError(null);
     try {
-      const r = await postJson<{ proyectos: { id: string }[] }>("/api/proyectos", { temas, formato, plantilla, mptTaskId: mptTaskId.trim() || undefined, rehacerVoz, avatar: !importa && avatar ? avatar : undefined, estilo: importa ? undefined : estilo, cuerpo: !importa && avatar ? cuerpo : undefined });
+      const r = await postJson<{ proyectos: { id: string }[] }>("/api/proyectos", { temas: filas.length ? lista.join("\n") : temas, filas: filas.length ? filas : undefined, formato, plantilla, mptTaskId: mptTaskId.trim() || undefined, rehacerVoz, avatar: !importa && avatar ? avatar : undefined, estilo: importa ? undefined : estilo, cuerpo: !importa && avatar ? cuerpo : undefined });
       router.push(r.proyectos.length === 1 ? `/proyectos/${r.proyectos[0]!.id}` : "/");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -63,10 +69,27 @@ export function FormNuevo() {
     <form onSubmit={enviar} className="space-y-5">
       <div>
         <label className="etiqueta" htmlFor="temas">Tema (uno por línea: cada línea es un video)</label>
-        <textarea id="temas" className="campo min-h-36 font-mono" value={temas} onChange={(e) => setTemas(e.target.value)}
-          placeholder={"Por qué los faros siguen siendo importantes\nFaros que se convirtieron en hoteles"} required />
+        {filas.length > 0 ? (
+          <p className="campo text-sm text-tenue">Los temas salen de la tabla de abajo ({filas.length === 1 ? "1 video" : `${filas.length} videos`}).</p>
+        ) : (
+          <textarea id="temas" className="campo min-h-36 font-mono" value={temas}
+            onChange={(e) => {
+              // Una tabla pegada aquí (con tabuladores, desde Excel o Sheets) va a la tabla.
+              if (pareceTabla(e.target.value) && e.target.value.includes("\n")) {
+                setTabla(e.target.value);
+                setVerTabla(true);
+              } else setTemas(e.target.value);
+            }}
+            placeholder={"Por qué los faros siguen siendo importantes\nFaros que se convirtieron en hoteles"} required={!filas.length} />
+        )}
         <p className="mt-1 text-xs text-tenue">{lista.length === 0 ? "Sin temas todavía" : lista.length === 1 ? "1 video" : `${lista.length} videos (si se corta, se retoma sin repetir los terminados)`}</p>
-        <SugerenciasBusqueda consulta={ultimaLinea(temas)} alElegir={(s) => setTemas(cambiarUltimaLinea(temas, s))} texto="Toca una para usarla como tema." />
+        {!filas.length && <SugerenciasBusqueda consulta={ultimaLinea(temas)} alElegir={(s) => setTemas(cambiarUltimaLinea(temas, s))} texto="Toca una para usarla como tema." />}
+        {!importa && (
+          <details className="mt-2 rounded-lg border border-borde p-3" open={verTabla || !!tabla} onToggle={(e) => setVerTabla((e.target as HTMLDetailsElement).open)}>
+            <summary className="cursor-pointer text-sm font-medium">¿Muchos videos con su propio título o guion? Úsalos desde una tabla (Excel o Google Sheets)</summary>
+            <div className="mt-2"><TablaVideos texto={tabla} alCambiar={setTabla} /></div>
+          </details>
+        )}
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <fieldset>

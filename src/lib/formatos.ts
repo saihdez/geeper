@@ -51,12 +51,15 @@ const M: Record<Formato, Metricas> = {
 
 /**
  * Lo que tapa la interfaz de cada plataforma en 9:16, en fracciones del cuadro (arriba, derecha, abajo,
- * izquierda). Fuente: vincentsch/explainroo `src/project.js:33-35` (MIT), ver HEREDADO.md. Facebook usa
- * la misma interfaz de Reels que Instagram.
+ * izquierda). YouTube: la guía oficial «Universal Video Ad Safe Zones»
+ * (services.google.com/fh/files/misc/universalsafezones-youtube.pdf, ejemplo vertical en 1080×1920:
+ * 288 px arriba, 192 a la derecha, 672 abajo, 48 a la izquierda; la misma zona vale para Shorts, que tienen
+ * la misma interfaz). Las demás: vincentsch/explainroo `src/project.js:33-35` (MIT), ver HEREDADO.md.
+ * Facebook usa la misma interfaz de Reels que Instagram.
  */
 export const ZONAS_9X16: Record<Plataforma, { arriba: number; derecha: number; abajo: number; izquierda: number }> = {
   tiktok: { arriba: 0.125, derecha: 0.2, abajo: 0.34, izquierda: 0.11 },
-  youtube: { arriba: 0.15, derecha: 0.12, abajo: 0.35, izquierda: 0.06 },
+  youtube: { arriba: 288 / 1920, derecha: 192 / 1080, abajo: 672 / 1920, izquierda: 48 / 1080 },
   instagram: { arriba: 0.14, derecha: 0.11, abajo: 0.35, izquierda: 0.06 },
   facebook: { arriba: 0.14, derecha: 0.11, abajo: 0.35, izquierda: 0.06 },
 };

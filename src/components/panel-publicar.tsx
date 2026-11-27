@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { AVISO_DESPERTANDO, Aviso, Estado, archivo, fecha, postJson, useSondeo } from "./comun";
 import { textoVpn, type CuentaInfo, type DatosCuentas, type RedInfo } from "./cuentas";
+import { textoCreditos, type DatosCreditos } from "./panel-creditos";
 import { nombreForma } from "@/lib/glosario";
 import { arreglar, bloquea, LIMITES, revisarTexto, type Problema, type TextoPublicacion } from "@/lib/redes/revision-texto";
 
@@ -209,6 +210,7 @@ export function PanelPublicar({ proyectoId, render, nombre, tema, publicaciones,
   const { datos: dp } = useSondeo<{ elegida: PortadaV | null }>(`/api/proyectos/${proyectoId}/portada`, 60_000);
   const portada = dp?.elegida ?? null;
   const { datos: dt } = useSondeo<{ porCuenta: Record<string, string[]> }>("/api/cuentas/titulos", 60_000);
+  const { datos: dc } = useSondeo<DatosCreditos>(`/api/proyectos/${proyectoId}/creditos`, 60_000);
   const [marcadas, setMarcadas] = useState<Record<string, Campos>>({});
   const [enviando, setEnviando] = useState(false);
   const [msg, setMsg] = useState<{ tipo: "ok" | "error"; t: string } | null>(null);
@@ -232,7 +234,10 @@ export function PanelPublicar({ proyectoId, render, nombre, tema, publicaciones,
       const red = redes.get(c.red)!;
       // El título de la portada elegida, si hay: es el que la persona eligió para este video.
       const titulo = (portada?.titulo ?? nombre).slice(0, 100);
-      return { ...m, [c.id]: { titulo, descripcion: tema.slice(0, 5000), privacidad: red.privacidades[0] ?? "privado", programada: "", portada: red.id === "youtube" && render.perfil === "youtube-16x9" && !!portada } };
+      // Los créditos que hacen falta (panel-creditos.tsx) van al final de la descripción.
+      const creditos = textoCreditos(dc);
+      const descripcion = creditos ? `${tema.slice(0, 5000 - creditos.length - 2)}\n\n${creditos}` : tema.slice(0, 5000);
+      return { ...m, [c.id]: { titulo, descripcion, privacidad: red.privacidades[0] ?? "privado", programada: "", portada: red.id === "youtube" && render.perfil === "youtube-16x9" && !!portada } };
     });
   }
 
