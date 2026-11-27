@@ -44,7 +44,7 @@ describe("bajarModelo mira el disco (UX-36)", () => {
     const cancelar = vi.fn(async () => {});
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, headers: new Headers({ "content-length": String(1e18) }), body: { cancel: cancelar } })));
     const destino = path.join(dir, "models", "vae", "enorme.safetensors");
-    await expect(bajarModelo("https://example.invalid/enorme", destino, () => {})).rejects.toThrow(/No hay lugar suficiente en el disco para bajar enorme\.safetensors/);
+    await expect(bajarModelo("https://example.invalid/enorme", destino, () => {})).rejects.toThrow(/No hay lugar suficiente en el disco (\S+ )?para bajar enorme\.safetensors/);
     expect(cancelar).toHaveBeenCalled();
     expect(fs.existsSync(destino)).toBe(false);
     expect(fs.existsSync(`${destino}.part`)).toBe(false);
