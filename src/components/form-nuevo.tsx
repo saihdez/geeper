@@ -79,6 +79,7 @@ export function FormNuevo() {
             {datos?.plantillas.map((p) => <option key={p.slug} value={p.slug}>{p.nombre}</option>)}
           </select>
           <p className="mt-1 text-xs text-tenue">{datos?.plantillas.find((p) => p.slug === plantilla)?.datos.descripcion}</p>
+          <a href="/plantillas?nueva=1" className="mt-1 inline-block text-xs text-cyan-300 underline">¿Ninguna es tuya? Crea una con tu marca</a>
         </div>
       {!!lib?.avatares.length && !importa && (
         <fieldset className="space-y-2">

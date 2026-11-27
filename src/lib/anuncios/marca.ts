@@ -53,7 +53,8 @@ export function ipPrivada(ip: string): boolean {
   return v === "::1" || v === "::" || v.startsWith("fc") || v.startsWith("fd") || v.startsWith("fe80");
 }
 
-async function asegurarPublica(u: URL): Promise<void> {
+/** Lanza si la dirección no es http(s) pública (localhost, redes privadas, metadatos de la nube…). */
+export async function asegurarPublica(u: URL): Promise<void> {
   if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("Sólo direcciones http o https");
   if (u.username || u.password) throw new Error("La dirección no puede llevar usuario ni contraseña");
   const host = u.hostname.replace(/^\[|\]$/g, "");

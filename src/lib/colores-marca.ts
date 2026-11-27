@@ -127,6 +127,22 @@ export function ajustarHasta(color: string, fondo: string, objetivo: number): st
   return null;
 }
 
+type RolesPlantilla = "tinta" | "activa" | "acento1" | "acento2" | "fondoPastilla" | "fondoCierre";
+
+/**
+ * Lo mismo que los botones «Arreglar» del editor, de una vez: caja de subtítulos y palabra que suena a
+ * 4,5:1 y título final a 3:1, cambiando lo mínimo. Para colores que no eligió una persona (los de una
+ * página web), así el primer video ya se lee. Si algo no se puede arreglar, se deja como estaba.
+ */
+export function hacerLegible<T extends Record<RolesPlantilla, string>>(c: T): T {
+  const n = { ...c };
+  n.fondoPastilla = opacidadHasta(n.fondoPastilla, [n.tinta], 4.5) ?? n.fondoPastilla;
+  n.activa = ajustarHasta(n.activa, n.fondoPastilla, 4.5) ?? n.activa;
+  const cierre = opacidadHasta(n.fondoCierre, [n.acento1, n.acento2], 3);
+  if (cierre) n.fondoCierre = cierre;
+  return n;
+}
+
 // ---- Paleta desde una imagen.
 
 /** Una muestra: color y su peso (el alfa del píxel; los transparentes no entran). */

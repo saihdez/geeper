@@ -599,7 +599,11 @@
       "archivos": [
         "src/lib/estilos-plantilla.ts",
         "src/lib/marca-web.ts",
-        "src/app/api/plantillas/[slug]/marca-web/route.ts",
+        "src/app/api/marca-web/route.ts",
+        "src/app/api/plantillas/route.ts",
+        "src/app/api/anuncios/marca/route.ts",
+        "src/components/plantillas.tsx",
+        "src/lib/colores-marca.ts",
         "src/components/editor-plantilla.tsx",
         "src/lib/avatares.ts"
       ],

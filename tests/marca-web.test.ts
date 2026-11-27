@@ -1,17 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { fuenteGoogle, normalizarUrl, resumirMarca, type CapturaCruda } from "@/lib/marca-web";
+import { analizar } from "@/lib/anuncios/marca";
+import { contrastePeor, hacerLegible } from "@/lib/colores-marca";
+import { ESTILOS_PLANTILLA } from "@/lib/estilos-plantilla";
+import { aPerfilMarca, ctaDe, desdePerfil, fuenteGoogle, leerMarcaWeb, normalizarUrl, resumirMarca, type CapturaCruda } from "@/lib/marca-web";
 
 describe("link de la página", () => {
   it("completa el link como lo escribe la persona", () => {
     expect(normalizarUrl("mitienda.com")).toBe("https://mitienda.com/");
     expect(normalizarUrl("  http://mitienda.com/hola ")).toBe("http://mitienda.com/hola");
-    expect(normalizarUrl("localhost:3000")).toBe("https://localhost:3000/");
+    expect(normalizarUrl("mitienda.com:8080")).toBe("https://mitienda.com:8080/");
   });
   it("rechaza lo que no es una página web", () => {
     expect(() => normalizarUrl("")).toThrow(/Escribe/);
     expect(() => normalizarUrl("file:///etc/passwd")).toThrow(/http/);
     expect(() => normalizarUrl("javascript:alert(1)")).toThrow(/http/);
     expect(() => normalizarUrl("hola")).toThrow(/no parece/);
+    expect(() => normalizarUrl("localhost:3300")).toThrow(/internet/);
   });
 });
 
@@ -82,5 +86,59 @@ describe("marca de la página", () => {
   it("una página sin colores de marca no propone roles", () => {
     const m = resumirMarca({ ...cruda, colores: [{ color: "#ffffff", puntaje: 10 }, { color: "#000000", puntaje: 5 }] });
     expect(m.roles).toEqual({});
+  });
+});
+
+describe("un solo lector para Plantillas y Anuncios", () => {
+  it("no abre direcciones de la casa ni de la red local", async () => {
+    for (const u of ["http://127.0.0.1:3300", "http://192.168.1.1", "http://169.254.169.254/latest/meta-data"]) {
+      await expect(leerMarcaWeb(u)).rejects.toThrow(/internet/);
+    }
+  });
+
+  const perfil = analizar(
+    "https://cafesol.example",
+    `<html><head><title>Café Sol | Tienda</title><meta name="theme-color" content="#E4572E">
+     <style>body{color:#222;background:#fff} .b{background:#e4572e} .c{color:#17BEBB}</style></head>
+     <body><h1>Café</h1><button>Comprar ahora</button></body></html>`,
+    [],
+    "2026-11-27",
+  );
+
+  it("sin navegador, usa el lector simple y lo dice", () => {
+    const l = desdePerfil(perfil);
+    expect(l.motor).toBe("simple");
+    expect(l.marca.nombre).toBe("Café Sol");
+    expect(l.marca.roles.acento1).toBe("#e4572e");
+    expect(l.cta).toBe("Comprar ahora");
+    expect(l.avisos[0]).toMatch(/modo simple/);
+  });
+
+  it("Anuncios recibe lo observado y lo inferido, con la letra ya de Google Fonts", () => {
+    const p = aPerfilMarca(desdePerfil(perfil));
+    expect(p.inferido.marca).toBe("Café Sol");
+    expect(p.inferido.acento1).toBe("#e4572e");
+    expect(p.inferido.cta).toBe("Comprar ahora");
+    expect(p.inferido.fuente).toBe("Inter");
+    expect(p.observado.colores.map((c) => c.valor)).toContain("#e4572e");
+  });
+});
+
+describe("colores de una página, listos para leerse en video", () => {
+  it("arregla la caja, la palabra que suena y el cierre", () => {
+    const c = hacerLegible({ tinta: "#ffffff", activa: "#3a3a8a", acento1: "#2b2b2b", acento2: "#444444", fondoPastilla: "rgba(0, 0, 0, 0.2)", fondoCierre: "rgba(0, 0, 0, 0.3)" });
+    expect(contrastePeor(c.tinta, c.fondoPastilla)!).toBeGreaterThanOrEqual(4.5);
+    expect(contrastePeor(c.activa, c.fondoPastilla)!).toBeGreaterThanOrEqual(4.5);
+  });
+  it("no toca lo que ya se lee", () => {
+    for (const e of ESTILOS_PLANTILLA) expect(hacerLegible(e.colores), e.id).toEqual(e.colores);
+  });
+});
+
+describe("botón del cierre", () => {
+  it("sólo toma botones que piden algo", () => {
+    expect(ctaDe(["Python", "SearchK", "Download"])).toBe("Download");
+    expect(ctaDe(["Menú", "Comprar ahora"])).toBe("Comprar ahora");
+    expect(ctaDe(["Inicio", "Buscar"])).toBeNull();
   });
 });

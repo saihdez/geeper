@@ -1,13 +1,14 @@
 import { z } from "zod";
 import { json, manejar } from "@/lib/http";
-import { leerMarca } from "@/lib/anuncios/marca";
+import { aPerfilMarca, leerYGuardarMarca } from "@/lib/marca-web";
 
 export const dynamic = "force-dynamic";
 
-/** Lee un sitio público y devuelve lo observado y lo inferido de su marca (no guarda nada). */
+/** Lee un sitio público y devuelve lo observado y lo inferido de su marca, y su logo (no cambia nada). */
 export async function POST(req: Request) {
   return manejar(async () => {
-    const { url } = z.object({ url: z.string().url().max(500) }).parse(await req.json());
-    return json({ perfil: await leerMarca(url) });
+    const { url } = z.object({ url: z.string().trim().min(1).max(2000) }).parse(await req.json());
+    const { lectura, logo } = await leerYGuardarMarca(url, req.signal);
+    return json({ perfil: aPerfilMarca(lectura), logo });
   });
 }

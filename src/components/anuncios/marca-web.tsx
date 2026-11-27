@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import type { PerfilMarca } from "@/lib/anuncios/marca";
-import { Aviso, postJson, useSondeo } from "../comun";
+import { archivo, Aviso, postJson, useSondeo } from "../comun";
 import { PaletaDeImagen } from "../paleta-imagen";
 import type { Ctx } from "./campana";
 import { Campo, Seccion } from "./ui";
@@ -25,6 +25,7 @@ export function MarcaDesdeWeb({ ctx }: { ctx: Ctx }) {
   });
   const [rol, setRol] = useState<Rol>("acento1");
   const [creada, setCreada] = useState<string | null>(null);
+  const [logo, setLogo] = useState<{ logo: string; ruta: string } | null>(null);
   const { datos: pl } = useSondeo<{ plantillas: { slug: string; nombre: string }[] }>("/api/plantillas", 60000);
 
   async function leer(e: React.FormEvent) {
@@ -33,9 +34,10 @@ export function MarcaDesdeWeb({ ctx }: { ctx: Ctx }) {
     setError(null);
     setCreada(null);
     try {
-      const r = await postJson<{ perfil: PerfilMarca }>("/api/anuncios/marca", { url });
+      const r = await postJson<{ perfil: PerfilMarca; logo: { logo: string; ruta: string } | null }>("/api/anuncios/marca", { url });
       const p = r.perfil;
       setPerfil(p);
+      setLogo(r.logo);
       setEleccion((x) => ({
         ...x,
         marca: p.inferido.marca,
@@ -44,6 +46,7 @@ export function MarcaDesdeWeb({ ctx }: { ctx: Ctx }) {
         activa: p.inferido.activa ?? x.activa,
         cta: p.inferido.cta ?? "",
         fuente: p.inferido.fuente ?? "",
+        usarFuente: Boolean(p.inferido.fuente),
         nombre: p.inferido.marca,
       }));
     } catch (err) {
@@ -83,6 +86,7 @@ export function MarcaDesdeWeb({ ctx }: { ctx: Ctx }) {
         cta: eleccion.cta || undefined,
         fuente: eleccion.usarFuente && eleccion.fuente ? eleccion.fuente : undefined,
         fuente_url: perfil.url,
+        logo: logo?.ruta,
       });
       ctx.cambiar((d) => ({ ...d, brief: { ...d.brief, plantilla: r.plantilla.slug } }));
       setCreada(r.plantilla.nombre);
@@ -123,6 +127,13 @@ export function MarcaDesdeWeb({ ctx }: { ctx: Ctx }) {
             </div>
             {o.fuentes.length > 0 && <p><span className="text-xs text-tenue">Fuentes: </span>{o.fuentes.map((f) => f.valor).join(", ")}</p>}
             {o.botones.length > 0 && <p><span className="text-xs text-tenue">Botones: </span>{o.botones.map((f) => `«${f.valor}»`).join(", ")}</p>}
+            {logo && (
+              <div className="flex items-center gap-2 text-xs text-tenue">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={archivo(logo.ruta)} alt="Logo encontrado" className="h-10 max-w-40 rounded bg-white/5 object-contain p-1" />
+                Logo encontrado: va en la plantilla que crees
+              </div>
+            )}
             {perfil.avisos.map((a) => <Aviso key={a} tipo="info">{a}</Aviso>)}
           </div>
 
@@ -156,7 +167,7 @@ export function MarcaDesdeWeb({ ctx }: { ctx: Ctx }) {
             {eleccion.fuente && (
               <label className="flex items-start gap-2 text-sm">
                 <input type="checkbox" className="mt-1" checked={eleccion.usarFuente} onChange={(e) => setEleccion((x) => ({ ...x, usarFuente: e.target.checked }))} />
-                <span>Usar «{eleccion.fuente}» en los títulos. <span className="text-tenue">Sólo si verificaste que está disponible para el render y que su licencia lo permite; si no, el video cae en otra fuente.</span></span>
+                <span>Usar la letra «{eleccion.fuente}» en los títulos <span className="text-tenue">(la más parecida a la de su web, gratuita)</span></span>
               </label>
             )}
             <Campo etiqueta="Nombre de la plantilla nueva"><input className="campo" value={eleccion.nombre} maxLength={80} onChange={(e) => setEleccion((x) => ({ ...x, nombre: e.target.value }))} /></Campo>

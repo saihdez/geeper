@@ -10,13 +10,23 @@
  * lo que necesita el video: la paleta pasa por `proponerRoles` (los mismos roles que con un logo) y
  * cada letra se cambia por la de Google Fonts más parecida, porque Hyperframes sólo descarga ésas.
  *
- * La parte pura (`resumirMarca`, `fuenteGoogle`, `normalizarUrl`) se prueba sin navegador.
+ * Es el único lector de marca de Geeper: lo usan el editor de plantillas, «Nueva plantilla» y Anuncios
+ * (que lo muestra como observado / inferido con `aPerfilMarca`). Sólo lee páginas públicas: la dirección
+ * pasa por `asegurarPublica` y cada pedido del navegador (también los saltos de redirección) se trae desde
+ * aquí con la misma comprobación, así una página no puede llevarlo a localhost ni a la red de la casa. Si
+ * no hay navegador (la app de escritorio no siempre lo trae), cae al lector simple de Anuncios
+ * (`leerMarca`: HTML y CSS con expresiones regulares, sin logo).
+ *
+ * La parte pura (`resumirMarca`, `fuenteGoogle`, `normalizarUrl`, `desdePerfil`, `aPerfilMarca`) se
+ * prueba sin navegador.
  */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { asegurarPublica, leerMarca, type Conteo, type PerfilMarca } from "./anuncios/marca";
 import { aHex, leerColor, proponerRoles, type ColorPaleta, type Roles } from "./colores-marca";
-import { CACHE_HF } from "./rutas";
+import { guardarImagenSubida } from "./imagen-subida";
+import { CACHE_HF, dirDatos } from "./rutas";
 
 /** Lo que devuelve la página, sin interpretar. */
 export interface CapturaCruda {
@@ -24,6 +34,11 @@ export interface CapturaCruda {
   colores: { color: string; puntaje: number }[];
   fuentes: { titulos: string; texto: string };
   logos: { src?: string; svg?: string; puntaje: number }[];
+  titulo?: string;
+  descripcion?: string;
+  h1?: string;
+  /** Textos de los botones con relleno, en el orden en que aparecen. */
+  botones?: string[];
 }
 
 export interface FuenteParecida {
@@ -45,7 +60,7 @@ export interface MarcaWeb {
 export function normalizarUrl(texto: string): string {
   const t = texto.trim();
   if (!t) throw new Error("Escribe el link de tu página");
-  // «localhost:3000» o «mitienda.com:8080» no traen esquema; «javascript:», «file:///» sí (y se rechazan abajo).
+  // «mitienda.com:8080» no trae esquema; «javascript:», «file:///» sí (y se rechazan abajo).
   const conEsquema = /^[a-z][a-z0-9+.-]*:(\/\/|(?!\d))/i.test(t) ? t : `https://${t}`;
   let u: URL;
   try {
@@ -54,7 +69,8 @@ export function normalizarUrl(texto: string): string {
     throw new Error("Ese link no parece una página web. Ejemplo: mitienda.com");
   }
   if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("Sólo se pueden leer páginas web (links que empiezan con http o https)");
-  if (!u.hostname.includes(".") && u.hostname !== "localhost") throw new Error("Ese link no parece una página web. Ejemplo: mitienda.com");
+  if (u.hostname === "localhost" || u.hostname.endsWith(".localhost")) throw new Error("Sólo se pueden leer páginas publicadas en internet");
+  if (!u.hostname.includes(".")) throw new Error("Ese link no parece una página web. Ejemplo: mitienda.com");
   return u.toString();
 }
 
@@ -211,7 +227,24 @@ const LEER_PAGINA = `(() => {
     const href = l.href;
     if (href && !/\\.ico(\\?|$)/i.test(href)) logos.push({ src: href, puntaje: /apple-touch/.test(l.rel) ? 50 : 30 });
   }
-  return { nombre, colores, fuentes: { titulos: pila('h1, h2, [class*="hero" i] [class*="title" i]'), texto: pila('p, body') }, logos };
+  const corto = (t) => (t || '').replace(/\s+/g, ' ').trim();
+  const botones = [];
+  for (const el of Array.from(document.querySelectorAll('button, a, [role="button"]'))) {
+    const s = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    const t = corto(el.textContent);
+    if (r.width < 40 || r.height < 20 || t.length < 3 || t.length > 30) continue;
+    if (s.backgroundColor === 'rgba(0, 0, 0, 0)' || s.backgroundColor === 'transparent') continue;
+    botones.push(t);
+    if (botones.length >= 12) break;
+  }
+  return {
+    nombre, colores, logos, botones,
+    fuentes: { titulos: pila('h1, h2, [class*="hero" i] [class*="title" i]'), texto: pila('p, body') },
+    titulo: corto(document.title).slice(0, 120),
+    descripcion: corto(meta('description')).slice(0, 200),
+    h1: corto(document.querySelector('h1')?.textContent).slice(0, 160),
+  };
 })()`;
 
 /** El Chrome headless que ya baja Hyperframes (en desarrollo o en la app de escritorio); si no, el de Playwright. */
@@ -242,25 +275,115 @@ export interface LogoWeb {
   nombre: string;
 }
 
-/** Abre la página y devuelve su marca y, si encontró uno que se pueda usar, su logo. */
-export async function capturarMarcaWeb(url: string, op: { signal?: AbortSignal } = {}): Promise<{ marca: MarcaWeb; logo: LogoWeb | null; url: string }> {
-  const destino = normalizarUrl(url);
+/** Todo lo que se sacó de la página. */
+export interface LecturaWeb {
+  url: string;
+  fecha: string;
+  /** «navegador»: la página abierta de verdad; «simple»: sólo su HTML y CSS (sin logo). */
+  motor: "navegador" | "simple";
+  marca: MarcaWeb;
+  /** El texto del botón principal de la página, para el botón del cierre. */
+  cta: string | null;
+  titulo: string;
+  descripcion: string;
+  h1: string;
+  botones: string[];
+  avisos: string[];
+}
+
+/** Verbos de una llamada a la acción; un botón que no suena a eso («Buscar», «Menú», el nombre de la marca) no sirve para el cierre. */
+const ACCION = /\b(compr\p{L}*|pid\p{L}*|reserv\p{L}*|descarg\p{L}*|empie\p{L}*|comienz\p{L}*|prueb\p{L}*|reg[ií]str\p{L}*|suscr[ií]b\p{L}*|[úu]nete|cont[aá]ct\p{L}*|obt[eé]n\p{L}*|agend\p{L}*|cotiz\p{L}*|buy|shop|order|download|start|try|sign up|get|join|book|subscribe|contact)\b/iu;
+
+/** El botón de la página que mejor sirve para el cierre del video, o null. */
+export function ctaDe(botones: string[]): string | null {
+  return botones.find((b) => b.length <= 24 && ACCION.test(b)) ?? null;
+}
+
+/** Lectura desde el lector simple de Anuncios (sin navegador). */
+export function desdePerfil(p: PerfilMarca): LecturaWeb {
+  const o = p.observado;
+  const fuente = p.inferido.fuente ?? o.fuentes[0]?.valor ?? "";
+  const marca = resumirMarca({
+    nombre: p.inferido.marca,
+    colores: [...(o.themeColor ? [{ color: o.themeColor, puntaje: 60 }] : []), ...o.colores.map((c) => ({ color: c.valor, puntaje: c.veces * 10 }))],
+    fuentes: { titulos: fuente, texto: fuente },
+    logos: [],
+  });
+  return {
+    url: p.url, fecha: p.fecha, motor: "simple", marca, cta: p.inferido.cta,
+    titulo: o.titulo, descripcion: o.descripcion, h1: o.h1, botones: o.botones.map((b) => b.valor),
+    avisos: ["Leímos la página en modo simple (esta instalación no trae el navegador interno): no se pudo traer el logo y los colores pueden ser menos exactos.", ...p.avisos.filter((a) => !a.startsWith("Las fuentes"))],
+  };
+}
+
+/** Para Anuncios, que muestra lo observado aparte de lo inferido. */
+export function aPerfilMarca(l: LecturaWeb): PerfilMarca {
+  const m = l.marca;
+  const fuentes: Conteo[] = [...new Set([m.tipografia.titulos.original, m.tipografia.texto.original])].map((valor) => ({ valor, veces: 1 }));
+  const botones: Conteo[] = [...new Set(l.botones)].slice(0, 6).map((valor) => ({ valor, veces: l.botones.filter((b) => b === valor).length }));
+  return {
+    url: l.url,
+    fecha: l.fecha,
+    observado: {
+      titulo: l.titulo, descripcion: l.descripcion, sitio: m.nombre, h1: l.h1, themeColor: "",
+      colores: m.colores.map((c) => ({ valor: c.hex, veces: Math.max(1, Math.round(c.parte * 100)) })),
+      fuentes, botones,
+    },
+    inferido: { marca: m.nombre, acento1: m.roles.acento1 ?? null, acento2: m.roles.acento2 ?? null, activa: m.roles.activa ?? null, fuente: m.tipografia.titulos.fuente, cta: l.cta },
+    avisos: l.avisos,
+  };
+}
+
+class SinNavegador extends Error {}
+
+/** ¿Se puede pedir esta dirección? (con caché por host para no consultar el DNS en cada imagen). */
+function guardia() {
+  const cache = new Map<string, Promise<boolean>>();
+  return (url: string): Promise<boolean> => {
+    let u: URL;
+    try {
+      u = new URL(url);
+    } catch {
+      return Promise.resolve(false);
+    }
+    if (u.protocol !== "http:" && u.protocol !== "https:") return Promise.resolve(false);
+    const clave = `${u.protocol}//${u.host}`;
+    if (!cache.has(clave)) cache.set(clave, asegurarPublica(u).then(() => true, () => false));
+    return cache.get(clave)!;
+  };
+}
+
+async function conNavegador(destino: string, signal?: AbortSignal): Promise<{ lectura: LecturaWeb; logo: LogoWeb | null }> {
   let pw: typeof import("playwright-core");
   try {
     pw = await import("playwright-core");
   } catch {
-    throw new Error("Esta instalación no trae el navegador para leer páginas web. En la versión de desarrollo sí funciona.");
+    throw new SinNavegador();
   }
   let nav: import("playwright-core").Browser;
   try {
     nav = await pw.chromium.launch({ executablePath: chrome() });
   } catch {
-    throw new Error("No se pudo abrir el navegador interno. Abre una vez «Demo de tu página» o un render para que se descargue, y vuelve a probar.");
+    throw new SinNavegador();
   }
   const cerrar = () => void nav.close().catch(() => {});
-  op.signal?.addEventListener("abort", cerrar, { once: true });
+  signal?.addEventListener("abort", cerrar, { once: true });
+  const publica = guardia();
   try {
-    const ctx = await nav.newContext({ viewport: { width: 1280, height: 800 }, locale: "es-MX", colorScheme: "light" });
+    const ctx = await nav.newContext({ viewport: { width: 1280, height: 800 }, locale: "es-MX", colorScheme: "light", serviceWorkers: "block" });
+    // Cada pedido lo hace este proceso, sin seguir redirecciones: el salto vuelve al navegador, que lo
+    // pide de nuevo y pasa otra vez por aquí. Videos, audio y letras no hacen falta para leer la marca.
+    await ctx.route("**/*", async (route) => {
+      const req = route.request();
+      if (["media", "font", "websocket", "eventsource"].includes(req.resourceType())) return route.abort();
+      if (req.url().startsWith("data:") || req.url().startsWith("blob:")) return route.continue();
+      if (!(await publica(req.url()))) return route.abort("blockedbyclient");
+      try {
+        return await route.fulfill({ response: await route.fetch({ maxRedirects: 0, timeout: 20_000 }) });
+      } catch {
+        return route.abort().catch(() => {});
+      }
+    });
     const page = await ctx.newPage();
     try {
       await page.goto(destino, { waitUntil: "load", timeout: 45_000 });
@@ -270,6 +393,7 @@ export async function capturarMarcaWeb(url: string, op: { signal?: AbortSignal }
     await page.waitForTimeout(1500);
     const cruda = (await page.evaluate(LEER_PAGINA)) as CapturaCruda;
     const marca = resumirMarca(cruda);
+    const botones = cruda.botones ?? [];
 
     let logo: LogoWeb | null = null;
     for (const l of [...cruda.logos].sort((a, b) => b.puntaje - a.puntaje).slice(0, 4)) {
@@ -277,9 +401,9 @@ export async function capturarMarcaWeb(url: string, op: { signal?: AbortSignal }
         logo = { datos: Buffer.from(l.svg, "utf8"), nombre: "logo.svg" };
         break;
       }
-      if (!l.src || !/^https?:/i.test(l.src)) continue;
+      if (!l.src || !(await publica(l.src))) continue;
       try {
-        const r = await page.request.get(l.src, { timeout: 15_000 });
+        const r = await page.request.get(l.src, { timeout: 15_000, maxRedirects: 0 });
         const tipo = (r.headers()["content-type"] ?? "").split(";")[0]!.trim().toLowerCase();
         const ext = EXT_POR_TIPO[tipo];
         if (!r.ok() || !ext) continue;
@@ -291,8 +415,55 @@ export async function capturarMarcaWeb(url: string, op: { signal?: AbortSignal }
         /* se prueba el siguiente */
       }
     }
-    return { marca, logo, url: page.url() };
+    const lectura: LecturaWeb = {
+      url: page.url(), fecha: new Date().toISOString().slice(0, 10), motor: "navegador", marca,
+      cta: ctaDe(botones),
+      titulo: cruda.titulo ?? "", descripcion: cruda.descripcion ?? "", h1: cruda.h1 ?? "", botones, avisos: [],
+    };
+    return { lectura, logo };
   } finally {
     cerrar();
   }
+}
+
+/** Lee la marca de una página pública: con el navegador interno si está; si no, en modo simple. */
+export async function leerMarcaWeb(url: string, op: { signal?: AbortSignal } = {}): Promise<{ lectura: LecturaWeb; logo: LogoWeb | null }> {
+  const destino = normalizarUrl(url);
+  await asegurarPublica(new URL(destino)).catch(() => {
+    throw new Error("Sólo se pueden leer páginas publicadas en internet (no direcciones de tu casa o tu red).");
+  });
+  try {
+    return await conNavegador(destino, op.signal);
+  } catch (e) {
+    if (!(e instanceof SinNavegador)) throw e;
+    return { lectura: desdePerfil(await leerMarca(destino)), logo: null };
+  }
+}
+
+/**
+ * Lee la marca y guarda el logo en ~/geeper-data/marcas-web/ (validado como uno subido a mano: los SVG
+ * pasan por `revisarSvg`). Lo usan las rutas de la API; no cambia ninguna plantilla.
+ */
+export async function leerYGuardarMarca(url: string, signal?: AbortSignal): Promise<{ lectura: LecturaWeb; logo: { logo: string; ruta: string } | null }> {
+  const { lectura, logo } = await leerMarcaWeb(url, { signal });
+  let guardado: { logo: string; ruta: string } | null = null;
+  if (logo) {
+    try {
+      const { abs } = await guardarImagenSubida(new File([new Uint8Array(logo.datos)], logo.nombre), path.join(dirDatos(), "marcas-web"), "logo");
+      guardado = { logo: abs, ruta: path.relative(dirDatos(), abs) };
+    } catch {
+      lectura.avisos.push("Encontramos un logo, pero no se puede usar tal cual. Súbelo a mano si lo tienes.");
+    }
+  } else if (lectura.motor === "navegador") {
+    lectura.avisos.push("No encontramos el logo en la página. Si lo tienes, súbelo a mano.");
+  }
+  return { lectura, logo: guardado };
+}
+
+/** Ruta de un logo que dejó `leerYGuardarMarca`; cualquier otra cosa (otra carpeta, `..`) se rechaza. */
+export function logoDeMarcaWeb(ruta: string): string {
+  const carpeta = path.join(dirDatos(), "marcas-web");
+  const abs = path.resolve(dirDatos(), ruta);
+  if (path.relative(carpeta, abs).startsWith("..") || path.dirname(abs) !== carpeta || !fs.existsSync(abs)) throw new Error("Ese logo no es uno leído de una página");
+  return abs;
 }
