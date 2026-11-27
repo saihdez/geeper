@@ -2,8 +2,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Aviso, Barra, archivo, pedir, postJson, useSondeo } from "./comun";
 import {
-  CALIDADES_3D, COLORES_LOGO, DURACION_3D, ESTILOS_3D, FONDOS_3D, FORMATOS_3D, INFO_PLANTILLAS, MOVIMIENTOS_3D, PALETAS_3D, PLANTILLAS_3D, minutosEstimados,
-  type Calidad3d, type Colores3d, type Formato3d, type Plantilla3d,
+  CALIDADES_3D, COLORES_LOGO, DURACION_3D, ESTILOS_3D, FONDOS_3D, FONDOS_SALIDA_3D, FORMATOS_3D, INFO_PLANTILLAS, MAX_DATOS_3D, MOVIMIENTOS_3D, PALETAS_3D, PLANTILLAS_3D,
+  SALIDAS_3D, TIPOS_DATOS_3D, minutosEstimados,
+  type Calidad3d, type Colores3d, type FondoSalida3d, type Formato3d, type Plantilla3d, type Salida3d, type TipoDatos3d,
 } from "@/lib/escenas3d-catalogo";
 
 interface EstadoInstalacion { fase: string; progreso: number; detalle: string; disponible: boolean; mb: number | null }
@@ -14,8 +15,12 @@ export interface CorridaV {
   estado: "preparada" | "hecha" | "fallida";
   error?: string;
   segundos?: number;
-  pedido: { plantilla: Plantilla3d; formato: Formato3d; duracion: number };
+  pedido: { plantilla: Plantilla3d; formato: Formato3d; duracion: number; salida?: Salida3d; fondo_salida?: FondoSalida3d };
   video: string | null;
+  /** WebM con alfa (video) o null. */
+  transparente: string | null;
+  /** PNG (salida «imagen») o null. */
+  imagen: string | null;
   portada: string | null;
 }
 export interface TrabajoV { id: string; estado: string; etapa: string; progreso: number; corrida: string | null; proyecto: string | null; escena: string | null }
@@ -131,7 +136,24 @@ interface Estado3d {
   formato: Formato3d;
   duracion: number;
   calidad: Calidad3d;
+  tipo_datos: TipoDatos3d;
+  /** Filas de la tabla: el número como lo escribe la persona («1,200», «3.5»). */
+  datos: { etiqueta: string; valor: string }[];
+  unidad: string;
+  salida: Salida3d;
+  fondo_salida: FondoSalida3d;
 }
+
+/** «1,200» / «1.200» → 1200; «3,5» / «3.5» → 3.5; vacío o texto → null. */
+export function numeroEscrito(t: string): number | null {
+  const x = t.trim().replace(/\s/g, "").replace(/^[$€]/, "").replace(/%$/, "");
+  if (!x) return null;
+  const n = /^-?\d{1,3}([.,]\d{3})+$/.test(x) ? x.replace(/[.,]/g, "") : x.replace(",", ".");
+  const v = Number(n);
+  return Number.isFinite(v) ? v : null;
+}
+
+const UNIDADES = [{ id: "", titulo: "Ninguna" }, { id: "%", titulo: "%" }, { id: "$", titulo: "$" }, { id: "kg", titulo: "kg" }] as const;
 
 const inicial = (destino?: Destino3d): Estado3d => ({
   plantilla: null, texto: "", estilo: "brillante", movimiento: "entra", estilo_fondo: "burbujas", colores_logo: "originales",
@@ -139,6 +161,11 @@ const inicial = (destino?: Destino3d): Estado3d => ({
   formato: destino?.formato ?? "9:16",
   duracion: Math.min(DURACION_3D.max, Math.max(DURACION_3D.min, Math.round(destino?.duracion ?? DURACION_3D.porDefecto))),
   calidad: "normal",
+  tipo_datos: "barras",
+  datos: [{ etiqueta: "", valor: "" }, { etiqueta: "", valor: "" }, { etiqueta: "", valor: "" }],
+  unidad: "",
+  salida: "video",
+  fondo_salida: "color",
 });
 
 /** «Descríbelo y lo armo»: el modelo local elige la plantilla y los ajustes; la persona los revisa abajo. */
@@ -146,13 +173,14 @@ function Describir({ conIa, aplicar }: { conIa: boolean; aplicar: (s: Partial<Es
   const [texto, setTexto] = useState("");
   const [pensando, setPensando] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const ejemplos = ["Un título dorado que diga «Gran apertura»", "Mi logo girando en metal sobre fondo negro", "Una caja de regalo rosa que revele «¡Sorteo!»", "Fondo de burbujas moradas y celestes"];
+  const ejemplos = ["Un título dorado que diga «Gran apertura»", "Un gráfico de barras: enero 120, febrero 340, marzo 510", "Mi logo girando en metal sobre fondo negro", "Una caja de regalo rosa que revele «¡Sorteo!»"];
   async function armar() {
     setError(null);
     setPensando(true);
     try {
-      const s = await postJson<Omit<Estado3d, "paleta" | "formato" | "duracion" | "calidad" | "colores_logo"> & { explicacion: string; origen: string }>("/api/escenas-3d/describir", { texto });
-      aplicar({ ...s, paleta: null });
+      const s = await postJson<Omit<Estado3d, "paleta" | "formato" | "duracion" | "calidad" | "colores_logo" | "datos" | "salida" | "fondo_salida"> & { datos: { etiqueta: string; valor: number }[]; explicacion: string; origen: string }>("/api/escenas-3d/describir", { texto });
+      const datos = s.datos.length ? s.datos.map((d) => ({ etiqueta: d.etiqueta, valor: String(d.valor) })) : undefined;
+      aplicar({ ...s, datos, paleta: null });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -179,6 +207,8 @@ export function CrearEscena3d({ destino, alCrear }: { destino?: Destino3d; alCre
   const [e, setE] = useState<Estado3d>(() => inicial(destino));
   const [archivoSubido, setArchivo] = useState<File | null>(null);
   const [vista, setVista] = useState<string | null>(null);
+  const [fondoSubido, setFondo] = useState<File | null>(null);
+  const [vistaFondo, setVistaFondo] = useState<string | null>(null);
   const [propios, setPropios] = useState(false);
   const [entendido, setEntendido] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
@@ -196,13 +226,34 @@ export function CrearEscena3d({ destino, alCrear }: { destino?: Destino3d; alCre
     });
   }
 
+  function elegirFondo(f: File | null) {
+    setFondo(f);
+    setVistaFondo((antes) => {
+      if (antes) URL.revokeObjectURL(antes);
+      return f ? URL.createObjectURL(f) : null;
+    });
+  }
+
+  /** Las filas con número (las vacías no cuentan). */
+  const cifras = useMemo(() => e.datos.flatMap((d) => {
+    const v = numeroEscrito(d.valor);
+    return v === null ? [] : [{ etiqueta: d.etiqueta.trim().slice(0, 18), valor: v }];
+  }), [e.datos]);
+  const filaMala = e.datos.findIndex((d) => d.valor.trim() && numeroEscrito(d.valor) === null);
+
   const falta = useMemo(() => {
     if (!info) return "Elige cómo empieza.";
     if (info.obligatorios.includes("texto") && !e.texto.trim()) return "Escribe el texto.";
     if (info.obligatorios.includes("imagen") && !archivoSubido) return "Sube la foto de tu producto.";
     if (info.obligatorios.includes("logo") && !archivoSubido) return "Sube tu logo.";
+    if (info.obligatorios.includes("datos")) {
+      if (filaMala >= 0) return `En la fila ${filaMala + 1}, el número no se entiende (escribe sólo cifras, como 1200 o 3.5).`;
+      if (!cifras.length) return "Escribe al menos un número.";
+      if (e.tipo_datos === "pastel" && cifras.length < 2) return "Para el anillo hacen falta al menos dos partes.";
+    }
+    if (e.fondo_salida === "foto" && !fondoSubido) return "Sube la foto de fondo (o elige otro fondo).";
     return null;
-  }, [info, e.texto, archivoSubido]);
+  }, [info, e.texto, e.tipo_datos, e.fondo_salida, archivoSubido, fondoSubido, cifras, filaMala]);
 
   async function crear() {
     if (!e.plantilla) return;
@@ -211,8 +262,9 @@ export function CrearEscena3d({ destino, alCrear }: { destino?: Destino3d; alCre
     try {
       const fd = new FormData();
       const { paleta: _p, ...pedido } = e;
-      fd.set("pedido", JSON.stringify({ ...pedido, plantilla: e.plantilla, texto: info!.campos.includes("texto") ? e.texto : "" }));
+      fd.set("pedido", JSON.stringify({ ...pedido, plantilla: e.plantilla, texto: info!.campos.includes("texto") ? e.texto : "", datos: info!.campos.includes("datos") ? cifras : [] }));
       if (archivoSubido && (info!.campos.includes("imagen") || info!.campos.includes("logo"))) fd.set("archivo", archivoSubido);
+      if (fondoSubido && e.fondo_salida === "foto") fd.set("fondo", fondoSubido);
       if (destino) {
         fd.set("proyecto", destino.proyecto);
         fd.set("escena", destino.escena);
@@ -231,10 +283,10 @@ export function CrearEscena3d({ destino, alCrear }: { destino?: Destino3d; alCre
     return (
       <div className="space-y-2">
         <Aviso tipo="ok">
-          ¡En camino! Tarda unos {minutosEstimados(e.calidad, e.duracion)} min.{" "}
+          ¡En camino! Tarda unos {minutosEstimados(e.calidad, e.duracion, true, e.salida)} min.{" "}
           {destino ? `Cuando termine, la escena ${destino.numero} cambia sola (si no te gusta, vuelve atrás en el historial).` : "Puedes seguir usando Geeper: la vas a ver abajo, en «Tus escenas 3D»."}
         </Aviso>
-        <button type="button" className="boton" onClick={() => { setListo(false); setE(inicial(destino)); elegirArchivo(null); setEntendido(null); }}>Hacer otra</button>
+        <button type="button" className="boton" onClick={() => { setListo(false); setE(inicial(destino)); elegirArchivo(null); elegirFondo(null); setEntendido(null); }}>Hacer otra</button>
       </div>
     );
   }
@@ -296,6 +348,44 @@ export function CrearEscena3d({ destino, alCrear }: { destino?: Destino3d; alCre
               <span className="block text-xs text-tenue">Corto se lee mejor: hasta unas 6 palabras.</span>
             </label>
           )}
+          {info.campos.includes("datos") && (
+            <div className="space-y-3">
+              <div className="space-y-1"><p className="text-sm">¿Qué tipo de gráfico?</p><Opciones valor={e.tipo_datos} opciones={TIPOS_DATOS_3D} cambiar={(v) => poner({ tipo_datos: v })} /></div>
+              <div className="space-y-2">
+                <p className="text-sm">{e.tipo_datos === "numero" ? "Tu número (y qué es)" : "Tus datos"}</p>
+                <ul className="space-y-2">
+                  {(e.tipo_datos === "numero" ? e.datos.slice(0, 1) : e.datos).map((d, i) => (
+                    <li key={i} className="flex items-center gap-2">
+                      <span className="w-5 shrink-0 text-right text-xs text-tenue" aria-hidden>{i + 1}.</span>
+                      <input className="campo min-w-0 flex-1" maxLength={18} value={d.etiqueta} aria-label={`Nombre ${i + 1}`}
+                        placeholder={e.tipo_datos === "numero" ? "Ej.: clientes felices" : ["Ej.: Enero", "Ej.: Febrero", "Ej.: Marzo"][i] ?? "Nombre"}
+                        onChange={(ev) => poner({ datos: e.datos.map((x, j) => (j === i ? { ...x, etiqueta: ev.target.value } : x)) })} />
+                      <input className={`campo w-24 shrink-0 sm:w-28 ${filaMala === i ? "border-red-400" : ""}`} inputMode="decimal" maxLength={16} value={d.valor} aria-label={`Número ${i + 1}`}
+                        placeholder={e.tipo_datos === "numero" ? "87" : ["120", "340", "510"][i] ?? "0"}
+                        onChange={(ev) => poner({ datos: e.datos.map((x, j) => (j === i ? { ...x, valor: ev.target.value } : x)) })} />
+                      {e.tipo_datos !== "numero" && e.datos.length > 1 && (
+                        <button type="button" className="boton shrink-0 px-2 text-xs" aria-label={`Quitar la fila ${i + 1}`} onClick={() => poner({ datos: e.datos.filter((_, j) => j !== i) })}>✕</button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                {e.tipo_datos !== "numero" && e.datos.length < MAX_DATOS_3D && (
+                  <button type="button" className="boton text-xs" onClick={() => poner({ datos: [...e.datos, { etiqueta: "", valor: "" }] })}>+ Agregar otra fila</button>
+                )}
+                <p className="text-xs text-tenue">{e.tipo_datos === "pastel" ? "Escribe cuánto es cada parte: Geeper saca los porcentajes." : `Hasta ${MAX_DATOS_3D} filas. Escribe sólo el número (1200, 3.5).`}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm">¿En qué se miden?</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {UNIDADES.map((u) => (
+                    <button key={u.id || "nada"} type="button" aria-pressed={e.unidad === u.id} onClick={() => poner({ unidad: u.id })}
+                      className={`rounded-full border px-3 py-1 text-xs ${e.unidad === u.id ? "border-acento bg-acento/10" : "border-borde hover:border-acento/60"}`}>{u.titulo}</button>
+                  ))}
+                  <input className="campo w-32 text-xs" maxLength={12} value={UNIDADES.some((u) => u.id === e.unidad) ? "" : e.unidad} onChange={(ev) => poner({ unidad: ev.target.value })} placeholder="Otra (ej.: litros)" aria-label="Otra unidad" />
+                </div>
+              </div>
+            </div>
+          )}
           {info.campos.includes("movimiento") && (<div className="space-y-1"><p className="text-sm">¿Cómo se mueve?</p><Opciones valor={e.movimiento} opciones={MOVIMIENTOS_3D} cambiar={(v) => poner({ movimiento: v })} /></div>)}
           {info.campos.includes("estilo_fondo") && (<div className="space-y-1"><p className="text-sm">¿Qué flota?</p><Opciones valor={e.estilo_fondo} opciones={FONDOS_3D} cambiar={(v) => poner({ estilo_fondo: v })} columnas={2} /></div>)}
           {info.campos.includes("estilo") && (<div className="space-y-1"><p className="text-sm">¿De qué material?</p><Opciones valor={e.estilo} opciones={ESTILOS_3D} cambiar={(v) => poner({ estilo: v })} /></div>)}
@@ -332,25 +422,48 @@ export function CrearEscena3d({ destino, alCrear }: { destino?: Destino3d; alCre
               </div>
             )}
           </div>
+          <div className="space-y-2">
+            <p className="text-sm">¿Qué va detrás?</p>
+            <Opciones valor={e.fondo_salida} opciones={FONDOS_SALIDA_3D} cambiar={(v) => poner({ fondo_salida: v })} />
+            {e.fondo_salida === "foto" && (
+              <div className="flex flex-wrap items-center gap-3">
+                {vistaFondo && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={vistaFondo} alt="Tu foto de fondo" className="h-20 w-20 rounded border border-borde object-cover" />
+                )}
+                <label className="boton cursor-pointer">
+                  {fondoSubido ? "Cambiar la foto de fondo" : "Subir la foto de fondo"}
+                  <input type="file" className="sr-only" accept=".png,.jpg,.jpeg,.webp" onChange={(ev) => elegirFondo(ev.target.files?.[0] ?? null)} />
+                </label>
+                <p className="w-full text-xs text-tenue">Se recorta para llenar el cuadro. Sirve para portadas: tu foto con el título en 3D delante.</p>
+              </div>
+            )}
+            {e.fondo_salida === "transparente" && <p className="text-xs text-tenue">Te da además un archivo sin fondo para ponerlo encima de otro video o imagen. El color de fondo sólo se usa en la vista previa.</p>}
+          </div>
         </Paso>
       )}
 
       {info && (
-        <Paso n={3} titulo="Tamaño, duración y calidad">
+        <Paso n={3} titulo={e.salida === "imagen" ? "Tamaño y calidad" : "Tamaño, duración y calidad"}>
+          {!destino && (
+            <div className="space-y-1"><p className="text-sm">¿Video o imagen?</p><Opciones valor={e.salida} opciones={SALIDAS_3D} cambiar={(v) => poner({ salida: v })} columnas={2} /></div>
+          )}
           {!destino && <Opciones valor={e.formato} opciones={FORMATOS_3D} cambiar={(v) => poner({ formato: v })} />}
           {destino && <p className="text-xs text-tenue">Se hace del mismo formato que tu video.</p>}
-          <label className="block space-y-1">
-            <span className="text-sm">Duración: <strong>{e.duracion} segundos</strong></span>
-            <input type="range" className="w-full max-w-sm" min={DURACION_3D.min} max={DURACION_3D.max} step={1} value={e.duracion} onChange={(ev) => poner({ duracion: Number(ev.target.value) })} />
-          </label>
-          <Opciones valor={e.calidad} cambiar={(v) => poner({ calidad: v })} opciones={CALIDADES_3D.map((c) => ({ ...c, texto: `${c.texto} Unos ${minutosEstimados(c.id, e.duracion)} min.` }))} />
+          {e.salida === "video" && (
+            <label className="block space-y-1">
+              <span className="text-sm">Duración: <strong>{e.duracion} segundos</strong></span>
+              <input type="range" className="w-full max-w-sm" min={DURACION_3D.min} max={DURACION_3D.max} step={1} value={e.duracion} onChange={(ev) => poner({ duracion: Number(ev.target.value) })} />
+            </label>
+          )}
+          <Opciones valor={e.calidad} cambiar={(v) => poner({ calidad: v })} opciones={CALIDADES_3D.map((c) => ({ ...c, texto: `${c.texto} Unos ${minutosEstimados(c.id, e.duracion, true, e.salida)} min.` }))} />
         </Paso>
       )}
 
       {info && (
         <div className="space-y-2">
           <button type="button" className="boton boton-primario" disabled={!!falta || enviando} onClick={() => void crear()}>
-            {enviando ? "Enviando…" : destino ? `Crear y poner en la escena ${destino.numero}` : "Crear mi escena 3D"}
+            {enviando ? "Enviando…" : destino ? `Crear y poner en la escena ${destino.numero}` : e.salida === "imagen" ? "Crear mi imagen 3D" : "Crear mi escena 3D"}
           </button>
           {falta && <p className="text-xs text-amber-200">{falta}</p>}
           {!falta && <p className="text-xs text-tenue">Usa la tarjeta de video. Si está ocupada, espera su turno sola.</p>}
@@ -470,18 +583,27 @@ function TusEscenas({ corridas, ocupadas, recargar }: { corridas: CorridaV[]; oc
     <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {visibles.map((c) => (
         <li key={c.id} className="tarjeta space-y-2 p-3 text-sm">
-          {c.estado === "hecha" && c.video ? (
-            <video className="max-h-80 w-full rounded bg-black" src={archivo(c.video)} poster={c.portada ? archivo(c.portada) : undefined} controls loop playsInline preload="none" />
+          {c.estado === "hecha" && c.imagen ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img className={`max-h-80 w-full rounded object-contain ${c.pedido.fondo_salida === "transparente" ? "fondo-cuadros" : "bg-black"}`} src={archivo(c.imagen)} alt={c.titulo} />
+          ) : c.estado === "hecha" && c.video ? (
+            c.transparente ? (
+              <video className="fondo-cuadros max-h-80 w-full rounded" src={archivo(c.transparente)} controls loop playsInline preload="none" />
+            ) : (
+              <video className="max-h-80 w-full rounded bg-black" src={archivo(c.video)} poster={c.portada ? archivo(c.portada) : undefined} controls loop playsInline preload="none" />
+            )
           ) : c.estado === "fallida" ? (
             <Aviso tipo="error">No salió: {c.error ?? "error desconocido"}</Aviso>
           ) : (
             <p className="text-xs text-tenue">Se quedó a medias (¿se apagó la PC?). Bórrala y créala de nuevo.</p>
           )}
           <p className="font-medium">{c.titulo}</p>
-          <p className="text-xs text-tenue">{FORMATOS_3D.find((f) => f.id === c.pedido.formato)?.titulo} · {c.pedido.duracion} s · {new Date(c.creada).toLocaleString("es", { dateStyle: "medium", timeStyle: "short" })}</p>
+          <p className="text-xs text-tenue">{FORMATOS_3D.find((f) => f.id === c.pedido.formato)?.titulo} · {c.imagen ? "imagen" : `${c.pedido.duracion} s`}{c.pedido.fondo_salida === "transparente" ? " · sin fondo" : ""} · {new Date(c.creada).toLocaleString("es", { dateStyle: "medium", timeStyle: "short" })}</p>
           <div className="flex flex-wrap gap-2">
-            {c.estado === "hecha" && c.video && <UsarEnVideo corrida={c.id} />}
-            {c.estado === "hecha" && c.video && <a className="boton text-xs" href={archivo(c.video, true)}>Descargar</a>}
+            {c.estado === "hecha" && (c.video || c.imagen) && <UsarEnVideo corrida={c.id} />}
+            {c.estado === "hecha" && c.imagen && <a className="boton text-xs" href={archivo(c.imagen, true)}>Descargar imagen</a>}
+            {c.estado === "hecha" && c.video && <a className="boton text-xs" href={archivo(c.video, true)}>{c.transparente ? "Descargar con fondo" : "Descargar"}</a>}
+            {c.estado === "hecha" && c.transparente && <a className="boton text-xs" href={archivo(c.transparente, true)}>Descargar sin fondo</a>}
             <button type="button" className="boton text-xs" onClick={() => void borrar(c.id)}>Borrar</button>
           </div>
         </li>
@@ -526,7 +648,7 @@ export function PaginaEscenas3d() {
     <section className="space-y-6">
       <header className="space-y-1">
         <h1 className="text-xl font-semibold">Escenas 3D</h1>
-        <p className="text-sm text-tenue">Videos cortos en 3D para abrir, cerrar o adornar tus videos: un título, tu logo, tu producto o una caja sorpresa. Eliges, cambias el texto y los colores, y Geeper lo hace solo.</p>
+        <p className="text-sm text-tenue">Videos e imágenes en 3D: un título, un gráfico con tus números, tu logo, tu producto o una caja sorpresa. Sirven para tus videos, portadas, publicaciones o para poner encima de otro video. Eliges, cambias el texto y los colores, y Geeper lo hace solo.</p>
       </header>
       {error && <Aviso tipo="error">{error}</Aviso>}
       {!datos && <p className="text-tenue">Cargando…</p>}

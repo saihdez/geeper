@@ -2,7 +2,8 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { archivoBlender } from "@/lib/blender";
 import {
-  adivinarEscena, faltaEnPedido, leerCuadro, normalizarSugerencia, Pedido3d, pedidoParaBlender, promptEscena, textoCitado, tituloDe,
+  adivinarEscena, archivosCorrida3d, cifrasDe, faltaEnPedido, leerCuadro, normalizarSugerencia, Pedido3d, pedidoParaBlender, promptEscena, textoCitado, tituloDe,
+  type Corrida3d,
 } from "@/lib/escenas3d";
 import { INFO_PLANTILLAS, minutosEstimados, PALETAS_3D, PLANTILLAS_3D } from "@/lib/escenas3d-catalogo";
 import { sumaEsperada } from "@/lib/instalar-craft";
@@ -162,5 +163,62 @@ describe("archivoBlender", () => {
       "6a93f1316ea794dec3027129fbc05f48b368184be25a8f993dd0301a6020a204  blender-5.2.5-linux-x64.tar.xz",
     ].join("\n");
     expect(sumaEsperada(sumas, "blender-5.2.5-linux-x64.tar.xz")).toBe("6a93f1316ea794dec3027129fbc05f48b368184be25a8f993dd0301a6020a204");
+  });
+});
+
+describe("gráficos con datos", () => {
+  it("pide números y revisa lo que necesita cada tipo", () => {
+    expect(faltaEnPedido(pedido({ plantilla: "datos" }))).toMatch(/número/);
+    expect(faltaEnPedido(pedido({ plantilla: "datos", tipo_datos: "pastel", datos: [{ etiqueta: "A", valor: 3 }] }))).toMatch(/dos partes/);
+    expect(faltaEnPedido(pedido({ plantilla: "datos", tipo_datos: "pastel", datos: [{ etiqueta: "A", valor: 3 }, { etiqueta: "B", valor: -1 }] }))).toMatch(/negativos/);
+    expect(faltaEnPedido(pedido({ plantilla: "datos", datos: [{ etiqueta: "A", valor: 0 }] }))).toMatch(/mayor que cero/);
+    expect(faltaEnPedido(pedido({ plantilla: "datos", tipo_datos: "numero", datos: [{ etiqueta: "", valor: 87 }], unidad: "%" }))).toBeNull();
+  });
+  it("no acepta más de 6 filas", () => {
+    expect(() => pedido({ plantilla: "datos", datos: Array.from({ length: 7 }, (_, i) => ({ etiqueta: `${i}`, valor: i })) })).toThrow();
+  });
+  it("saca las cifras escritas con su nombre y unidad", () => {
+    expect(cifrasDe("enero 120, febrero 340 y marzo 1,200")).toEqual({ datos: [{ etiqueta: "enero", valor: 120 }, { etiqueta: "febrero", valor: 340 }, { etiqueta: "marzo", valor: 1200 }], unidad: "" });
+    expect(cifrasDe("el 87% de los clientes")).toEqual({ datos: [{ etiqueta: "", valor: 87 }], unidad: "%" });
+    expect(cifrasDe("crecimos 3,5 por ciento").unidad).toBe("%");
+    expect(cifrasDe("sin números")).toEqual({ datos: [], unidad: "" });
+  });
+  it("una descripción con cifras arma un gráfico", () => {
+    const s = adivinarEscena("un gráfico de barras: enero 120, febrero 340, marzo 510");
+    expect(s.plantilla).toBe("datos");
+    expect(s.tipo_datos).toBe("barras");
+    expect(s.datos.map((d) => d.valor)).toEqual([120, 340, 510]);
+    expect(adivinarEscena("anillo: ahorro 30, gastos 70").tipo_datos).toBe("pastel");
+    // Un precio no es un gráfico.
+    expect(adivinarEscena("mi perfume en un pedestal con el precio 19.99").plantilla).toBe("producto");
+  });
+  it("el modelo no puede inventar cifras", () => {
+    const base = adivinarEscena("gráfico: enero 120, febrero 340");
+    const inventadas = normalizarSugerencia('{"plantilla":"datos","datos":[{"etiqueta":"Enero","valor":999}]}', base);
+    expect(inventadas.datos).toEqual(base.datos);
+    const mismas = normalizarSugerencia('{"plantilla":"datos","datos":[{"etiqueta":"Ene","valor":120},{"etiqueta":"Feb","valor":340}]}', base);
+    expect(mismas.datos.map((d) => d.etiqueta)).toEqual(["Ene", "Feb"]);
+  });
+  it("manda los datos y el fondo a Blender", () => {
+    const op = { dir: "/d", cuadros: "/c", hdri: null, dispositivo: "cpu" as const };
+    const b = pedidoParaBlender(pedido({ plantilla: "datos", datos: [{ etiqueta: "A", valor: 1 }], unidad: "%", fondo_salida: "foto", archivo_fondo: "fondo.jpg", salida: "imagen" }), op);
+    expect(b).toMatchObject({ tipo_datos: "barras", datos: [{ etiqueta: "A", valor: 1 }], unidad: "%", salida: "imagen", transparente: false, fondo_imagen: path.join("/d", "entradas", "fondo.jpg") });
+    expect(pedidoParaBlender(pedido({ fondo_salida: "transparente" }), op)).toMatchObject({ transparente: true, fondo_imagen: null });
+  });
+});
+
+describe("salidas", () => {
+  const corrida = (x: Partial<Pedido3d>, estado: Corrida3d["estado"] = "hecha"): Corrida3d => ({ id: "a", titulo: "t", creada: "", estado, pedido: pedido(x) });
+  it("una foto de fondo hace falta si se eligió", () => {
+    expect(faltaEnPedido(pedido({ texto: "Hola", fondo_salida: "foto" }))).toMatch(/foto de fondo/);
+  });
+  it("dice qué archivos deja cada salida", () => {
+    expect(archivosCorrida3d(corrida({ texto: "x" }))).toEqual({ video: "escenas-3d/a/video.mp4", transparente: null, imagen: null, portada: "escenas-3d/a/portada.jpg" });
+    expect(archivosCorrida3d(corrida({ texto: "x", fondo_salida: "transparente" })).transparente).toBe("escenas-3d/a/video-transparente.webm");
+    expect(archivosCorrida3d(corrida({ texto: "x", salida: "imagen" }))).toMatchObject({ video: null, imagen: "escenas-3d/a/imagen.png" });
+    expect(archivosCorrida3d(corrida({ texto: "x" }, "fallida")).video).toBeNull();
+  });
+  it("una imagen tarda un minuto", () => {
+    expect(minutosEstimados("alta", 15, true, "imagen")).toBe(1);
   });
 });

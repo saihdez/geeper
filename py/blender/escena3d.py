@@ -7,7 +7,11 @@ formato, duración y calidad. Todo se construye con código: sin modelos bajados
 descarga opcional es el HDRI de estudio CC0 de Poly Haven para los reflejos).
 
 Imprime «GEEPER_CUADRO n total» por cada cuadro guardado y «GEEPER_ERROR mensaje» si algo falla.
-Plantillas: texto, logo, producto, fondo, caja.
+Plantillas: texto, logo, producto, fondo, caja, datos.
+
+Salidas: video (todos los cuadros) o imagen (un cuadro, `salida: "imagen"`), con el fondo de color, con
+una foto de fondo (`fondo_imagen`, a cubrir el cuadro: portadas y títulos sobre una escena) o
+transparente (`transparente: true`, PNG con alfa: elementos para poner encima de otro video).
 """
 import json
 import math
@@ -216,7 +220,32 @@ class Escena:
         n.clear()
         salida = n.new("ShaderNodeOutputWorld")
         visto = n.new("ShaderNodeBackground")
-        if self.fondo2:
+        foto = self.p.get("fondo_imagen")
+        if foto and os.path.exists(foto):
+            # La foto cubre el cuadro (como object-fit: cover), en coordenadas de ventana de la cámara.
+            img = bpy.data.images.load(foto, check_existing=True)
+            iw, ih = img.size
+            if not iw or not ih:
+                raise ErrorEscena("No pude leer la foto de fondo (¿está dañada?).")
+            coord = n.new("ShaderNodeTexCoord")
+            mapa = n.new("ShaderNodeMapping")
+            a_cuadro, a_foto = self.rx / self.ry, iw / ih
+            sx, sy = (a_cuadro / a_foto, 1.0) if a_foto > a_cuadro else (1.0, a_foto / a_cuadro)
+            mapa.inputs["Scale"].default_value = (sx, sy, 1)
+            mapa.inputs["Location"].default_value = (0.5 - 0.5 * sx, 0.5 - 0.5 * sy, 0)
+            tex = n.new("ShaderNodeTexImage")
+            tex.image = img
+            tex.extension = "EXTEND"
+            nt.links.new(coord.outputs["Window"], mapa.inputs["Vector"])
+            nt.links.new(mapa.outputs["Vector"], tex.inputs["Vector"])
+            # Un poco más oscura, para que lo 3D de delante se lea bien.
+            oscura = n.new("ShaderNodeMix")
+            oscura.data_type = "RGBA"
+            oscura.inputs["Factor"].default_value = float(self.p.get("oscurecer_fondo", 0.3))
+            oscura.inputs["B"].default_value = (0, 0, 0, 1)
+            nt.links.new(tex.outputs["Color"], oscura.inputs["A"])
+            nt.links.new(oscura.outputs["Result"], visto.inputs["Color"])
+        elif self.fondo2:
             coord = n.new("ShaderNodeTexCoord")
             sep = n.new("ShaderNodeSeparateXYZ")
             rampa = n.new("ShaderNodeValToRGB")
@@ -342,29 +371,43 @@ class Escena:
         r.use_motion_blur = self.p.get("calidad") == "alta"
         dispositivo = elegir_dispositivo(self.p.get("dispositivo", "gpu"))
         print(f"GEEPER_DISPOSITIVO {dispositivo}", flush=True)
+        transparente = bool(self.p.get("transparente"))
+        r.film_transparent = transparente
         s = r.image_settings
         if hasattr(s, "media_type"):
             s.media_type = "IMAGE"
         s.file_format = "PNG"
-        s.color_mode = "RGB"
+        s.color_mode = "RGBA" if transparente else "RGB"
         s.color_depth = "8"
         os.makedirs(carpeta, exist_ok=True)
         r.filepath = os.path.join(carpeta, "c_")
         r.use_file_extension = True
         total = self.total
 
+        hechos = [0]
+
         def al_guardar(escena, *_):
-            print(f"GEEPER_CUADRO {escena.frame_current - escena.frame_start + 1} {total}", flush=True)
+            hechos[0] += 1
+            print(f"GEEPER_CUADRO {hechos[0]} {total}", flush=True)
 
         bpy.app.handlers.render_write.append(al_guardar)
         sueltos = self.p.get("solo_cuadros")
-        if sueltos:  # pruebas y portadas: sólo esos cuadros
+        if self.p.get("salida") == "imagen":
+            # Una imagen: el cuadro en que todo ya entró y está quieto (o el que se pida).
+            sueltos = [int(self.p.get("cuadro_imagen") or cuadro_imagen(self.total))]
+        if sueltos:
+            total = len(sueltos)  # pruebas y portadas: sólo esos cuadros
             for f in sueltos:
                 self.s.frame_set(int(f))
                 r.filepath = os.path.join(carpeta, f"c_{int(f):04d}.png")
                 bpy.ops.render.render(write_still=True)
             return
         bpy.ops.render.render(animation=True)
+
+
+def cuadro_imagen(total):
+    """Para una imagen fija: al 85 % de la animación ya entró todo (las entradas duran hasta ~1,5 s)."""
+    return max(1, min(total, round(total * 0.85)))
 
 
 def elegir_dispositivo(preferido):
@@ -732,7 +775,274 @@ def plantilla_caja(e):
     e.acercar(0.95)
 
 
-PLANTILLAS = {"texto": plantilla_texto, "logo": plantilla_logo, "producto": plantilla_producto, "fondo": plantilla_fondo, "caja": plantilla_caja}
+
+# ---------------------------------------------------------------- datos (gráficos)
+
+PREFIJOS = ("$", "US$", "€", "£", "S/", "R$")
+
+
+def numero_texto(v, unidad="", decimales=None):
+    """12500 → «12,500»; 3.5 → «3.5»; con su unidad delante ($) o detrás (%, kg)."""
+    if decimales is None:
+        decimales = 0 if abs(v - round(v)) < 1e-9 else 1
+    t = f"{v:,.{decimales}f}"
+    u = (unidad or "").strip()
+    if not u:
+        return t
+    if u in PREFIJOS:
+        return f"{u}{t}"
+    return f"{t}{u}" if u == "%" else f"{t} {u}"
+
+
+def facil_salida(t):
+    """0→1 que frena al final (cúbica)."""
+    t = max(0.0, min(1.0, t))
+    return 1 - (1 - t) ** 3
+
+
+def facil_rebote(t):
+    """0→1 que se pasa un poco y vuelve (back.out), para que las barras «lleguen»."""
+    t = max(0.0, min(1.0, t))
+    c = 1.70158
+    return 1 + (c + 1) * (t - 1) ** 3 + c * (t - 1) ** 2
+
+
+def color_texto(fondo):
+    return "#ffffff" if luminancia(fondo) < 0.35 else "#111111"
+
+
+def colores_serie(e, n):
+    base = [e.principal, e.acento, "#ffd166", "#06d6a0", "#4cc9f0", "#ef476f"]
+    # Si el acento es blanco o negro (texto), que no sea una barra invisible contra el fondo.
+    if abs(luminancia(e.acento) - luminancia(e.fondo)) < 0.08:
+        base[1] = "#ffd166"
+    return [base[i % len(base)] for i in range(n)]
+
+
+def arco(e, nombre, radio, centro, grosor, y=0.0):
+    """Un anillo abierto (polilínea de 129 puntos) de pie frente a la cámara, que empieza arriba y va en
+    el sentido del reloj. Abierto porque en una curva cerrada Blender ignora bevel_factor (con él se anima
+    cuánto del anillo se ve)."""
+    c = bpy.data.curves.new(nombre, "CURVE")
+    c.dimensions = "3D"
+    sp = c.splines.new("POLY")
+    n = 128
+    sp.points.add(n)
+    for i, pt in enumerate(sp.points):
+        a = 2 * math.pi * i / n
+        pt.co = (radio * math.sin(a), radio * math.cos(a), 0, 1)
+    c.bevel_depth = grosor
+    c.bevel_resolution = 6
+    c.use_fill_caps = True
+    c.bevel_factor_mapping_start = "SPLINE"
+    c.bevel_factor_mapping_end = "SPLINE"
+    o = bpy.data.objects.new(nombre, c)
+    o.location = (0, y, centro)
+    o.rotation_euler = (math.radians(90), 0, 0)
+    e.s.collection.objects.link(o)
+    return o
+
+
+def contadores(e, items):
+    """Textos que cambian en cada cuadro (los números que cuentan). items: [(curva, función(cuadro) → texto)]."""
+    def al_cambiar(escena, *_):
+        f = escena.frame_current
+        for curva, fn in items:
+            curva.body = fn(f)
+
+    bpy.app.handlers.frame_change_pre.append(al_cambiar)
+    al_cambiar(e.s)
+
+
+def texto_plano(e, cuerpo, color, tam, estilo="brillante", extrusion=0.02):
+    t = e.texto(cuerpo, color, estilo, extrusion=extrusion, tam=tam)
+    t.data.bevel_depth = 0.004
+    return t
+
+
+def plantilla_datos(e):
+    tipo = e.p.get("tipo_datos") or "barras"
+    datos = []
+    for d in (e.p.get("datos") or [])[:6]:
+        try:
+            datos.append((str(d.get("etiqueta") or "").strip()[:18], float(d.get("valor"))))
+        except (TypeError, ValueError):
+            continue
+    if not datos:
+        raise ErrorEscena("Faltan los datos: escribe al menos un número.")
+    unidad = (e.p.get("unidad") or "").strip()[:12]
+    titulo = (e.p.get("texto") or "").strip()
+    vertical = e.ry > e.rx
+    ancho = 6.0
+    alto = ancho * e.ry / e.rx
+    tinta = color_texto(e.fondo)
+    fin = e.total
+    entra = min(fin, e.seg(1.6))  # todo termina de crecer en 1,6 s
+    items = []
+    arriba = alto / 2 - (alto * 0.12 if vertical else alto * 0.1)
+    if titulo:
+        t = texto_plano(e, partir_lineas(titulo, 16 if vertical else 30), tinta, 1.0, extrusion=0.05)
+        e.ajustar(t, ancho * 0.86, alto * (0.14 if vertical else 0.16))
+        bpy.context.view_layer.update()
+        t.location = (0, 0, arriba - t.dimensions.y / 2)
+        esc = tuple(t.scale)
+        clave(t, "scale", 1, tuple(v * 0.6 for v in esc), "BACK")
+        clave(t, "scale", e.seg(0.6), esc)
+        clave(t, "location", 1, (0, 0, t.location.z + 0.3), "BEZIER")
+        clave(t, "location", e.seg(0.6), (0, 0, t.location.z))
+        arriba = t.location.z - t.dimensions.y / 2 - 0.25
+
+    if tipo == "numero":
+        etiqueta, valor = datos[0]
+        porciento = unidad == "%" and 0 <= valor <= 100
+        n = texto_plano(e, numero_texto(valor, unidad), e.principal, 1.0, e.estilo, extrusion=0.12)
+        n.data.bevel_depth = 0.012
+        alto_num = min(alto * 0.22, (arriba + alto / 2) * 0.45)
+        e.ajustar(n, ancho * (0.55 if porciento else 0.86), alto_num)
+        escala_fija = tuple(n.scale)
+        centro = (arriba + (-alto / 2 + alto * 0.08)) / 2
+        n.location = (0, 0, centro)
+        decimales = 0 if abs(valor - round(valor)) < 1e-9 else 1
+        items.append((n.data, lambda f: numero_texto(valor * facil_salida((f - 1) / max(1, entra - 1)), unidad, decimales)))
+        if porciento:
+            radio = min(ancho * 0.38, alto_num * 1.15)
+            for k, (fac, color, grosor) in enumerate(((1.0, e.acento if abs(luminancia(e.acento) - luminancia(e.fondo)) > 0.08 else "#888888", 0.05), (valor / 100, e.principal, 0.11))):
+                aro = arco(e, f"Aro{k}", radio, centro, grosor, y=-0.05 * k)
+                aro.data.materials.append(material(f"MatAro{k}", color, e.estilo if k else "mate"))
+                if k == 0:
+                    m = aro.data.materials[0]
+                    m.node_tree.nodes["Principled BSDF"].inputs["Alpha"].default_value = 0.35
+                else:
+                    clave(aro.data, "bevel_factor_end", 1, 0.0, "LINEAR")
+                    for f in range(1, entra + 1, 2):
+                        clave(aro.data, "bevel_factor_end", f, max(0.001, fac * facil_salida((f - 1) / max(1, entra - 1))), "LINEAR")
+                    clave(aro.data, "bevel_factor_end", entra, max(0.001, fac), "LINEAR")
+        clave(n, "scale", 1, tuple(v * 0.3 for v in escala_fija), "BACK")
+        clave(n, "scale", e.seg(0.8), escala_fija)
+        if etiqueta:
+            et = texto_plano(e, partir_lineas(etiqueta, 18), tinta, 1.0)
+            e.ajustar(et, ancho * 0.8, alto * 0.06)
+            bpy.context.view_layer.update()
+            bajo = centro - (min(ancho * 0.38, alto_num * 1.15) if porciento else alto_num / 2) - 0.35
+            et.location = (0, 0, bajo - et.dimensions.y / 2)
+        e.camara((0, -e.distancia_para(ancho, alto, margen=1.0), 0), objetivo=(0, 0, 0))
+        e.luces(escala=max(1.0, e.cam.location.length / 10))
+        e.pared_sombra(0.6)
+
+    elif tipo == "pastel":
+        total_v = sum(max(0.0, v) for _, v in datos) or 1.0
+        radio = min(ancho * 0.24, (arriba + alto / 2) * 0.26)
+        centro = (arriba + (-alto / 2)) / 2 + (alto * 0.06 if vertical else 0)
+        colores = colores_serie(e, len(datos))
+        acum = 0.0
+        for i, (etiqueta, v) in enumerate(datos):
+            a, b = acum / total_v, (acum + max(0.0, v)) / total_v
+            acum += max(0.0, v)
+            seg = arco(e, f"Porcion{i}", radio, centro, radio * 0.32)
+            seg.data.materials.append(material(f"MatPastel{i}", colores[i], e.estilo))
+            for f in list(range(1, entra + 1, 2)) + [entra]:
+                p = facil_salida((f - 1) / max(1, entra - 1))
+                fin_seg = max(a + 0.0005, min(b, p))
+                clave(seg.data, "bevel_factor_start", f, a, "LINEAR")
+                clave(seg.data, "bevel_factor_end", f, fin_seg if p > a else a + 0.0005, "LINEAR")
+            # Separa un poco cada porción hacia afuera al terminar.
+            medio = (a + b) / 2 * 2 * math.pi
+            dx, dz = math.sin(medio), math.cos(medio)
+            clave(seg, "location", entra, (0, 0, centro))
+            clave(seg, "location", min(fin, entra + e.seg(0.4)), (dx * radio * 0.05, 0, centro + dz * radio * 0.05))
+            # La etiqueta con su porcentaje, afuera de la porción.
+            pct = 100 * max(0.0, v) / total_v
+            txt = f"{etiqueta}\n{pct:.0f}%" if etiqueta else f"{pct:.0f}%"
+            et = texto_plano(e, txt, tinta, 1.0)
+            e.ajustar(et, ancho * 0.24, alto * 0.05)
+            bpy.context.view_layer.update()
+            r_et = radio * 1.32 + max(et.dimensions.x * abs(dx), et.dimensions.y * abs(dz)) / 2 + 0.1
+            lim = ancho / 2 * 0.88 - et.dimensions.x / 2
+            et.location = (max(-lim, min(lim, dx * r_et)), -0.2, centro + dz * r_et)
+            esc = tuple(et.scale)
+            aparece = max(1, round(1 + (entra - 1) * min(1.0, b)))
+            clave(et, "scale", 1, (0.0001,) * 3, "CONSTANT")
+            clave(et, "scale", max(1, aparece - 6), (0.0001,) * 3, "BACK")
+            clave(et, "scale", aparece + 4, esc)
+        e.camara((0, -e.distancia_para(ancho, alto, margen=1.0), alto * 0.06), objetivo=(0, 0, 0))
+        e.luces(escala=max(1.0, e.cam.location.length / 10))
+        e.pared_sombra(radio * 0.6)
+
+    else:  # barras
+        n = len(datos)
+        maximo = max(max(v for _, v in datos), 1e-6)
+        ancho_graf = ancho * 0.84
+        paso = ancho_graf / n
+        grosor = paso * 0.62
+        base_z = -alto / 2 + alto * (0.16 if vertical else 0.2)
+        alto_graf = max(0.5, (arriba - base_z) * 0.78)
+        colores = colores_serie(e, n) if n <= 3 else [e.principal] * n
+        if n > 3:
+            # Muchas barras: todas del color principal y la más alta con el acento.
+            i_max = max(range(n), key=lambda i: datos[i][1])
+            colores[i_max] = colores_serie(e, 2)[1]
+        nombres = []
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, base_z - 0.03))
+        linea = bpy.context.object
+        linea.scale = (ancho_graf * 1.04, grosor * 1.3, 0.06)
+        linea.data.materials.append(material("MatBase", tinta, "mate"))
+        for i, (etiqueta, v) in enumerate(datos):
+            x = -ancho_graf / 2 + paso * (i + 0.5)
+            h = max(0.04, alto_graf * max(0.0, v) / maximo)
+            bpy.ops.mesh.primitive_cube_add(size=1, location=(x, 0, base_z))
+            b = bpy.context.object
+            b.name = f"Barra{i}"
+            for vert in b.data.vertices:  # el origen abajo: crece hacia arriba
+                vert.co.z += 0.5
+            bev = b.modifiers.new("bisel", "BEVEL")
+            bev.width = min(0.06, grosor * 0.12)
+            bev.segments = 3
+            b.data.materials.append(material(f"MatBarra{i}", colores[i], e.estilo))
+            demora = (i / max(1, n)) * 0.35
+            ini = 1 + round(demora * (entra - 1))
+            for f in list(range(1, entra + 1, 2)) + [entra]:
+                t = (f - ini) / max(1, entra - ini)
+                k = facil_rebote(t) if f >= ini else 0.0
+                clave(b, "scale", f, (grosor, grosor, max(0.001, h * k)), "LINEAR")
+            # El valor arriba, contando y subiendo con la barra.
+            val = texto_plano(e, numero_texto(v, unidad), tinta, 1.0, extrusion=0.03)
+            e.ajustar(val, paso * 0.9, alto * (0.045 if vertical else 0.07))
+            bpy.context.view_layer.update()
+            alto_val = val.dimensions.y
+            decimales = 0 if abs(v - round(v)) < 1e-9 else 1
+
+            def cuenta(f, v=v, ini=ini, decimales=decimales):
+                t = (f - ini) / max(1, entra - ini)
+                return numero_texto(v * facil_salida(t) if f >= ini else 0.0, unidad, decimales)
+
+            items.append((val.data, cuenta))
+            for f in list(range(1, entra + 1, 2)) + [entra]:
+                t = (f - ini) / max(1, entra - ini)
+                k = facil_rebote(t) if f >= ini else 0.0
+                clave(val, "location", f, (x, -grosor / 2 - 0.02, base_z + max(0.001, h * k) + 0.12 + alto_val / 2), "LINEAR")
+            if etiqueta:
+                et = texto_plano(e, partir_lineas(etiqueta, 10), tinta, 1.0)
+                e.ajustar(et, paso * 0.92, alto * 0.05)
+                nombres.append((et, x))
+        # Todos los nombres del mismo tamaño (el del más largo) y colgando de la base.
+        if nombres:
+            k = min(et.scale[0] for et, _ in nombres)
+            bpy.context.view_layer.update()
+            for et, x in nombres:
+                f = k / et.scale[0]
+                alto_et = et.dimensions.y * f
+                et.scale = (k, k, k)
+                et.location = (x, -grosor * 0.65 - 0.05, base_z - 0.14 - alto_et / 2)
+        d = e.distancia_para(ancho, alto, margen=1.0)
+        e.camara((0, -d, alto * 0.08), objetivo=(0, 0, 0))
+        e.luces(escala=max(1.0, d / 10))
+        # Sin suelo que atrape sombras: taparía los nombres, que van debajo de la base.
+        e.pared_sombra(grosor * 1.5)
+    contadores(e, items)
+    e.acercar(0.96)
+
+
+PLANTILLAS = {"texto": plantilla_texto, "logo": plantilla_logo, "producto": plantilla_producto, "fondo": plantilla_fondo, "caja": plantilla_caja, "datos": plantilla_datos}
 
 
 def main():

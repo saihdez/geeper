@@ -9,13 +9,14 @@ HDRI="${GEEPER_HDRI:-$HOME/dev/video-tools/blender/hdri/studio_small_09_1k.hdr}"
 M="$REPO/py/blender/muestras"
 SAL="$REPO/py/blender/previas"
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
-plantillas=("$@"); [ ${#plantillas[@]} -gt 0 ] || plantillas=(texto logo producto fondo caja)
+plantillas=("$@"); [ ${#plantillas[@]} -gt 0 ] || plantillas=(texto datos logo producto fondo caja)
 for pl in "${plantillas[@]}"; do
   case "$pl" in
     texto)    extra='"texto":"¡Oferta del día!","movimiento":"entra","colores":{"fondo":"#14213d","fondo2":"#05070d","principal":"#fca311","acento":"#ffffff"}' ;;
     logo)     extra="\"logo\":\"$M/logo.svg\",\"estilo\":\"brillante\",\"colores\":{\"fondo\":\"#f4f4f4\",\"fondo2\":\"#d9dde3\",\"principal\":\"#111111\",\"acento\":\"#e63946\"}" ;;
     producto) extra="\"imagen\":\"$M/frasco.png\",\"texto\":\"\$29.99\",\"colores\":{\"fondo\":\"#fff1f3\",\"fondo2\":\"#ffd6e0\",\"principal\":\"#ff8fab\",\"acento\":\"#6c63ff\"}" ;;
     fondo)    extra='"estilo_fondo":"burbujas","colores":{"fondo":"#1a0b2e","fondo2":"#05010a","principal":"#ff2e88","acento":"#2ef2ff"}' ;;
+    datos)    extra='"tipo_datos":"barras","texto":"Ventas por mes","datos":[{"etiqueta":"Enero","valor":120},{"etiqueta":"Febrero","valor":340},{"etiqueta":"Marzo","valor":260},{"etiqueta":"Abril","valor":510}],"unidad":"","colores":{"fondo":"#e9f5f2","fondo2":"#b9e4dc","principal":"#0f8b8d","acento":"#ec9a29"}' ;;
     caja)     extra='"texto":"¡Nuevo!","colores":{"fondo":"#2b0a0a","fondo2":"#000000","principal":"#ff4d00","acento":"#ffd166"}' ;;
     *) echo "No conozco la plantilla $pl" >&2; exit 64 ;;
   esac

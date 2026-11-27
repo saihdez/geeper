@@ -17,7 +17,8 @@ import { asegurarHdri, binBlender, entornoBlender, HDRI, versionBlender } from "
 import { db } from "./db";
 import { reemplazarVisual } from "./ediciones";
 import {
-  COLORES_LOGO, DURACION_3D, ESTILOS_3D, FONDOS_3D, FORMATOS_3D, INFO_PLANTILLAS, MOVIMIENTOS_3D, PALETAS_3D, PLANTILLAS_3D, type Colores3d, type Plantilla3d,
+  COLORES_LOGO, DURACION_3D, ESTILOS_3D, FONDOS_3D, FONDOS_SALIDA_3D, FORMATOS_3D, INFO_PLANTILLAS, MAX_DATOS_3D, MOVIMIENTOS_3D, PALETAS_3D, PLANTILLAS_3D, SALIDAS_3D,
+  TIPOS_DATOS_3D, type Colores3d, type Plantilla3d,
 } from "./escenas3d-catalogo";
 import { tomarGpu } from "./gpu";
 import { llamaDisponible, preguntarLlama } from "./llm-local";
@@ -27,6 +28,8 @@ import { dirDatos, dirProyecto, FFMPEG, RAIZ_REPO } from "./rutas";
 
 const ids = <T extends readonly { id: string }[]>(xs: T) => xs.map((x) => x.id) as [T[number]["id"], ...T[number]["id"][]];
 const Hex = z.string().regex(/^#[0-9a-fA-F]{6}$/);
+export const Dato3d = z.object({ etiqueta: z.string().max(18).default(""), valor: z.number().finite().min(-1e12).max(1e12) });
+export type Dato3d = z.infer<typeof Dato3d>;
 
 export const Pedido3d = z.object({
   plantilla: z.enum(PLANTILLAS_3D),
@@ -41,6 +44,15 @@ export const Pedido3d = z.object({
   calidad: z.enum(["rapida", "normal", "alta"]).default("normal"),
   /** Nombre del archivo subido (foto o logo) dentro de `entradas/`. */
   archivo: z.string().regex(/^[\w.-]+$/).nullable().default(null),
+  /** Gráfico: tipo, cifras (hasta 6) y unidad («%», «$», «kg»). */
+  tipo_datos: z.enum(ids(TIPOS_DATOS_3D)).default("barras"),
+  datos: z.array(Dato3d).max(MAX_DATOS_3D).default([]),
+  unidad: z.string().max(12).default(""),
+  /** Video o una imagen fija. */
+  salida: z.enum(ids(SALIDAS_3D)).default("video"),
+  /** Detrás: el color, una foto (`archivo_fondo` en `entradas/`) o transparente. */
+  fondo_salida: z.enum(ids(FONDOS_SALIDA_3D)).default("color"),
+  archivo_fondo: z.string().regex(/^[\w.-]+$/).nullable().default(null),
 });
 export type Pedido3d = z.infer<typeof Pedido3d>;
 
@@ -65,6 +77,20 @@ export const dirCorrida3d = (id: string) => {
 export const rutaVideo3d = (id: string) => `escenas-3d/${id}/video.mp4`;
 export const rutaPortada3d = (id: string) => `escenas-3d/${id}/portada.jpg`;
 
+/**
+ * Lo que deja una corrida hecha (función pura; rutas para /api/archivos):
+ * - video: MP4 (con un fondo; si se pidió transparente, sobre el color de fondo, para usarlo como escena).
+ * - transparente: WebM VP9 con alfa (video) o el PNG con alfa (imagen), para poner encima de otra cosa.
+ * - imagen: PNG del cuadro (salida «imagen»).
+ */
+export function archivosCorrida3d(c: Corrida3d): { video: string | null; transparente: string | null; imagen: string | null; portada: string | null } {
+  if (c.estado !== "hecha") return { video: null, transparente: null, imagen: null, portada: null };
+  const base = `escenas-3d/${c.id}`;
+  const alfa = c.pedido.fondo_salida === "transparente";
+  if (c.pedido.salida === "imagen") return { video: null, transparente: null, imagen: `${base}/imagen.png`, portada: `${base}/portada.jpg` };
+  return { video: `${base}/video.mp4`, transparente: alfa ? `${base}/video-transparente.webm` : null, imagen: null, portada: `${base}/portada.jpg` };
+}
+
 export function nuevaCorrida3d(plantilla: Plantilla3d) {
   return `${new Date().toISOString().slice(0, 10)}-${plantilla}-${randomBytes(3).toString("hex")}`;
 }
@@ -84,6 +110,15 @@ export function faltaEnPedido(p: Pedido3d): string | null {
   if (info.obligatorios.includes("logo") && !p.archivo) return "Sube tu logo (SVG o PNG).";
   if (p.archivo && p.plantilla !== "logo" && !/\.(png|jpe?g|webp)$/i.test(p.archivo)) return "La foto tiene que ser PNG, JPG o WebP.";
   if (p.archivo && p.plantilla === "logo" && !/\.(svg|png)$/i.test(p.archivo)) return "El logo tiene que ser SVG o PNG.";
+  if (info.obligatorios.includes("datos")) {
+    const n = p.datos.length;
+    if (!n) return "Escribe al menos un número.";
+    if (p.tipo_datos === "pastel" && n < 2) return "Para el anillo hacen falta al menos dos partes.";
+    if (p.tipo_datos === "pastel" && p.datos.some((d) => d.valor < 0)) return "En el anillo los números no pueden ser negativos.";
+    if (p.tipo_datos === "barras" && p.datos.every((d) => d.valor <= 0)) return "Para las barras hace falta al menos un número mayor que cero.";
+  }
+  if (p.fondo_salida === "foto" && !p.archivo_fondo) return "Sube la foto de fondo (o elige otro fondo).";
+  if (p.archivo_fondo && !/\.(png|jpe?g|webp)$/i.test(p.archivo_fondo)) return "La foto de fondo tiene que ser PNG, JPG o WebP.";
   return null;
 }
 
@@ -124,17 +159,18 @@ export async function borrarCorrida3d(id: string) {
 }
 
 /** Guarda el pedido (y la foto o logo) como corrida «preparada». El trabajo la renderiza. */
-export async function prepararCorrida3d(pedido: Pedido3d, archivo?: { nombre: string; datos: Buffer }): Promise<Corrida3d> {
+export async function prepararCorrida3d(pedido: Pedido3d, archivo?: { nombre: string; datos: Buffer }, fondo?: { nombre: string; datos: Buffer }): Promise<Corrida3d> {
   const id = nuevaCorrida3d(pedido.plantilla);
   const dir = dirCorrida3d(id);
-  let p = pedido;
-  if (archivo) {
-    const ext = path.extname(archivo.nombre).toLowerCase().replace(/[^.a-z0-9]/g, "");
-    const nombre = `entrada${ext}`;
+  let p: Pedido3d = { ...pedido, archivo: null, archivo_fondo: null };
+  const guardar = async (a: { nombre: string; datos: Buffer }, base: string) => {
+    const ext = path.extname(a.nombre).toLowerCase().replace(/[^.a-z0-9]/g, "");
     await fs.mkdir(path.join(dir, "entradas"), { recursive: true });
-    await fs.writeFile(path.join(dir, "entradas", nombre), archivo.datos);
-    p = { ...p, archivo: nombre };
-  }
+    await fs.writeFile(path.join(dir, "entradas", `${base}${ext}`), a.datos);
+    return `${base}${ext}`;
+  };
+  if (archivo) p = { ...p, archivo: await guardar(archivo, "entrada") };
+  if (fondo && p.fondo_salida === "foto") p = { ...p, archivo_fondo: await guardar(fondo, "fondo") };
   const falta = faltaEnPedido(p);
   if (falta) {
     await fs.rm(dir, { recursive: true, force: true });
@@ -162,6 +198,12 @@ export function pedidoParaBlender(p: Pedido3d, op: { dir: string; cuadros: strin
     dispositivo: op.dispositivo,
     imagen: p.plantilla === "logo" ? null : entrada,
     logo: p.plantilla === "logo" ? entrada : null,
+    tipo_datos: p.tipo_datos,
+    datos: p.datos,
+    unidad: p.unidad,
+    salida: p.salida,
+    transparente: p.fondo_salida === "transparente",
+    fondo_imagen: p.fondo_salida === "foto" && p.archivo_fondo ? path.join(op.dir, "entradas", p.archivo_fondo) : null,
     hdri: op.hdri,
     cuadros: op.cuadros,
   };
@@ -231,13 +273,7 @@ export async function crearEscena3d(ctx: Contexto3d, id: string): Promise<Corrid
     }
     const pngs = (await fs.readdir(cuadros).catch(() => [])).filter((n) => /^c_\d+\.png$/.test(n)).sort();
     if (!pngs.length) throw new Error("Blender terminó pero no dejó cuadros.");
-    avanzar("Guardando el video", 0.93);
-    const video = path.join(dir, "video.mp4");
-    await correr(FFMPEG, ["-hide_banner", "-loglevel", "error", "-y", "-framerate", "30", "-start_number", String(Number(pngs[0]!.slice(2, -4))), "-i", path.join(cuadros, "c_%04d.png"),
-      "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-pix_fmt", "yuv420p", "-movflags", "+faststart", `${video}.tmp.mp4`], { log: ctx.log, signal: ctx.signal, timeout: 30 * 60_000 });
-    await fs.rename(`${video}.tmp.mp4`, video);
-    const medio = pngs[Math.floor(pngs.length * 0.6)]!;
-    await correr(FFMPEG, ["-hide_banner", "-loglevel", "error", "-y", "-i", path.join(cuadros, medio), "-q:v", "3", path.join(dir, "portada.jpg")], { log: ctx.log, timeout: 60_000 });
+    await guardarSalidas3d(c.pedido, dir, cuadros, pngs, { log: ctx.log, signal: ctx.signal, avanzar });
     const hecha: Corrida3d = { ...c, estado: "hecha", segundos: Math.round((Date.now() - t0) / 1000), dispositivo: dispositivo || undefined, error: undefined };
     await escribirCorrida3d(hecha);
     return hecha;
@@ -250,22 +286,53 @@ export async function crearEscena3d(ctx: Contexto3d, id: string): Promise<Corrid
   }
 }
 
+/**
+ * Pasa los cuadros a lo que se entrega (archivosCorrida3d): MP4, WebM con alfa, PNG y la portada. Con
+ * fondo transparente, el MP4 y la portada van sobre el color de fondo (sirven como escena de un video).
+ */
+export async function guardarSalidas3d(p: Pedido3d, dir: string, cuadros: string, pngs: string[], ctx: { log: Registro; signal?: AbortSignal; avanzar?: (etapa: string, avance: number) => void }) {
+  const ff = (args: string[], timeout = 30 * 60_000) => correr(FFMPEG, ["-hide_banner", "-loglevel", "error", "-y", ...args], { log: ctx.log, signal: ctx.signal, timeout });
+  const alfa = p.fondo_salida === "transparente";
+  // Con alfa, se apoya sobre el color de fondo para lo que no puede llevar transparencia (MP4, JPG).
+  const aplanar = alfa ? ["-filter_complex", `[0:v]format=rgba,split[a][b];[a]drawbox=x=0:y=0:w=iw:h=ih:color=${p.colores.fondo.replace("#", "0x")}@1:t=fill[f];[f][b]overlay=format=auto,format=yuv420p`] : [];
+  if (p.salida === "imagen") {
+    ctx.avanzar?.("Guardando la imagen", 0.95);
+    await fs.copyFile(path.join(cuadros, pngs[0]!), path.join(dir, "imagen.png"));
+    await ff(["-i", path.join(cuadros, pngs[0]!), ...(alfa ? aplanar : []), "-frames:v", "1", "-q:v", "3", path.join(dir, "portada.jpg")], 60_000);
+    return;
+  }
+  ctx.avanzar?.("Guardando el video", 0.93);
+  const entrada = ["-framerate", "30", "-start_number", String(Number(pngs[0]!.slice(2, -4))), "-i", path.join(cuadros, "c_%04d.png")];
+  const video = path.join(dir, "video.mp4");
+  await ff([...entrada, ...aplanar, "-c:v", "libx264", "-crf", "18", "-preset", "medium", ...(alfa ? [] : ["-pix_fmt", "yuv420p"]), "-movflags", "+faststart", `${video}.tmp.mp4`]);
+  await fs.rename(`${video}.tmp.mp4`, video);
+  if (alfa) {
+    ctx.avanzar?.("Guardando el video transparente", 0.96);
+    const webm = path.join(dir, "video-transparente.webm");
+    await ff([...entrada, "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-b:v", "0", "-crf", "30", "-row-mt", "1", "-auto-alt-ref", "0", `${webm}.tmp.webm`]);
+    await fs.rename(`${webm}.tmp.webm`, webm);
+  }
+  const medio = pngs[Math.floor(pngs.length * 0.6)]!;
+  await ff(["-i", path.join(cuadros, medio), ...(alfa ? aplanar : []), "-frames:v", "1", "-q:v", "3", path.join(dir, "portada.jpg")], 60_000);
+}
+
 /** Pone el video de una escena 3D como el visual de una escena de un proyecto. Devuelve la versión nueva. */
 export async function usarEscena3d(corrida: string, proyectoId: string, escena: string): Promise<number> {
   const c = await leerCorrida3d(corrida);
-  const origen = path.join(dirCorrida3d(corrida), "video.mp4");
+  const esImagen = c?.pedido.salida === "imagen";
+  const origen = path.join(dirCorrida3d(corrida), esImagen ? "imagen.png" : "video.mp4");
   if (!c || c.estado !== "hecha" || !existsSync(origen)) throw new Error("Esa escena 3D todavía no está lista.");
   const fila = await db.proyecto.findUniqueOrThrow({ where: { id: proyectoId } });
   const dir = dirProyecto(fila.slug);
   const datos = await fs.readFile(origen);
   const assetId = `escena3d-${createHash("sha256").update(datos).digest("hex").slice(0, 12)}`;
-  const ruta = `assets/${assetId}.mp4`;
+  const ruta = `assets/${assetId}.${esImagen ? "png" : "mp4"}`;
   await fs.mkdir(path.join(dir, "assets"), { recursive: true });
   await fs.writeFile(path.join(dir, `${ruta}.tmp`), datos);
   await fs.rename(path.join(dir, `${ruta}.tmp`), path.join(dir, ruta));
   const asset = await describirAsset(dir, ruta, {
     id: assetId,
-    tipo: "video",
+    tipo: esImagen ? "imagen" : "video",
     source: "archivo",
     licencia: `Hecho en esta PC con Blender (plantilla de Geeper «${INFO_PLANTILLAS[c.pedido.plantilla].nombre}»); luz de estudio ${HDRI.licencia}. Las fotos o logos que subiste son tuyos.`,
     regenerar: { escena3d: c.id },
@@ -283,6 +350,9 @@ export async function usarEscena3d(corrida: string, proyectoId: string, escena: 
 export interface Sugerencia3d {
   plantilla: Plantilla3d;
   texto: string;
+  tipo_datos: Pedido3d["tipo_datos"];
+  datos: Dato3d[];
+  unidad: string;
   estilo: Pedido3d["estilo"];
   movimiento: Pedido3d["movimiento"];
   estilo_fondo: Pedido3d["estilo_fondo"];
@@ -311,13 +381,40 @@ export function textoCitado(d: string): string {
 }
 
 /**
+ * Cifras escritas en la descripción (función pura): «enero 120, febrero 340», «87%», «$1,200 en ventas».
+ * Devuelve hasta 6, con su etiqueta (las palabras justo antes) y la unidad si es la misma en todas.
+ */
+export function cifrasDe(d: string): { datos: Dato3d[]; unidad: string } {
+  const datos: Dato3d[] = [];
+  const unidades = new Set<string>();
+  const re = /([\p{L}][\p{L} ]{0,17}?)?\s*[:=]?\s*(US\$|\$|€|S\/)?\s*(\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?)\s*(%|por ?ciento|kg|km|millones|mil|personas|usuarios)?/giu;
+  for (const m of d.matchAll(re)) {
+    let n = m[3]!;
+    // 1,200 / 1.200 con grupos de tres: miles. 3,5 / 3.5: decimal.
+    n = /^\d{1,3}([.,]\d{3})+$/.test(n) ? n.replace(/[.,]/g, "") : n.replace(",", ".");
+    const valor = Number(n);
+    if (!Number.isFinite(valor)) continue;
+    const sobra = "de|del|en|con|y|e|el|la|los|las|un|una|que|diga";
+    const etiqueta = (m[1] ?? "").trim().replace(new RegExp(`^((${sobra})\\s+)+`, "i"), "").replace(new RegExp(`(^|\\s)(${sobra})$`, "i"), "").trim();
+    const unidad = m[2] ?? (m[4] ? (/^por/i.test(m[4]) ? "%" : m[4]) : "");
+    unidades.add(unidad);
+    datos.push({ etiqueta: etiqueta.slice(0, 18), valor });
+    if (datos.length === 6) break;
+  }
+  return { datos, unidad: unidades.size === 1 ? [...unidades][0]! : "" };
+}
+
+/**
  * Elige plantilla y ajustes por palabras clave (función pura). Es lo que se usa sin el modelo local y la
  * base que el modelo puede mejorar.
  */
 export function adivinarEscena(descripcion: string): Sugerencia3d {
   const d = sinTildes(descripcion);
   const tiene = (...ps: string[]) => ps.some((p) => new RegExp(`\\b${p}`).test(d));
-  const plantilla: Plantilla3d = tiene("logo", "marca", "isotipo")
+  const cifras = cifrasDe(descripcion.replace(/[«"“][^»"”]*[»"”]/g, " "));
+  const plantilla: Plantilla3d = tiene("grafic", "barras", "estadistic", "porcentaje", "datos", "cifras", "dona", "pastel", "anillo") || (cifras.datos.length >= 2 && !tiene("precio"))
+    ? "datos"
+    : tiene("logo", "marca", "isotipo")
     ? "logo"
     : tiene("caja", "regalo", "sorpresa", "revel", "unboxing", "abre")
       ? "caja"
@@ -341,8 +438,10 @@ export function adivinarEscena(descripcion: string): Sugerencia3d {
   const texto = textoCitado(descripcion);
   const nombre = INFO_PLANTILLAS[plantilla].nombre;
   const material = ESTILOS_3D.find((x) => x.id === estilo)!.titulo.toLowerCase();
+  const tipo_datos: Pedido3d["tipo_datos"] = tiene("pastel", "dona", "anillo", "reparte", "partes") ? "pastel" : cifras.datos.length === 1 || tiene("numero grande", "un dato") ? "numero" : "barras";
   return {
     plantilla, texto, estilo, movimiento, estilo_fondo, colores, origen: "palabras",
+    tipo_datos, datos: plantilla === "datos" ? cifras.datos : [], unidad: plantilla === "datos" ? cifras.unidad : "",
     explicacion: `Entendí: «${nombre}»${texto ? ` que dice «${texto}»` : ""}, ${material}.`,
   };
 }
@@ -359,6 +458,8 @@ export function promptEscena(descripcion: string): string {
     ` "estilo": una de [${ESTILOS_3D.map((e) => e.id).join(", ")}], "movimiento": una de [${MOVIMIENTOS_3D.map((e) => e.id).join(", ")}],`,
     ` "estilo_fondo": una de [${FONDOS_3D.map((e) => e.id).join(", ")}],`,
     ' "colores": {"fondo": "#RRGGBB", "fondo2": "#RRGGBB" o null, "principal": "#RRGGBB", "acento": "#RRGGBB"},',
+    ` "tipo_datos": una de [${TIPOS_DATOS_3D.map((e) => e.id).join(", ")}] (sólo para datos),`,
+    ' "datos": [{"etiqueta": hasta 18 letras, "valor": número}] hasta 6 (sólo para datos, y sólo cifras que la persona escribió), "unidad": "%", "$", "kg" o vacío,',
     ' "explicacion": una frase corta que empiece con «Entendí:» y diga qué vas a hacer}',
     "Reglas: el texto sólo lo que la persona pidió que diga (no inventes precios ni datos); colores con buen contraste entre fondo y principal.",
     `Descripción: """${descripcion.slice(0, 600)}"""`,
@@ -377,7 +478,16 @@ export function normalizarSugerencia(crudo: string, base: Sugerencia3d): Sugeren
   const hex = (v: unknown, porDefecto: string) => (typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v) ? v.toLowerCase() : porDefecto);
   const c = (j.colores ?? {}) as Record<string, unknown>;
   const texto = typeof j.texto === "string" ? j.texto.trim().slice(0, 80) : base.texto;
+  // Las cifras sólo si son las que la persona escribió: el modelo no inventa datos.
+  const escritas = new Set(base.datos.map((d) => d.valor));
+  const datosIa = Array.isArray(j.datos)
+    ? (j.datos as unknown[]).map((x) => Dato3d.safeParse({ etiqueta: String((x as { etiqueta?: unknown })?.etiqueta ?? "").slice(0, 18), valor: Number((x as { valor?: unknown })?.valor) })).flatMap((r) => (r.success ? [r.data] : [])).slice(0, MAX_DATOS_3D)
+    : [];
+  const datos = datosIa.length && datosIa.every((d) => escritas.has(d.valor)) ? datosIa : base.datos;
   return {
+    tipo_datos: de(j.tipo_datos, TIPOS_DATOS_3D.map((e) => e.id), base.tipo_datos),
+    datos,
+    unidad: typeof j.unidad === "string" && j.unidad.length <= 12 && (base.unidad ? j.unidad === base.unidad : true) ? j.unidad.trim() : base.unidad,
     plantilla: de(j.plantilla, PLANTILLAS_3D, base.plantilla),
     // Lo que la persona puso entre comillas manda sobre lo que proponga el modelo.
     texto: base.texto || texto,

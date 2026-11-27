@@ -3,10 +3,10 @@
  * hecha en py/blender/escena3d.py; aquí va lo que la persona ve y puede cambiar.
  */
 
-export const PLANTILLAS_3D = ["texto", "logo", "producto", "fondo", "caja"] as const;
+export const PLANTILLAS_3D = ["texto", "datos", "logo", "producto", "fondo", "caja"] as const;
 export type Plantilla3d = (typeof PLANTILLAS_3D)[number];
 
-export type Campo3d = "texto" | "logo" | "imagen" | "estilo" | "movimiento" | "estilo_fondo" | "colores_logo";
+export type Campo3d = "texto" | "logo" | "imagen" | "estilo" | "movimiento" | "estilo_fondo" | "colores_logo" | "datos";
 
 export interface InfoPlantilla3d {
   id: Plantilla3d;
@@ -28,6 +28,11 @@ export const INFO_PLANTILLAS: Record<Plantilla3d, InfoPlantilla3d> = {
     id: "texto", nombre: "Título en 3D", para: "Una frase grande en 3D que entra con movimiento. Para abrir un video o anunciar algo.",
     campos: ["texto", "estilo", "movimiento"], obligatorios: ["texto"], colores: { principal: "Color de las letras", acento: null },
     ejemploTexto: "¡Oferta del día!", etiquetaTexto: "¿Qué dice?",
+  },
+  datos: {
+    id: "datos", nombre: "Gráfico con tus datos", para: "Barras, un anillo o un número grande que se arman solos con tus cifras. Para explicar algo con números.",
+    campos: ["datos", "texto", "estilo"], obligatorios: ["datos"], colores: { principal: "Color de las barras", acento: "Color para resaltar" },
+    ejemploTexto: "Ventas por mes", etiquetaTexto: "Título del gráfico (opcional)",
   },
   logo: {
     id: "logo", nombre: "Tu logo en 3D", para: "Tu logo gira, entra y le pasa un brillo. Para el inicio o el cierre.",
@@ -69,6 +74,29 @@ export const FONDOS_3D = [
 ] as const;
 export type EstiloFondo3d = (typeof FONDOS_3D)[number]["id"];
 
+export const TIPOS_DATOS_3D = [
+  { id: "barras", titulo: "Barras", texto: "Para comparar cosas (meses, productos, países)." },
+  { id: "numero", titulo: "Un número grande", texto: "Un dato que impacta. Con «%» se llena un aro." },
+  { id: "pastel", titulo: "Anillo por partes", texto: "Cómo se reparte un todo (porcentajes)." },
+] as const;
+export type TipoDatos3d = (typeof TIPOS_DATOS_3D)[number]["id"];
+export const MAX_DATOS_3D = 6;
+
+/** Video o una imagen fija (portada, publicación, foto de producto). */
+export const SALIDAS_3D = [
+  { id: "video", titulo: "Video", texto: "Con movimiento." },
+  { id: "imagen", titulo: "Imagen", texto: "Una foto fija: portada, publicación o foto de producto." },
+] as const;
+export type Salida3d = (typeof SALIDAS_3D)[number]["id"];
+
+/** Detrás de la escena: el color elegido, una foto tuya o nada (para ponerla encima de otro video). */
+export const FONDOS_SALIDA_3D = [
+  { id: "color", titulo: "Color", texto: "Los colores que elegiste." },
+  { id: "foto", titulo: "Una foto tuya", texto: "Lo 3D aparece delante de tu foto." },
+  { id: "transparente", titulo: "Transparente", texto: "Sin fondo: para ponerlo encima de otro video o imagen." },
+] as const;
+export type FondoSalida3d = (typeof FONDOS_SALIDA_3D)[number]["id"];
+
 export const COLORES_LOGO = [
   { id: "originales", titulo: "Los colores de tu logo", texto: "Sólo con un logo SVG." },
   { id: "principal", titulo: "Un solo color", texto: "Todo el logo del color que elijas." },
@@ -107,8 +135,9 @@ export type Formato3d = (typeof FORMATOS_3D)[number]["id"];
 
 export const DURACION_3D = { min: 3, max: 15, porDefecto: 5 } as const;
 
-/** Minutos estimados en la tarjeta de video (función pura; sin tarjeta, unas 10 veces más). */
-export function minutosEstimados(calidad: Calidad3d, segundos: number, conGpu = true): number {
+/** Minutos estimados en la tarjeta de video (función pura; sin tarjeta, unas 10 veces más). Una imagen es un solo cuadro. */
+export function minutosEstimados(calidad: Calidad3d, segundos: number, conGpu = true, salida: Salida3d = "video"): number {
+  if (salida === "imagen") return conGpu ? 1 : 3;
   const base = CALIDADES_3D.find((c) => c.id === calidad)?.minutosPor5s ?? 3;
   return Math.max(1, Math.round((base * segundos) / 5 * (conGpu ? 1 : 10)));
 }
