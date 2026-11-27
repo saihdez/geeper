@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { Aviso, Barra, archivo, pedir, postJson, useSondeo } from "./comun";
+import { Escuchar } from "./elegir-voz";
 import {
-  CALIDADES_3D, COLORES_LOGO, DURACION_3D, ESTILOS_3D, FONDOS_3D, FONDOS_SALIDA_3D, FORMATOS_3D, INFO_PLANTILLAS, MAX_DATOS_3D, MOVIMIENTOS_3D, PALETAS_3D, PLANTILLAS_3D,
-  SALIDAS_3D, TIPOS_DATOS_3D, minutosEstimados,
-  type Calidad3d, type Colores3d, type FondoSalida3d, type Formato3d, type Plantilla3d, type Salida3d, type TipoDatos3d,
+  CALIDADES_3D, COLORES_LOGO, DURACION_3D, ESTILOS_3D, FONDOS_3D, FONDOS_SALIDA_3D, FORMATOS_3D, INFO_PLANTILLAS, MAX_DATOS_3D, MAX_DIALOGO, MOVIMIENTOS_3D, PALETAS_3D,
+  PERSONAJES_3D, PLANTILLAS_3D, SALIDAS_3D, TIPOS_DATOS_3D, minutosEstimados,
+  type Calidad3d, type Colores3d, type FondoSalida3d, type Formato3d, type Personaje3d, type Plantilla3d, type Salida3d, type TipoDatos3d,
 } from "@/lib/escenas3d-catalogo";
 
 interface EstadoInstalacion { fase: string; progreso: number; detalle: string; disponible: boolean; mb: number | null }
@@ -142,7 +143,15 @@ interface Estado3d {
   unidad: string;
   salida: Salida3d;
   fondo_salida: FondoSalida3d;
+  personaje: Personaje3d;
+  dialogo: string;
+  voz: string;
+  /** El personaje dice un texto (con una voz de Geeper) o una grabación que sube la persona. */
+  modoVoz: "escribir" | "subir";
 }
+
+/** Segundos que tarda en decirse un texto (unas 14 letras por segundo). */
+const segundosDe = (t: string) => Math.max(1, Math.round(t.trim().length / 14));
 
 /** «1,200» / «1.200» → 1200; «3,5» / «3.5» → 3.5; vacío o texto → null. */
 export function numeroEscrito(t: string): number | null {
@@ -166,6 +175,10 @@ const inicial = (destino?: Destino3d): Estado3d => ({
   unidad: "",
   salida: "video",
   fondo_salida: "color",
+  personaje: "bolita",
+  dialogo: "",
+  voz: "ef_dora",
+  modoVoz: "escribir",
 });
 
 /** «Descríbelo y lo armo»: el modelo local elige la plantilla y los ajustes; la persona los revisa abajo. */
@@ -202,12 +215,79 @@ function Describir({ conIa, aplicar }: { conIa: boolean; aplicar: (s: Partial<Es
   );
 }
 
+interface VozKokoro { voz: string; nombre: string; detalle: string }
+
+/** El personaje: cuál, qué dice y con qué voz (escuchándolas), o una grabación propia. */
+function EditarPersonaje({ e, poner, vozSubida, setVozSubida }: { e: Estado3d; poner: (x: Partial<Estado3d>) => void; vozSubida: File | null; setVozSubida: (f: File | null) => void }) {
+  const { datos } = useSondeo<{ kokoro: VozKokoro[] }>("/api/voces?idioma=es", 300_000);
+  return (
+    <div className="space-y-4">
+      <div className="space-y-1">
+        <p className="text-sm">¿Quién habla?</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {PERSONAJES_3D.map((x) => (
+            <button key={x.id} type="button" aria-pressed={e.personaje === x.id} onClick={() => poner({ personaje: x.id })}
+              className={`flex items-center gap-3 overflow-hidden rounded-xl border p-2 text-left ${e.personaje === x.id ? "border-acento ring-2 ring-acento" : "border-borde hover:border-acento/60"}`}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={`/api/escenas-3d/previa/personaje-${x.id}`} alt="" className="h-20 w-16 shrink-0 rounded object-cover" />
+              <span>
+                <span className="block text-sm font-medium">{x.titulo}</span>
+                <span className="block text-xs text-tenue">{x.texto}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="space-y-2">
+        <p className="text-sm">¿Qué dice?</p>
+        <div className="flex flex-wrap gap-2">
+          {([["escribir", "Lo escribo y elijo una voz"], ["subir", "Subo mi grabación"]] as const).map(([id, t]) => (
+            <button key={id} type="button" aria-pressed={e.modoVoz === id} onClick={() => poner({ modoVoz: id })}
+              className={`rounded-full border px-3 py-1 text-xs ${e.modoVoz === id ? "border-acento bg-acento/10" : "border-borde hover:border-acento/60"}`}>{t}</button>
+          ))}
+        </div>
+        {e.modoVoz === "escribir" ? (
+          <>
+            <label className="block space-y-1">
+              <textarea className="campo min-h-24 w-full" maxLength={MAX_DIALOGO} value={e.dialogo} onChange={(ev) => poner({ dialogo: ev.target.value })}
+                placeholder="Ej.: ¡Hola! Hoy te cuento tres trucos para ahorrar en el súper." aria-label="Lo que dice el personaje" />
+              <span className="block text-xs text-tenue">{e.dialogo.length} de {MAX_DIALOGO} letras{e.dialogo.trim() ? ` · unos ${segundosDe(e.dialogo)} segundos` : ""}. Escribe como hablas, con comas y puntos.</span>
+            </label>
+            <p className="text-sm">Elige la voz escuchándola</p>
+            <ul className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {(datos?.kokoro ?? []).map((k) => (
+                <li key={k.voz} className={`space-y-2 rounded-lg border p-2 ${e.voz === k.voz ? "border-acento bg-acento/10" : "border-borde"}`}>
+                  <button type="button" className="block w-full text-left" aria-pressed={e.voz === k.voz} onClick={() => poner({ voz: k.voz })}>
+                    <span className="block text-sm font-medium">{k.nombre}{e.voz === k.voz ? " ✓" : ""}</span>
+                    <span className="block text-xs text-tenue">{k.detalle}</span>
+                  </button>
+                  <Escuchar kokoro={k.voz} />
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="boton cursor-pointer">
+              {vozSubida ? "Cambiar la grabación" : "Subir mi grabación"}
+              <input type="file" className="sr-only" accept=".mp3,.wav,.m4a,.ogg,.webm,audio/*" onChange={(ev) => setVozSubida(ev.target.files?.[0] ?? null)} />
+            </label>
+            {vozSubida && <span className="text-xs text-tenue">{vozSubida.name}</span>}
+            <p className="w-full text-xs text-tenue">Una grabación de hasta un minuto, con tu voz o la de alguien que te dio permiso. Se oye mejor sin música ni ruido de fondo.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** El asistente completo: plantilla → ajustes → formato y calidad → crear. */
 export function CrearEscena3d({ destino, alCrear }: { destino?: Destino3d; alCrear?: () => void }) {
   const [e, setE] = useState<Estado3d>(() => inicial(destino));
   const [archivoSubido, setArchivo] = useState<File | null>(null);
   const [vista, setVista] = useState<string | null>(null);
   const [fondoSubido, setFondo] = useState<File | null>(null);
+  const [vozSubida, setVozSubida] = useState<File | null>(null);
   const [vistaFondo, setVistaFondo] = useState<string | null>(null);
   const [propios, setPropios] = useState(false);
   const [entendido, setEntendido] = useState<string | null>(null);
@@ -252,8 +332,10 @@ export function CrearEscena3d({ destino, alCrear }: { destino?: Destino3d; alCre
       if (e.tipo_datos === "pastel" && cifras.length < 2) return "Para el anillo hacen falta al menos dos partes.";
     }
     if (e.fondo_salida === "foto" && !fondoSubido) return "Sube la foto de fondo (o elige otro fondo).";
+    if (e.plantilla === "personaje" && e.modoVoz === "escribir" && !e.dialogo.trim()) return "Escribe lo que dice el personaje.";
+    if (e.plantilla === "personaje" && e.modoVoz === "subir" && !vozSubida) return "Sube tu grabación.";
     return null;
-  }, [info, e.texto, e.tipo_datos, e.fondo_salida, archivoSubido, fondoSubido, cifras, filaMala]);
+  }, [info, e.texto, e.tipo_datos, e.fondo_salida, e.plantilla, e.modoVoz, e.dialogo, archivoSubido, fondoSubido, vozSubida, cifras, filaMala]);
 
   async function crear() {
     if (!e.plantilla) return;
@@ -261,8 +343,15 @@ export function CrearEscena3d({ destino, alCrear }: { destino?: Destino3d; alCre
     setEnviando(true);
     try {
       const fd = new FormData();
-      const { paleta: _p, ...pedido } = e;
-      fd.set("pedido", JSON.stringify({ ...pedido, plantilla: e.plantilla, texto: info!.campos.includes("texto") ? e.texto : "", datos: info!.campos.includes("datos") ? cifras : [] }));
+      const { paleta: _p, modoVoz, ...pedido } = e;
+      const conVozSubida = e.plantilla === "personaje" && modoVoz === "subir" && vozSubida;
+      fd.set("pedido", JSON.stringify({
+        ...pedido, plantilla: e.plantilla, texto: info!.campos.includes("texto") ? e.texto : "", datos: info!.campos.includes("datos") ? cifras : [],
+        dialogo: e.plantilla === "personaje" && !conVozSubida ? e.dialogo : "",
+        // Un personaje es un video con voz: sin «imagen».
+        salida: e.plantilla === "personaje" ? "video" : e.salida,
+      }));
+      if (conVozSubida) fd.set("voz", vozSubida);
       if (archivoSubido && (info!.campos.includes("imagen") || info!.campos.includes("logo"))) fd.set("archivo", archivoSubido);
       if (fondoSubido && e.fondo_salida === "foto") fd.set("fondo", fondoSubido);
       if (destino) {
@@ -283,10 +372,10 @@ export function CrearEscena3d({ destino, alCrear }: { destino?: Destino3d; alCre
     return (
       <div className="space-y-2">
         <Aviso tipo="ok">
-          ¡En camino! Tarda unos {minutosEstimados(e.calidad, e.duracion, true, e.salida)} min.{" "}
+          ¡En camino! Tarda unos {minutosEstimados(e.calidad, e.plantilla === "personaje" ? segundosDe(e.dialogo) + 1 : e.duracion, true, e.plantilla === "personaje" ? "video" : e.salida)} min.{" "}
           {destino ? `Cuando termine, la escena ${destino.numero} cambia sola (si no te gusta, vuelve atrás en el historial).` : "Puedes seguir usando Geeper: la vas a ver abajo, en «Tus escenas 3D»."}
         </Aviso>
-        <button type="button" className="boton" onClick={() => { setListo(false); setE(inicial(destino)); elegirArchivo(null); elegirFondo(null); setEntendido(null); }}>Hacer otra</button>
+        <button type="button" className="boton" onClick={() => { setListo(false); setE(inicial(destino)); elegirArchivo(null); elegirFondo(null); setVozSubida(null); setEntendido(null); }}>Hacer otra</button>
       </div>
     );
   }
@@ -348,6 +437,7 @@ export function CrearEscena3d({ destino, alCrear }: { destino?: Destino3d; alCre
               <span className="block text-xs text-tenue">Corto se lee mejor: hasta unas 6 palabras.</span>
             </label>
           )}
+          {info.campos.includes("personaje") && <EditarPersonaje e={e} poner={poner} vozSubida={vozSubida} setVozSubida={setVozSubida} />}
           {info.campos.includes("datos") && (
             <div className="space-y-3">
               <div className="space-y-1"><p className="text-sm">¿Qué tipo de gráfico?</p><Opciones valor={e.tipo_datos} opciones={TIPOS_DATOS_3D} cambiar={(v) => poner({ tipo_datos: v })} /></div>
@@ -445,18 +535,22 @@ export function CrearEscena3d({ destino, alCrear }: { destino?: Destino3d; alCre
 
       {info && (
         <Paso n={3} titulo={e.salida === "imagen" ? "Tamaño y calidad" : "Tamaño, duración y calidad"}>
-          {!destino && (
+          {!destino && e.plantilla !== "personaje" && (
             <div className="space-y-1"><p className="text-sm">¿Video o imagen?</p><Opciones valor={e.salida} opciones={SALIDAS_3D} cambiar={(v) => poner({ salida: v })} columnas={2} /></div>
           )}
           {!destino && <Opciones valor={e.formato} opciones={FORMATOS_3D} cambiar={(v) => poner({ formato: v })} />}
           {destino && <p className="text-xs text-tenue">Se hace del mismo formato que tu video.</p>}
-          {e.salida === "video" && (
+          {e.plantilla === "personaje" && <p className="text-xs text-tenue">Dura lo que dura la voz{e.modoVoz === "escribir" && e.dialogo.trim() ? ` (unos ${segundosDe(e.dialogo)} segundos)` : ""}.</p>}
+          {e.salida === "video" && e.plantilla !== "personaje" && (
             <label className="block space-y-1">
               <span className="text-sm">Duración: <strong>{e.duracion} segundos</strong></span>
               <input type="range" className="w-full max-w-sm" min={DURACION_3D.min} max={DURACION_3D.max} step={1} value={e.duracion} onChange={(ev) => poner({ duracion: Number(ev.target.value) })} />
             </label>
           )}
-          <Opciones valor={e.calidad} cambiar={(v) => poner({ calidad: v })} opciones={CALIDADES_3D.map((c) => ({ ...c, texto: `${c.texto} Unos ${minutosEstimados(c.id, e.duracion, true, e.salida)} min.` }))} />
+          <Opciones valor={e.calidad} cambiar={(v) => poner({ calidad: v })} opciones={CALIDADES_3D.map((c) => ({
+            ...c,
+            texto: `${c.texto} Unos ${e.plantilla === "personaje" ? minutosEstimados(c.id, segundosDe(e.dialogo) + 1) : minutosEstimados(c.id, e.duracion, true, e.salida)} min.`,
+          }))} />
         </Paso>
       )}
 

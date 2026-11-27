@@ -7,7 +7,7 @@ formato, duración y calidad. Todo se construye con código: sin modelos bajados
 descarga opcional es el HDRI de estudio CC0 de Poly Haven para los reflejos).
 
 Imprime «GEEPER_CUADRO n total» por cada cuadro guardado y «GEEPER_ERROR mensaje» si algo falla.
-Plantillas: texto, logo, producto, fondo, caja, datos.
+Plantillas: texto, logo, producto, fondo, caja, datos, personaje (en personaje3d.py).
 
 Salidas: video (todos los cuadros) o imagen (un cuadro, `salida: "imagen"`), con el fondo de color, con
 una foto de fondo (`fondo_imagen`, a cubrir el cuadro: portadas y títulos sobre una escena) o
@@ -18,6 +18,7 @@ import math
 import os
 import random
 import sys
+import types
 
 import bpy
 
@@ -1042,7 +1043,17 @@ def plantilla_datos(e):
     e.acercar(0.96)
 
 
-PLANTILLAS = {"texto": plantilla_texto, "logo": plantilla_logo, "producto": plantilla_producto, "fondo": plantilla_fondo, "caja": plantilla_caja, "datos": plantilla_datos}
+
+def plantilla_personaje(e):
+    """Un personaje propio que habla (py/blender/personaje3d.py)."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import personaje3d
+
+    personaje3d.H = types.SimpleNamespace(clave=clave, lineal=lineal, ErrorEscena=ErrorEscena, FPS=FPS)
+    personaje3d.plantilla_personaje(e)
+
+
+PLANTILLAS = {"texto": plantilla_texto, "logo": plantilla_logo, "producto": plantilla_producto, "fondo": plantilla_fondo, "caja": plantilla_caja, "datos": plantilla_datos, "personaje": plantilla_personaje}
 
 
 def main():

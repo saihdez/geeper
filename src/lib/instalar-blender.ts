@@ -1,10 +1,12 @@
 /**
  * Instala Blender con un clic (Sistema o la página «Escenas 3D»): el archivo oficial de blender.org de la
  * versión fijada (blender.ts), verificado con su SHA-256 publicado, con el instalador genérico de
- * instalar-craft.ts. Después baja la luz de estudio (HDRI CC0) para que la primera escena no espere.
+ * instalar-craft.ts. Después baja la luz de estudio (HDRI CC0) y Rhubarb Lip Sync (rhubarb.ts) para que la
+ * primera escena no espere.
  */
 import { archivoBlender, asegurarHdri, BLENDER_DIR, BLENDER_VERSION, URL_BLENDER, versionBlender } from "./blender";
 import { crearInstalador, type EstadoInstalacion } from "./instalar-craft";
+import { asegurarRhubarb } from "./rhubarb";
 import { SISTEMA } from "./plataforma";
 
 const A = archivoBlender(SISTEMA, process.arch);
@@ -24,6 +26,8 @@ const instalador = () =>
         verificar: async () => {
           const v = await versionBlender();
           if (v) await asegurarHdri(() => {});
+          // Lo que mueve la boca de los personajes: se baja de una vez, sin esperarlo (si falla, se baja al usarlo).
+          if (v) void asegurarRhubarb(() => {}).catch(() => {});
           return v;
         },
       })

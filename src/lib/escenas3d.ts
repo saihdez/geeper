@@ -17,10 +17,13 @@ import { asegurarHdri, binBlender, entornoBlender, HDRI, versionBlender } from "
 import { db } from "./db";
 import { reemplazarVisual } from "./ediciones";
 import {
-  COLORES_LOGO, DURACION_3D, ESTILOS_3D, FONDOS_3D, FONDOS_SALIDA_3D, FORMATOS_3D, INFO_PLANTILLAS, MAX_DATOS_3D, MOVIMIENTOS_3D, PALETAS_3D, PLANTILLAS_3D, SALIDAS_3D,
-  TIPOS_DATOS_3D, type Colores3d, type Plantilla3d,
+  COLORES_LOGO, DURACION_3D, ESTILOS_3D, FONDOS_3D, FONDOS_SALIDA_3D, FORMATOS_3D, INFO_PLANTILLAS, MAX_DATOS_3D, MAX_DIALOGO, MAX_SEGUNDOS_PERSONAJE, MOVIMIENTOS_3D,
+  PALETAS_3D, PERSONAJES_3D, PLANTILLAS_3D, SALIDAS_3D, TIPOS_DATOS_3D, type Colores3d, type Plantilla3d,
 } from "./escenas3d-catalogo";
 import { tomarGpu } from "./gpu";
+import { formasDeBoca, type FormaBoca } from "./rhubarb";
+import { probar } from "./media";
+import { sintetizar } from "./voz";
 import { llamaDisponible, preguntarLlama } from "./llm-local";
 import { correr, type Registro } from "./proceso";
 import { versionDeProyecto } from "./render";
@@ -53,6 +56,11 @@ export const Pedido3d = z.object({
   /** Detrás: el color, una foto (`archivo_fondo` en `entradas/`) o transparente. */
   fondo_salida: z.enum(ids(FONDOS_SALIDA_3D)).default("color"),
   archivo_fondo: z.string().regex(/^[\w.-]+$/).nullable().default(null),
+  /** Personaje que habla: cuál, qué dice y con qué voz de Kokoro (o una grabación subida, `archivo_voz`). */
+  personaje: z.enum(ids(PERSONAJES_3D)).default("bolita"),
+  dialogo: z.string().max(MAX_DIALOGO).default(""),
+  voz: z.string().regex(/^[a-z]{2}_[a-z]+$/).default("ef_dora"),
+  archivo_voz: z.string().regex(/^[\w.-]+$/).nullable().default(null),
 });
 export type Pedido3d = z.infer<typeof Pedido3d>;
 
@@ -97,8 +105,8 @@ export function nuevaCorrida3d(plantilla: Plantilla3d) {
 
 /** Nombre corto para la lista (función pura). */
 export function tituloDe(p: Pedido3d): string {
-  const nombre = INFO_PLANTILLAS[p.plantilla].nombre;
-  const t = p.texto.trim().replace(/\s+/g, " ");
+  const nombre = p.plantilla === "personaje" ? `${PERSONAJES_3D.find((x) => x.id === p.personaje)!.titulo} que habla` : INFO_PLANTILLAS[p.plantilla].nombre;
+  const t = (p.plantilla === "personaje" ? p.dialogo : p.texto).trim().replace(/\s+/g, " ");
   return t ? `${nombre}: «${t.length > 40 ? `${t.slice(0, 39)}…` : t}»` : nombre;
 }
 
@@ -117,6 +125,8 @@ export function faltaEnPedido(p: Pedido3d): string | null {
     if (p.tipo_datos === "pastel" && p.datos.some((d) => d.valor < 0)) return "En el anillo los números no pueden ser negativos.";
     if (p.tipo_datos === "barras" && p.datos.every((d) => d.valor <= 0)) return "Para las barras hace falta al menos un número mayor que cero.";
   }
+  if (p.plantilla === "personaje" && !p.dialogo.trim() && !p.archivo_voz) return "Escribe lo que dice el personaje (o sube tu grabación).";
+  if (p.archivo_voz && !/\.(mp3|wav|m4a|ogg|webm)$/i.test(p.archivo_voz)) return "La grabación tiene que ser MP3, WAV, M4A u OGG.";
   if (p.fondo_salida === "foto" && !p.archivo_fondo) return "Sube la foto de fondo (o elige otro fondo).";
   if (p.archivo_fondo && !/\.(png|jpe?g|webp)$/i.test(p.archivo_fondo)) return "La foto de fondo tiene que ser PNG, JPG o WebP.";
   return null;
@@ -159,10 +169,10 @@ export async function borrarCorrida3d(id: string) {
 }
 
 /** Guarda el pedido (y la foto o logo) como corrida «preparada». El trabajo la renderiza. */
-export async function prepararCorrida3d(pedido: Pedido3d, archivo?: { nombre: string; datos: Buffer }, fondo?: { nombre: string; datos: Buffer }): Promise<Corrida3d> {
+export async function prepararCorrida3d(pedido: Pedido3d, archivo?: { nombre: string; datos: Buffer }, fondo?: { nombre: string; datos: Buffer }, voz?: { nombre: string; datos: Buffer }): Promise<Corrida3d> {
   const id = nuevaCorrida3d(pedido.plantilla);
   const dir = dirCorrida3d(id);
-  let p: Pedido3d = { ...pedido, archivo: null, archivo_fondo: null };
+  let p: Pedido3d = { ...pedido, archivo: null, archivo_fondo: null, archivo_voz: null };
   const guardar = async (a: { nombre: string; datos: Buffer }, base: string) => {
     const ext = path.extname(a.nombre).toLowerCase().replace(/[^.a-z0-9]/g, "");
     await fs.mkdir(path.join(dir, "entradas"), { recursive: true });
@@ -171,6 +181,7 @@ export async function prepararCorrida3d(pedido: Pedido3d, archivo?: { nombre: st
   };
   if (archivo) p = { ...p, archivo: await guardar(archivo, "entrada") };
   if (fondo && p.fondo_salida === "foto") p = { ...p, archivo_fondo: await guardar(fondo, "fondo") };
+  if (voz && p.plantilla === "personaje") p = { ...p, archivo_voz: await guardar(voz, "voz-subida") };
   const falta = faltaEnPedido(p);
   if (falta) {
     await fs.rm(dir, { recursive: true, force: true });
@@ -182,7 +193,7 @@ export async function prepararCorrida3d(pedido: Pedido3d, archivo?: { nombre: st
 }
 
 /** El JSON que lee py/blender/escena3d.py (función pura). */
-export function pedidoParaBlender(p: Pedido3d, op: { dir: string; cuadros: string; hdri: string | null; dispositivo: "gpu" | "cpu" }) {
+export function pedidoParaBlender(p: Pedido3d, op: { dir: string; cuadros: string; hdri: string | null; dispositivo: "gpu" | "cpu"; voz?: { wav: string; boca: FormaBoca[]; segundos: number } }) {
   const entrada = p.archivo ? path.join(op.dir, "entradas", p.archivo) : null;
   return {
     plantilla: p.plantilla,
@@ -204,8 +215,11 @@ export function pedidoParaBlender(p: Pedido3d, op: { dir: string; cuadros: strin
     salida: p.salida,
     transparente: p.fondo_salida === "transparente",
     fondo_imagen: p.fondo_salida === "foto" && p.archivo_fondo ? path.join(op.dir, "entradas", p.archivo_fondo) : null,
+    personaje: p.personaje,
     hdri: op.hdri,
     cuadros: op.cuadros,
+    // Personaje: la voz (WAV), sus formas de boca y cuánto dura (la voz y medio segundo más).
+    ...(op.voz ? { audio: op.voz.wav, boca: op.voz.boca, duracion: Math.min(MAX_SEGUNDOS_PERSONAJE, op.voz.segundos + 0.5) } : {}),
   };
 }
 
@@ -238,11 +252,12 @@ export async function crearEscena3d(ctx: Contexto3d, id: string): Promise<Corrid
     avanzar("Preparando la luz de estudio", 0.01);
     const hdri = await asegurarHdri(ctx.log);
     await fs.rm(cuadros, { recursive: true, force: true });
+    const voz = c.pedido.plantilla === "personaje" ? await prepararVoz3d(c.pedido, dir, { log: ctx.log, signal: ctx.signal, avanzar }) : undefined;
     const archivoPedido = path.join(dir, "blender.json");
     // GEEPER_BLENDER_DISPOSITIVO=cpu y GEEPER_BLENDER_ESCALA (por ciento): pruebas sin tarjeta de video.
     const dispositivoPedido = process.env.GEEPER_BLENDER_DISPOSITIVO === "cpu" ? "cpu" : "gpu";
     const escala = Number(process.env.GEEPER_BLENDER_ESCALA) || undefined;
-    await fs.writeFile(archivoPedido, JSON.stringify({ ...pedidoParaBlender(c.pedido, { dir, cuadros, hdri, dispositivo: dispositivoPedido }), ...(escala ? { escala } : {}) }, null, 2));
+    await fs.writeFile(archivoPedido, JSON.stringify({ ...pedidoParaBlender(c.pedido, { dir, cuadros, hdri, dispositivo: dispositivoPedido, voz }), ...(escala ? { escala } : {}) }, null, 2));
     avanzar("Esperando la tarjeta de video", 0.02);
     const candado = await tomarGpu(`escena 3D ${id}`, { esperar: true, signal: ctx.signal, alEsperar: (q) => avanzar(`Esperando la tarjeta de video (la usa ${q})`, 0.02) });
     let dispositivo = "";
@@ -273,7 +288,7 @@ export async function crearEscena3d(ctx: Contexto3d, id: string): Promise<Corrid
     }
     const pngs = (await fs.readdir(cuadros).catch(() => [])).filter((n) => /^c_\d+\.png$/.test(n)).sort();
     if (!pngs.length) throw new Error("Blender terminó pero no dejó cuadros.");
-    await guardarSalidas3d(c.pedido, dir, cuadros, pngs, { log: ctx.log, signal: ctx.signal, avanzar });
+    await guardarSalidas3d(c.pedido, dir, cuadros, pngs, { log: ctx.log, signal: ctx.signal, avanzar, audio: voz?.original });
     const hecha: Corrida3d = { ...c, estado: "hecha", segundos: Math.round((Date.now() - t0) / 1000), dispositivo: dispositivo || undefined, error: undefined };
     await escribirCorrida3d(hecha);
     return hecha;
@@ -287,10 +302,45 @@ export async function crearEscena3d(ctx: Contexto3d, id: string): Promise<Corrid
 }
 
 /**
+ * La voz del personaje: la grabación subida o Kokoro diciendo el diálogo (en el procesador), pasada a WAV
+ * mono de 16 kHz, y sus formas de boca con Rhubarb.
+ */
+async function prepararVoz3d(p: Pedido3d, dir: string, ctx: { log: Registro; signal?: AbortSignal; avanzar: (etapa: string, avance: number) => void }): Promise<{ wav: string; original: string; boca: FormaBoca[]; segundos: number }> {
+  const entradas = path.join(dir, "entradas");
+  await fs.mkdir(entradas, { recursive: true });
+  let origen: string;
+  if (p.archivo_voz) origen = path.join(entradas, p.archivo_voz);
+  else {
+    ctx.avanzar("Poniéndole voz al personaje", 0.01);
+    origen = path.join(entradas, "voz-kokoro.wav");
+    await sintetizar(p.dialogo.trim(), p.voz, 1, origen, ctx.log);
+  }
+  const wav = path.join(dir, "voz.wav");
+  await correr(FFMPEG, ["-hide_banner", "-loglevel", "error", "-y", "-i", origen, "-t", String(MAX_SEGUNDOS_PERSONAJE), "-ac", "1", "-ar", "16000", wav], { log: ctx.log, signal: ctx.signal, timeout: 120_000 });
+  const segundos = (await probar(wav)).duracion;
+  if (!(segundos > 0.2)) throw new Error("La voz salió vacía: revisa la grabación o el texto.");
+  ctx.avanzar("Leyendo la voz para mover la boca", 0.02);
+  const boca = await formasDeBoca(wav, path.join(dir, "boca.json"), ctx.log, ctx.signal);
+  return { wav, original: origen, boca, segundos };
+}
+
+/**
+ * Argumentos de ffmpeg para el MP4 (función pura): los cuadros, aplanados sobre `fondo` si traen alfa, y la
+ * voz si hay (el personaje).
+ */
+export function argsVideo3d(entrada: string[], fondo: string | null, audio: string | null, salida: string): string[] {
+  const v = fondo
+    ? ["-filter_complex", `[0:v]format=rgba,split[a][b];[a]drawbox=x=0:y=0:w=iw:h=ih:color=${fondo.replace("#", "0x")}@1:t=fill[f];[f][b]overlay=format=auto,format=yuv420p[v]`, "-map", "[v]"]
+    : ["-map", "0:v", "-pix_fmt", "yuv420p"];
+  const a = audio ? ["-map", "1:a", "-c:a", "aac", "-b:a", "160k"] : [];
+  return [...entrada, ...(audio ? ["-i", audio] : []), ...v, ...a, "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-movflags", "+faststart", salida];
+}
+
+/**
  * Pasa los cuadros a lo que se entrega (archivosCorrida3d): MP4, WebM con alfa, PNG y la portada. Con
  * fondo transparente, el MP4 y la portada van sobre el color de fondo (sirven como escena de un video).
  */
-export async function guardarSalidas3d(p: Pedido3d, dir: string, cuadros: string, pngs: string[], ctx: { log: Registro; signal?: AbortSignal; avanzar?: (etapa: string, avance: number) => void }) {
+export async function guardarSalidas3d(p: Pedido3d, dir: string, cuadros: string, pngs: string[], ctx: { log: Registro; signal?: AbortSignal; avanzar?: (etapa: string, avance: number) => void; audio?: string }) {
   const ff = (args: string[], timeout = 30 * 60_000) => correr(FFMPEG, ["-hide_banner", "-loglevel", "error", "-y", ...args], { log: ctx.log, signal: ctx.signal, timeout });
   const alfa = p.fondo_salida === "transparente";
   // Con alfa, se apoya sobre el color de fondo para lo que no puede llevar transparencia (MP4, JPG).
@@ -304,7 +354,7 @@ export async function guardarSalidas3d(p: Pedido3d, dir: string, cuadros: string
   ctx.avanzar?.("Guardando el video", 0.93);
   const entrada = ["-framerate", "30", "-start_number", String(Number(pngs[0]!.slice(2, -4))), "-i", path.join(cuadros, "c_%04d.png")];
   const video = path.join(dir, "video.mp4");
-  await ff([...entrada, ...aplanar, "-c:v", "libx264", "-crf", "18", "-preset", "medium", ...(alfa ? [] : ["-pix_fmt", "yuv420p"]), "-movflags", "+faststart", `${video}.tmp.mp4`]);
+  await ff(argsVideo3d(entrada, alfa ? p.colores.fondo : null, ctx.audio ?? null, `${video}.tmp.mp4`));
   await fs.rename(`${video}.tmp.mp4`, video);
   if (alfa) {
     ctx.avanzar?.("Guardando el video transparente", 0.96);

@@ -35,7 +35,7 @@ export async function GET() {
 
 /**
  * Crea una escena 3D: multipart con `pedido` (JSON), `archivo` opcional (foto o logo), `fondo` opcional
- * (la foto de fondo) y, si viene del
+ * (la foto de fondo), `voz` opcional (la grabación del personaje) y, si viene del
  * editor, `proyecto` y `escena` (cuando termine se pone sola en esa escena).
  */
 export async function POST(req: Request) {
@@ -47,15 +47,16 @@ export async function POST(req: Request) {
       const f = form.get(campo);
       if (!(f instanceof File) || !f.size) return undefined;
       const ext = path.extname(f.name).toLowerCase();
-      if (!extensiones.includes(ext)) throw new Error("Ese archivo no sirve: sube una imagen PNG, JPG o WebP, o un logo SVG.");
+      if (!extensiones.includes(ext)) throw new Error(campo === "voz" ? "Esa grabación no sirve: sube un MP3, WAV, M4A u OGG." : "Ese archivo no sirve: sube una imagen PNG, JPG o WebP, o un logo SVG.");
       if (f.size > MAX_ARCHIVO) throw new Error("La imagen pasa de 25 MB: usa una más liviana.");
       return { nombre: f.name, datos: Buffer.from(await f.arrayBuffer()) };
     };
     const archivo = await leer("archivo", EXT);
     const fondo = await leer("fondo", EXT.filter((e) => e !== ".svg"));
+    const voz = await leer("voz", [".mp3", ".wav", ".m4a", ".ogg", ".webm"]);
     const destino = z.object({ proyecto: z.string().min(1), escena: z.string().min(1) }).safeParse({ proyecto: form.get("proyecto"), escena: form.get("escena") });
     if (destino.success) await db.proyecto.findUniqueOrThrow({ where: { id: destino.data.proyecto } });
-    const c = await prepararCorrida3d(pedido, archivo, fondo);
+    const c = await prepararCorrida3d(pedido, archivo, fondo, voz);
     const t = await encolar(destino.success ? destino.data.proyecto : null, "escena3d.crear", { corrida: c.id, ...(destino.success ? { escena: destino.data.escena } : {}) });
     return json({ corrida: c.id, trabajo: t.id }, 201);
   });

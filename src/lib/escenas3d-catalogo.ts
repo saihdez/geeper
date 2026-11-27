@@ -3,10 +3,10 @@
  * hecha en py/blender/escena3d.py; aquí va lo que la persona ve y puede cambiar.
  */
 
-export const PLANTILLAS_3D = ["texto", "datos", "logo", "producto", "fondo", "caja"] as const;
+export const PLANTILLAS_3D = ["texto", "personaje", "datos", "logo", "producto", "fondo", "caja"] as const;
 export type Plantilla3d = (typeof PLANTILLAS_3D)[number];
 
-export type Campo3d = "texto" | "logo" | "imagen" | "estilo" | "movimiento" | "estilo_fondo" | "colores_logo" | "datos";
+export type Campo3d = "texto" | "logo" | "imagen" | "estilo" | "movimiento" | "estilo_fondo" | "colores_logo" | "datos" | "personaje" | "dialogo";
 
 export interface InfoPlantilla3d {
   id: Plantilla3d;
@@ -28,6 +28,10 @@ export const INFO_PLANTILLAS: Record<Plantilla3d, InfoPlantilla3d> = {
     id: "texto", nombre: "Título en 3D", para: "Una frase grande en 3D que entra con movimiento. Para abrir un video o anunciar algo.",
     campos: ["texto", "estilo", "movimiento"], obligatorios: ["texto"], colores: { principal: "Color de las letras", acento: null },
     ejemploTexto: "¡Oferta del día!", etiquetaTexto: "¿Qué dice?",
+  },
+  personaje: {
+    id: "personaje", nombre: "Personaje que habla", para: "Un personaje 3D dice lo que escribas con la voz que elijas: mueve la boca, parpadea y hace gestos.",
+    campos: ["personaje", "dialogo"], obligatorios: ["dialogo"], colores: { principal: "Color del personaje", acento: "Color de los detalles" },
   },
   datos: {
     id: "datos", nombre: "Gráfico con tus datos", para: "Barras, un anillo o un número grande que se arman solos con tus cifras. Para explicar algo con números.",
@@ -73,6 +77,15 @@ export const FONDOS_3D = [
   { id: "particulas", titulo: "Partículas de luz", texto: "Puntitos que suben brillando." },
 ] as const;
 export type EstiloFondo3d = (typeof FONDOS_3D)[number]["id"];
+
+export const PERSONAJES_3D = [
+  { id: "bolita", titulo: "Bolita", texto: "Una mascota redonda y simpática, con ojos grandes." },
+  { id: "robot", titulo: "Robot", texto: "Un robot con pantalla por cara y luces." },
+] as const;
+export type Personaje3d = (typeof PERSONAJES_3D)[number]["id"];
+/** Lo que dice el personaje: hasta 600 letras (cerca de 40 segundos de voz). */
+export const MAX_DIALOGO = 600;
+export const MAX_SEGUNDOS_PERSONAJE = 60;
 
 export const TIPOS_DATOS_3D = [
   { id: "barras", titulo: "Barras", texto: "Para comparar cosas (meses, productos, países)." },

@@ -15,7 +15,7 @@ function enUso(actual: { motor: string; voz: string }, motor: MotorVoz, voz: str
   return actual.motor !== "voxcpm" && actual.voz.split(":").pop() === voz;
 }
 
-function Escuchar({ ruta, kokoro }: { ruta?: string; kokoro?: string }) {
+export function Escuchar({ ruta, kokoro }: { ruta?: string; kokoro?: string }) {
   const [src, setSrc] = useState<string | null>(ruta ? archivo(ruta) : null);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);

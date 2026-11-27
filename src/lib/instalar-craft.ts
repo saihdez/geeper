@@ -51,6 +51,8 @@ export interface AppCraft {
   base?: string;
   /** Archivo con las sumas SHA-256 dentro de `base` (por defecto, SHA256SUMS.txt). */
   sumas?: string;
+  /** La suma SHA-256 del archivo, fijada en el código (para releases que no publican sus sumas). */
+  sha256?: string;
   /** Carpeta de primer nivel dentro del archivo a la que apunta `actual` (por defecto, el nombre del tarball sin extensión). */
   raiz?: string;
   /** Ajustes después de descomprimir, sobre la carpeta a la que apuntará `actual`. */
@@ -180,9 +182,12 @@ export function crearInstalador(c: AppCraft) {
     const tmp = await fs.mkdtemp(path.join(dir, ".instalando-"));
     try {
       estado = { fase: "descargando", progreso: 0, detalle: "Buscando la versión verificada…" };
-      const rs = await bajar(`${base}/${sumas}`);
-      if (!rs.ok) throw new Error(`El servidor respondió ${rs.status} al pedir las sumas de verificación`);
-      const esperada = sumaEsperada(await rs.text(), tarball);
+      let esperada = c.sha256 ?? null;
+      if (!esperada) {
+        const rs = await bajar(`${base}/${sumas}`);
+        if (!rs.ok) throw new Error(`El servidor respondió ${rs.status} al pedir las sumas de verificación`);
+        esperada = sumaEsperada(await rs.text(), tarball);
+      }
       if (!esperada) throw new Error("La release no publica la suma de ese archivo");
 
       const r = await bajar(`${base}/${tarball}`);
@@ -249,6 +254,12 @@ export function crearInstalador(c: AppCraft) {
             enCurso = null;
           });
       }
+      return estado;
+    },
+    /** Instala (o se suma a la instalación en curso) y espera a que termine. */
+    async esperar(): Promise<EstadoInstalacion> {
+      this.iniciar();
+      await enCurso;
       return estado;
     },
   };

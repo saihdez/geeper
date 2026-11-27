@@ -2,11 +2,12 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { archivoBlender } from "@/lib/blender";
 import {
-  adivinarEscena, archivosCorrida3d, cifrasDe, faltaEnPedido, leerCuadro, normalizarSugerencia, Pedido3d, pedidoParaBlender, promptEscena, textoCitado, tituloDe,
+  adivinarEscena, archivosCorrida3d, argsVideo3d, cifrasDe, faltaEnPedido, leerCuadro, normalizarSugerencia, Pedido3d, pedidoParaBlender, promptEscena, textoCitado, tituloDe,
   type Corrida3d,
 } from "@/lib/escenas3d";
 import { INFO_PLANTILLAS, minutosEstimados, PALETAS_3D, PLANTILLAS_3D } from "@/lib/escenas3d-catalogo";
 import { sumaEsperada } from "@/lib/instalar-craft";
+import { archivoRhubarb } from "@/lib/rhubarb";
 
 const colores = { fondo: "#101010", fondo2: null, principal: "#ff0000", acento: "#ffffff" };
 const pedido = (x: Partial<Pedido3d> = {}) => Pedido3d.parse({ plantilla: "texto", colores, ...x });
@@ -220,5 +221,38 @@ describe("salidas", () => {
   });
   it("una imagen tarda un minuto", () => {
     expect(minutosEstimados("alta", 15, true, "imagen")).toBe(1);
+  });
+});
+
+describe("personaje que habla", () => {
+  it("pide lo que dice o una grabación", () => {
+    expect(faltaEnPedido(pedido({ plantilla: "personaje" }))).toMatch(/dice el personaje/);
+    expect(faltaEnPedido(pedido({ plantilla: "personaje", dialogo: "Hola" }))).toBeNull();
+    expect(faltaEnPedido(pedido({ plantilla: "personaje", archivo_voz: "voz-subida.mp3" }))).toBeNull();
+    expect(faltaEnPedido(pedido({ plantilla: "personaje", archivo_voz: "voz-subida.exe" }))).toMatch(/MP3/);
+    expect(() => pedido({ plantilla: "personaje", voz: "../x" })).toThrow();
+  });
+  it("el título dice quién habla y qué dice", () => {
+    expect(tituloDe(pedido({ plantilla: "personaje", personaje: "robot", dialogo: "Hola a todos" }))).toBe("Robot que habla: «Hola a todos»");
+  });
+  it("con voz, Blender recibe la voz, la boca y dura lo que la voz", () => {
+    const op = { dir: "/d", cuadros: "/c", hdri: null, dispositivo: "gpu" as const, voz: { wav: "/d/voz.wav", boca: [{ start: 0, end: 0.2, value: "B" as const }], segundos: 4.2 } };
+    expect(pedidoParaBlender(pedido({ plantilla: "personaje", dialogo: "Hola" }), op)).toMatchObject({ personaje: "bolita", audio: "/d/voz.wav", boca: [{ value: "B" }], duracion: 4.7 });
+    expect(pedidoParaBlender(pedido({ plantilla: "personaje", dialogo: "Hola" }), { ...op, voz: { ...op.voz, segundos: 300 } }).duracion).toBe(60);
+  });
+  it("el MP4 lleva la voz y, con alfa, se apoya sobre el color", () => {
+    const entrada = ["-i", "c_%04d.png"];
+    const conVoz = argsVideo3d(entrada, null, "/v.mp3", "/o.mp4");
+    expect(conVoz).toEqual(expect.arrayContaining(["-i", "/v.mp3", "-map", "1:a", "-c:a", "aac"]));
+    expect(conVoz.join(" ")).toMatch(/-map 0:v -pix_fmt yuv420p/);
+    const alfa = argsVideo3d(entrada, "#14213d", null, "/o.mp4").join(" ");
+    expect(alfa).toMatch(/color=0x14213d@1/);
+    expect(alfa).toMatch(/-map \[v\]/);
+    expect(alfa).not.toMatch(/1:a/);
+  });
+  it("Rhubarb: el zip oficial de cada sistema con su suma", () => {
+    expect(archivoRhubarb("windows")).toMatchObject({ archivo: "Rhubarb-Lip-Sync-1.14.0-Windows.zip", ejecutable: "rhubarb.exe" });
+    expect(archivoRhubarb("linux")?.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(archivoRhubarb("linux", "9.9.9")).toBeNull();
   });
 });
