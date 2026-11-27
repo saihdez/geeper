@@ -176,6 +176,25 @@ pedir **Otra versión**. **Ver cómo queda** muestra la invitación sin guardarl
 Código: `tema.ts` (esquema, listas, contraste, respaldo), `estilo.ts` (estilo resuelto, adornos,
 texturas, partículas). La animación se apaga con «reducir movimiento» y se pausa con la pestaña oculta.
 
+### QR con dibujo y foto del sobre con IA (hecho el 2026-11-27)
+
+En la página de cada invitación (usan la tarjeta: van por la cola, con el aviso de guardar antes):
+
+- **QR con dibujo del tema** (`invitacion.qr`): la receta de `qr-arte` en el ComfyUI de Geeper, sólo con
+  nodos de fábrica (QR Code Monster v2 sobre DreamShaper 8, img2img desde el QR con corrección H, fuerza
+  1,35 y ruido 0,9; «Que se lea mejor» = 1,5 y 0,85). Salen 6 versiones; cada una se lee con jsQR a
+  768, 512, 384 y 256 px y **sólo se guardan las que devuelven la dirección exacta**, primero las que se
+  leen en más tamaños. El dibujo sale de `tema.imagen` (la IA lo escribe en inglés) o de una tabla por
+  tema y plantilla. Los modelos (2,8 GB) se bajan la primera vez. Si cambia la dirección publicada, el QR
+  con dibujo se descarta (lleva la vieja adentro).
+- **Foto del sobre** (`invitacion.foto`): Z-Image Turbo por Wan2GP, 4 tomas horizontales (1216×832), con
+  la descripción de la persona y el estilo del tema. En el formulario se puede describir en vez de subir
+  una foto: la descripción pasa a la página de la invitación y ahí se confirma.
+- **El QR siempre es clicable**: en Geeper, tocarlo abre la invitación publicada. `qr.png` (el elegido o
+  uno limpio de 1024 px) va en el zip y se puede descargar.
+- **Dirección mal pegada**: si se pega la del panel de Netlify (`app.netlify.com/drop/<sitio>`), Geeper la
+  cambia por `https://<sitio>.netlify.app/` y lo avisa.
+
 ## 5. Video para estados (opcional, el fuerte de Geeper)
 
 Botón **«Hacer video para estados»**: 12–15 s, 1080×1920, con Hyperframes y la misma plantilla:

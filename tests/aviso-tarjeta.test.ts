@@ -98,6 +98,7 @@ const SITIOS = [
   "src/components/disenar-voz.tsx",
   "src/components/escenas-3d.tsx",
   "src/components/panel-camara3d.tsx",
+  "src/components/invitacion-imagenes.tsx",
 ];
 
 /**
@@ -121,6 +122,8 @@ const QUIEN_LO_LANZA: Record<string, string[]> = {
   "voz.disenar": ["src/components/disenar-voz.tsx"],
   "escena3d.crear": ["src/components/escenas-3d.tsx"],
   "camara3d.generar": ["src/components/panel-camara3d.tsx"],
+  "invitacion.foto": ["src/components/invitacion-imagenes.tsx"],
+  "invitacion.qr": ["src/components/invitacion-imagenes.tsx"],
   // Sólo desde la terminal (worker/preparar-efectos.ts): no hay botón en la app.
   "efectos.preparar": [],
 };

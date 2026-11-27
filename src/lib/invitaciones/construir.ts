@@ -19,9 +19,10 @@ import { asegurarContraste } from "./tema";
 import { compilar, esc, iniciales, titulos } from "./compilar";
 import { instanteUTC, textosFecha } from "./calendario";
 import { leerEnlaceMusica, resolverEnlaceMusica } from "./enlaces";
-import { Entrada, fechaPasada, Invitacion, SLUG, type EstiloId } from "./esquema";
+import { Entrada, fechaPasada, Invitacion, normalizarUrlPublica, SLUG, type EstiloId } from "./esquema";
+import { copiarElegida, pngQrBase } from "./imagenes";
 
-export const ARCHIVOS_PUBLICOS = ["index.html", "invitacion.ics", "portada-og.jpg", "qr.svg", "invitacion.zip"] as const;
+export const ARCHIVOS_PUBLICOS = ["index.html", "invitacion.ics", "portada-og.jpg", "qr.svg", "qr.png", "invitacion.zip"] as const;
 export const EXT_FOTO = new Set([".jpg", ".jpeg", ".png", ".webp", ".heic", ".avif"]);
 export const EXT_AUDIO = new Set([".mp3", ".m4a", ".aac", ".wav", ".ogg", ".opus", ".flac"]);
 const MAX_FOTO = 25 * 1024 ** 2;
@@ -268,7 +269,31 @@ export async function vistaPrevia(entrada: unknown): Promise<string> {
 /** Guarda la dirección donde quedó publicada y reconstruye (QR y vista previa con la URL absoluta). */
 export async function ponerUrlPublica(slug: string, url: string | null): Promise<{ inv: Invitacion; avisos: string[] }> {
   const previa = await leerInvitacion(slug);
-  const inv = Invitacion.parse({ ...previa, urlPublica: url ?? undefined, actualizada: new Date().toISOString() });
+  const limpia = url ? normalizarUrlPublica(url) : undefined;
+  const avisos: string[] = [];
+  if (url && limpia !== url.trim()) avisos.push(`Corregí la dirección: la que pegaste era la del panel de Netlify. Tu invitación está en ${limpia}`);
+  // Un QR con dibujo lleva la dirección vieja adentro: con otra dirección ya no sirve.
+  const qrArte = previa.qrArte && previa.qrArte.url === limpia ? previa.qrArte : undefined;
+  if (previa.qrArte && !qrArte) {
+    await fs.rm(path.join(dirInvitacion(slug), "qr-arte.png"), { force: true });
+    avisos.push("Cambió la dirección: el QR con dibujo llevaba la anterior. Crea uno nuevo.");
+  }
+  const inv = Invitacion.parse({ ...previa, urlPublica: limpia, qrArte, actualizada: new Date().toISOString() });
+  await escribirAtomico(path.join(dirInvitacion(slug), "invitacion.json"), JSON.stringify(inv, null, 2));
+  return { inv, avisos: [...avisos, ...(await construir(inv))] };
+}
+
+/** Usa una propuesta de IA: la foto del sobre o el QR con dibujo. */
+export async function usarPropuesta(slug: string, archivo: string): Promise<{ inv: Invitacion; avisos: string[] }> {
+  const previa = await leerInvitacion(slug);
+  const que = archivo.startsWith("qr-") ? "qr" : "foto";
+  if (que === "qr" && !previa.urlPublica) throw new Error("Primero guarda la dirección donde quedó publicada.");
+  await copiarElegida(dirInvitacion(slug), archivo, que);
+  const inv = Invitacion.parse({
+    ...previa,
+    ...(que === "foto" ? { foto: "foto.webp" } : { qrArte: { archivo: "qr-arte.png", url: previa.urlPublica! } }),
+    actualizada: new Date().toISOString(),
+  });
   await escribirAtomico(path.join(dirInvitacion(slug), "invitacion.json"), JSON.stringify(inv, null, 2));
   return { inv, avisos: await construir(inv) };
 }
@@ -293,6 +318,16 @@ export async function construir(inv: Invitacion, op: { portada?: boolean } = {})
   await escribirAtomico(path.join(pub, "invitacion.ics"), ics);
   if (inv.urlPublica) await escribirAtomico(path.join(pub, "qr.svg"), renderSVG(inv.urlPublica, { border: 2, ecc: "M" }));
   else await fs.rm(path.join(pub, "qr.svg"), { force: true });
+  // qr.png: el QR con dibujo elegido si lleva esta dirección; si no, uno limpio para imprimir.
+  if (inv.urlPublica) {
+    const arte = path.join(dirInvitacion(inv.slug), "qr-arte.png");
+    try {
+      if (inv.qrArte?.url === inv.urlPublica && existsSync(arte)) await fs.copyFile(arte, path.join(pub, "qr.png"));
+      else await pngQrBase(inv.urlPublica, path.join(pub, "qr.png"), 1024);
+    } catch {
+      avisos.push("No se pudo hacer la imagen del QR (PNG). El QR de la página sigue funcionando.");
+    }
+  } else await fs.rm(path.join(pub, "qr.png"), { force: true });
 
   if (op.portada ?? !process.env.VITEST) {
     try {
@@ -308,7 +343,7 @@ export async function construir(inv: Invitacion, op: { portada?: boolean } = {})
 /** Zip con lo que se sube a internet. Sin `invitacion.json`: tiene datos que no hacen falta en público. */
 export async function armarZip(pub: string): Promise<void> {
   const archivos: Record<string, Uint8Array> = {};
-  for (const n of ["index.html", "invitacion.ics", "portada-og.jpg"]) {
+  for (const n of ["index.html", "invitacion.ics", "portada-og.jpg", "qr.png"]) {
     const ruta = path.join(pub, n);
     if (existsSync(ruta)) archivos[n] = new Uint8Array(await fs.readFile(ruta));
   }

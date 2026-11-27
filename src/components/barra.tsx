@@ -1,9 +1,10 @@
 "use client";
 /**
  * Barra de arriba: marca la sección en la que estás y ofrece «Saltar al contenido» para el teclado.
+ * Flota fija arriba (siempre a mano al bajar por la página), en una sola fila, y el buscador es una lupa.
  *
  * En ventanas angostas (A11-16) las 11 secciones ocupaban dos a cuatro filas. Ahí quedan a la vista
- * las de todos los días (PRINCIPALES) y el resto va en el menú «Más»; en ventanas anchas se ven todas
+ * las de todos los días (PRINCIPALES) y el resto va en el menú «Más»; desde 1440 px se ven todas
  * y «Más» no aparece (globals.css, `.barra-extra` y `.barra-mas`). «Más» es un <details>: se abre con
  * Enter o Espacio, se cierra con Escape, al tocar fuera o al elegir una sección.
  */
@@ -56,11 +57,12 @@ export function Barra() {
   };
 
   return (
-    <header className="border-b border-borde">
+    <>
+    <header className="sticky top-0 z-40 px-2 pt-2 sm:px-3">
       <a href="#contenido" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-panel focus:px-3 focus:py-2">
         Saltar al contenido
       </a>
-      <nav aria-label="Secciones" className="barra relative mx-auto flex max-w-7xl flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 text-sm">
+      <nav aria-label="Secciones" className="barra relative mx-auto flex max-w-7xl flex-wrap items-center gap-x-5 gap-y-2 whitespace-nowrap rounded-2xl border border-borde bg-panel/80 px-4 py-2 text-sm shadow-lg shadow-black/40 backdrop-blur-md sm:flex-nowrap">
         <Link href="/" className="text-base font-bold tracking-tight">Geeper</Link>
         {DESTINOS.map((d) => {
           const aqui = actual?.ruta === d.ruta;
@@ -94,7 +96,9 @@ export function Barra() {
         </details>
         <Paleta />
       </nav>
-      <AvisoMotor />
     </header>
+    {/* El aviso del motor queda en su lugar (no flota): fijo arriba taparía la página al bajar. */}
+    <AvisoMotor />
+    </>
   );
 }

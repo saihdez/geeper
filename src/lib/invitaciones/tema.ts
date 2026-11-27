@@ -63,6 +63,8 @@ export const Tema = z.object({
   mensaje: corto(400),
   dress: z.array(hex()).max(4).default([]),
   dressEstilo: corto(40),
+  /** Ilustración del tema, en inglés: para el QR artístico y la foto del sobre (imagenes.ts). */
+  imagen: corto(300),
 });
 export type Tema = z.infer<typeof Tema>;
 
@@ -78,6 +80,7 @@ export const TemaIa = z.object({
   mensaje: z.string(),
   dress: z.array(hex()),
   dressEstilo: z.string(),
+  imagen: z.string(),
 });
 export type TemaIa = z.infer<typeof TemaIa>;
 
@@ -138,6 +141,7 @@ export function normalizarTema(ia: TemaIa, idea: string): Tema {
     mensaje: recortar(ia.mensaje, 400),
     dress: ia.dress.slice(0, 4),
     dressEstilo: recortar(ia.dressEstilo, 40),
+    imagen: recortar(ia.imagen, 300),
   });
 }
 
@@ -158,6 +162,7 @@ export function promptTema(d: { idea: string; tipo: Tipo; nombres: string }): st
     "- mensaje: 1 a 3 frases cálidas en primera persona de quien invita, con el tono del tema, sin fecha ni lugar, sin emojis.",
     "- dress: 4 colores de ropa que combinen con el tema; dressEstilo: 2 a 4 palabras (ej. «Formal en tonos bosque»).",
     "- nombre: el nombre del tema en 2 a 4 palabras.",
+    "- imagen: EN INGLÉS, 10 a 25 palabras que describan una ilustración del tema (escena, objetos, luz, colores), sin personas reales, sin texto ni letras.",
     "Responde sólo con el JSON pedido.",
   ].join("\n");
 }

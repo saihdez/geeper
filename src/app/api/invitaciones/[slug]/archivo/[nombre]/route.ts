@@ -1,6 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { ARCHIVOS_PUBLICOS, dirInvitacion } from "@/lib/invitaciones/construir";
+import { existsSync } from "node:fs";
+import { ARCHIVOS_PUBLICOS, dirInvitacion, leerInvitacion } from "@/lib/invitaciones/construir";
+import { pngQrBase } from "@/lib/invitaciones/imagenes";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +11,7 @@ const TIPOS: Record<string, string> = {
   "invitacion.ics": "text/calendar; charset=utf-8",
   "portada-og.jpg": "image/jpeg",
   "qr.svg": "image/svg+xml",
+  "qr.png": "image/png",
   "invitacion.zip": "application/zip",
 };
 
@@ -18,6 +21,12 @@ export async function GET(req: Request, ctx: { params: Promise<{ slug: string; n
   if (!(ARCHIVOS_PUBLICOS as readonly string[]).includes(nombre)) return new Response("No encontrado", { status: 404 });
   let datos: Buffer;
   try {
+    // Invitaciones de antes del QR en PNG: se hace la primera vez que se pide.
+    const ruta = path.join(dirInvitacion(slug), "publicar", nombre);
+    if (nombre === "qr.png" && !existsSync(ruta)) {
+      const inv = await leerInvitacion(slug);
+      if (inv.urlPublica) await pngQrBase(inv.urlPublica, ruta, 1024);
+    }
     datos = await fs.readFile(path.join(dirInvitacion(slug), "publicar", nombre));
   } catch {
     return new Response("No encontrado", { status: 404 });

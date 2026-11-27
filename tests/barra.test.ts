@@ -53,8 +53,8 @@ describe("barra de arriba compacta (A11-16)", () => {
 
   it("globals.css oculta lo de más según el ancho y agranda lo táctil", () => {
     const css = fs.readFileSync(path.join(process.cwd(), "src", "app", "globals.css"), "utf8");
-    expect(css).toContain("@media (min-width: 1280px) { .barra-mas { display: none; } }");
-    expect(css).toContain("@media (max-width: 1279.98px) { .barra .barra-extra { display: none; } }");
+    expect(css).toContain("@media (min-width: 1440px) { .barra-mas { display: none; } }");
+    expect(css).toContain("@media (max-width: 1439.98px) { .barra .barra-extra { display: none; } }");
     expect(css).toMatch(/@media \(pointer: coarse\) \{\s*\.barra a, \.barra summary \{ min-height: 44px;/);
   });
 

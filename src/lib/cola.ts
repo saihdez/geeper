@@ -52,6 +52,9 @@ export const TIPOS = {
   "escena3d.crear": { motor: "mpt", usaGpu: true, nombre: "Escena 3D" },
   // Cámara 3D sobre la foto de una escena (Blender, Cycles en la GPU).
   "camara3d.generar": { motor: "mpt", usaGpu: true, nombre: "Cámara 3D" },
+  // Invitaciones: la foto del sobre (Z-Image por Wan2GP) y el QR con dibujo (ComfyUI). Toda la tarjeta.
+  "invitacion.foto": { motor: "mpt", usaGpu: true, nombre: "Foto de la invitación" },
+  "invitacion.qr": { motor: "mpt", usaGpu: true, nombre: "QR con dibujo" },
   "render.entregar": { motor: "render", usaGpu: true, nombre: "Render y QC" },
   "publicar.subir": { motor: "red", usaGpu: false, nombre: "Publicar en red" },
 } as const;

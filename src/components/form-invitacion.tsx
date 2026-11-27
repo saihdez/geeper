@@ -56,6 +56,7 @@ export function FormInvitacion({ inicial }: { inicial?: Invitacion }) {
   const [permiso, setPermiso] = useState(false);
   const [foto, setFoto] = useState<File | null>(null);
   const [quitarFoto, setQuitarFoto] = useState(false);
+  const [fotoIdea, setFotoIdea] = useState("");
   const [dressEstilo, setDressEstilo] = useState(inicial?.dressCode.estilo ?? "");
   const [usarColores, setUsarColores] = useState((inicial?.dressCode.colores.length ?? 0) > 0);
   const [colores, setColores] = useState<string[]>(inicial?.dressCode.colores.length ? inicial.dressCode.colores : []);
@@ -163,8 +164,11 @@ export function FormInvitacion({ inicial }: { inicial?: Invitacion }) {
       const r = await fetch(inicial ? `/api/invitaciones/${inicial.slug}` : "/api/invitaciones", { method: inicial ? "PUT" : "POST", body: fd });
       const d = (await r.json().catch(() => ({}))) as { slug?: string; avisos?: string[]; error?: string };
       if (!r.ok || !d.slug) throw new Error(d.error ?? `Error ${r.status}`);
-      const avisos = d.avisos?.length ? `?avisos=${encodeURIComponent(JSON.stringify(d.avisos))}` : "";
-      router.push(`/invitaciones/${d.slug}${avisos}`);
+      // La foto con IA se pide en la página de la invitación (usa la tarjeta: ahí está el aviso de guardar antes).
+      const q = new URLSearchParams();
+      if (d.avisos?.length) q.set("avisos", JSON.stringify(d.avisos));
+      if (!foto && fotoIdea.trim()) q.set("foto", fotoIdea.trim());
+      router.push(`/invitaciones/${d.slug}${q.size ? `?${q}` : ""}`);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -293,6 +297,14 @@ export function FormInvitacion({ inicial }: { inicial?: Invitacion }) {
               <label className="mt-1 flex items-center gap-2 text-sm"><input type="checkbox" checked={quitarFoto} onChange={(e) => setQuitarFoto(e.target.checked)} />Quitar la foto actual</label>
             )}
             <p className="mt-1 text-xs text-tenue">Sale dentro del sobre al abrirlo. Sin foto, lleva sus iniciales.</p>
+            {!foto && (
+              <>
+                <label className="etiqueta mt-3" htmlFor="inv-foto-ia">¿No tienes foto? Descríbela y Geeper la dibuja con IA (opcional)</label>
+                <input id="inv-foto-ia" className="campo" maxLength={400} value={fotoIdea} onChange={(e) => setFotoIdea(e.target.value)}
+                  placeholder={tema && estilo === "tema" ? `Por ejemplo: ${tema.idea || tema.nombre}` : "Por ejemplo: dos anillos de oro sobre pétalos de rosa"} />
+                <p className="mt-1 text-xs text-tenue">Al crear la invitación te la dejo lista para dibujar: 4 opciones en 1 a 3 minutos (usa la tarjeta de video) y eliges una.</p>
+              </>
+            )}
           </div>
 
           <fieldset>

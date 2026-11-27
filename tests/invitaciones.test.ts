@@ -12,6 +12,11 @@ import { leerMensajes } from "@/lib/invitaciones/mensaje";
 import { estiloDe } from "@/lib/invitaciones/estilo";
 import { ADORNOS, asegurarContraste, contraste, normalizarTema, PARTICULAS, promptTema, TemaIa, temaPorPalabras } from "@/lib/invitaciones/tema";
 import { esquemaParaOllama } from "@/lib/llm-local";
+import { ajustesFoto, arteDe, grafoQrArte, lecturasQr, leerPropuestas, NOMBRE_PROPUESTA, pngQrBase } from "@/lib/invitaciones/imagenes";
+import { normalizarUrlPublica } from "@/lib/invitaciones/esquema";
+import { usarPropuesta } from "@/lib/invitaciones/construir";
+import { FFMPEG } from "@/lib/rutas";
+import { existsSync } from "node:fs";
 
 const base = {
   tipo: "boda" as const, nombres: "Adeline & Marcos", fecha: "2030-12-15", hora: "15:30", zona: "America/Caracas",
@@ -188,7 +193,7 @@ describe("guardar en disco", () => {
     expect((await leerInvitacion(i.slug)).urlPublica).toBe("https://ana.netlify.app/");
     expect(await fs.readFile(path.join(pub, "qr.svg"), "utf8")).toMatch(/^<svg/);
     const zip = unzipSync(new Uint8Array(await fs.readFile(path.join(pub, "invitacion.zip"))));
-    expect(Object.keys(zip).sort()).toEqual(["index.html", "invitacion.ics"]);
+    expect(Object.keys(zip).sort()).toEqual(["index.html", "invitacion.ics", "qr.png"]);
     expect(Buffer.from(zip["index.html"]!).toString()).toContain("https://ana.netlify.app/portada-og.jpg");
 
     await ponerUrlPublica(i.slug, null);
@@ -231,7 +236,7 @@ describe("tema a medida", () => {
     const t = normalizarTema({
       nombre: "Un bosque <b>muy</b> encantado y lleno de magia antigua", colores: base.colores, letras: base.letras, adorno: "hongos", particulas: "luciernagas", fondo: "bruma",
       textos: { pista: "Toca el sello", saludo: "Bienvenidos al bosque encantado de los sueños perdidos", cancion: "", faltan: "Faltan", ubicacion: "El claro", dress: "Vestimenta", rsvp: "¿Vienes?", regalos: "Regalos" },
-      mensaje: "Te esperamos {entre} los árboles.", dress: ["#112233", "#445566", "#778899", "#aabbcc", "#ddeeff"], dressEstilo: "Verde bosque",
+      mensaje: "Te esperamos {entre} los árboles.", dress: ["#112233", "#445566", "#778899", "#aabbcc", "#ddeeff"], dressEstilo: "Verde bosque", imagen: "enchanted forest with glowing fireflies",
     }, "bosque");
     expect(t.nombre.length).toBeLessThanOrEqual(40);
     expect(t.nombre).not.toMatch(/[<>]/);
@@ -297,6 +302,83 @@ describe("tema a medida", () => {
       if (antes === undefined) delete process.env.GEEPER_DATA;
       else process.env.GEEPER_DATA = antes;
       await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+
+describe("imágenes con IA (sin la tarjeta)", () => {
+  it("corrige la dirección del panel de Netlify", () => {
+    expect(normalizarUrlPublica("https://app.netlify.com/drop/magical-biscotti-f67ab1")).toBe("https://magical-biscotti-f67ab1.netlify.app/");
+    expect(normalizarUrlPublica("https://app.netlify.com/sites/ana-luis/deploys")).toBe("https://ana-luis.netlify.app/");
+    expect(normalizarUrlPublica(" https://ana.netlify.app/ ")).toBe("https://ana.netlify.app/");
+  });
+
+  it("arma el grafo de qr-arte sólo con nodos de fábrica de ComfyUI", () => {
+    const g = grafoQrArte({ imagen: "base.png", prompt: "forest", semilla: 7, cantidad: 6, fuerza: 1.35, ruido: 0.9, prefijo: "x" });
+    expect(Object.values(g).map((n) => n.class_type).sort()).toEqual(["CLIPTextEncode", "CLIPTextEncode", "CheckpointLoaderSimple", "ControlNetApplyAdvanced", "ControlNetLoader", "KSampler", "LoadImage", "RepeatLatentBatch", "SaveImage", "VAEDecode", "VAEEncode"].sort());
+    expect(g["9"].inputs).toMatchObject({ sampler_name: "dpmpp_2m", scheduler: "karras", denoise: 0.9, latent_image: ["8", 0] });
+    expect(g["6"].inputs.strength).toBe(1.35);
+  });
+
+  it("elige qué dibujar según el estilo", () => {
+    expect(arteDe(inv({ plantilla: "tema", tema: temaPorPalabras("bosque encantado", "boda") }))).toMatch(/enchanted forest/);
+    expect(arteDe(inv({ plantilla: "tema", tema: { ...temaPorPalabras("bosque", "boda"), imagen: "a castle in the clouds" } }))).toBe("a castle in the clouds");
+    expect(arteDe(inv({ plantilla: "jardin" }))).toMatch(/botanical/);
+    const a = ajustesFoto("dos anillos de oro", "roses", 5);
+    expect(a).toMatchObject({ model_type: "z_image", image_mode: 1, batch_size: 4, seed: 5, resolution: "1216x832" });
+    expect(String(a.prompt)).toMatch(/^dos anillos de oro\. Style: roses\..*no text/);
+  });
+
+  it("sólo acepta nombres de propuesta conocidos", () => {
+    expect(NOMBRE_PROPUESTA.test("qr-123-l3.png")).toBe(true);
+    expect(NOMBRE_PROPUESTA.test("foto-1764260000000-2.png")).toBe(true);
+    expect(NOMBRE_PROPUESTA.test("../invitacion.json")).toBe(false);
+    expect(NOMBRE_PROPUESTA.test("qr-1-l9.png")).toBe(false);
+  });
+
+  it.skipIf(!existsSync(FFMPEG))("el QR base se lee a todos los tamaños; una imagen sin QR, a ninguno", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "geeper-qr-"));
+    try {
+      const url = "https://magical-biscotti-f67ab1.netlify.app/";
+      await pngQrBase(url, path.join(dir, "qr.png"));
+      expect(await lecturasQr(path.join(dir, "qr.png"), url)).toBe(4);
+      expect(await lecturasQr(path.join(dir, "qr.png"), "https://otra.cosa/")).toBe(0);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(!existsSync(FFMPEG))("usar una propuesta: foto del sobre y QR con dibujo (que se descarta si cambia la dirección)", async () => {
+    const datos = await fs.mkdtemp(path.join(os.tmpdir(), "geeper-prop-"));
+    const antes = process.env.GEEPER_DATA;
+    process.env.GEEPER_DATA = datos;
+    try {
+      const { inv: i } = await guardarInvitacion(base, {});
+      const dir = path.join(datos, "invitaciones", i.slug);
+      await fs.mkdir(path.join(dir, "propuestas"), { recursive: true });
+      await pngQrBase("https://ana.netlify.app/", path.join(dir, "propuestas", "foto-1764260000000-1.png"), 256);
+      await expect(usarPropuesta(i.slug, "qr-5-l4.png")).rejects.toThrow(/dirección/);
+      await usarPropuesta(i.slug, "foto-1764260000000-1.png");
+      expect((await leerInvitacion(i.slug)).foto).toBe("foto.webp");
+
+      await ponerUrlPublica(i.slug, "https://app.netlify.com/drop/ana-luis");
+      expect((await leerInvitacion(i.slug)).urlPublica).toBe("https://ana-luis.netlify.app/");
+      await pngQrBase("https://ana-luis.netlify.app/", path.join(dir, "propuestas", "qr-5-l4.png"), 512);
+      expect((await leerPropuestas(dir)).qrs).toEqual([{ archivo: "qr-5-l4.png", lecturas: 4 }]);
+      await usarPropuesta(i.slug, "qr-5-l4.png");
+      expect((await leerInvitacion(i.slug)).qrArte).toEqual({ archivo: "qr-arte.png", url: "https://ana-luis.netlify.app/" });
+      const qr = await fs.readFile(path.join(dir, "publicar", "qr.png"));
+      expect(qr.equals(await fs.readFile(path.join(dir, "propuestas", "qr-5-l4.png")))).toBe(true);
+
+      const { avisos } = await ponerUrlPublica(i.slug, "https://otra.netlify.app/");
+      expect(avisos.join(" ")).toMatch(/QR con dibujo/);
+      expect((await leerInvitacion(i.slug)).qrArte).toBeUndefined();
+      expect(await lecturasQr(path.join(dir, "publicar", "qr.png"), "https://otra.netlify.app/")).toBe(4);
+    } finally {
+      if (antes === undefined) delete process.env.GEEPER_DATA;
+      else process.env.GEEPER_DATA = antes;
+      await fs.rm(datos, { recursive: true, force: true });
     }
   });
 });

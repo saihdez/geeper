@@ -24,6 +24,8 @@ export const TIPOS_TRABAJO: Record<TipoTrabajo, string> = {
   "workflow.correr": "Usando una receta de imagen",
   "escena3d.crear": "Armando una escena 3D",
   "camara3d.generar": "Moviendo la cámara sobre la foto",
+  "invitacion.foto": "Dibujando la foto de la invitación",
+  "invitacion.qr": "Dibujando el QR de la invitación",
   "demo.crear": "Grabando la demo de una página web",
   "voz.regenerar": "Grabando la voz otra vez",
   "proyecto.traducir": "Traduciendo el video",

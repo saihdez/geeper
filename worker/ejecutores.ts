@@ -22,6 +22,7 @@ import { animarEscenasDelVideo } from "@/lib/animar-escenas";
 import { actuarEscena, leerAvatarDelVideo, PedidoActuar, PedidoStreamer, streamerAvatar } from "@/lib/actuar";
 import { protagonizarVideo } from "@/lib/protagonista";
 import { correrWorkflow, PedidoWorkflow } from "@/lib/workflows";
+import { generarFotosInvitacion, generarQrInvitacion } from "@/lib/invitaciones/trabajos";
 import { crearEscena3d, usarEscena3d } from "@/lib/escenas3d";
 import { generarCamara3dEscena, type OpcionesCamara3d } from "@/lib/camara3d";
 import { regenerarVoz, textoADecir } from "@/lib/regenerar";
@@ -473,6 +474,16 @@ async function workflowCorrer(t: Trabajo, h: Herramientas): Promise<Salida> {
   return { resultado: { corrida: c.id, salidas: c.salidas.length } };
 }
 
+async function invitacionFoto(t: Trabajo, h: Herramientas): Promise<Salida> {
+  await h.etapa("Esperando la GPU (pausa la IA de MPT mientras dibuja)", 0.01);
+  return { resultado: await generarFotosInvitacion(conAvance(h, "Dibujando la foto"), t.payload) };
+}
+
+async function invitacionQr(t: Trabajo, h: Herramientas): Promise<Salida> {
+  await h.etapa("Preparando el QR con dibujo", 0.01);
+  return { resultado: await generarQrInvitacion({ log: h.log, signal: h.signal, avanzar: (e, a) => void h.etapa(e, a) }, t.payload) };
+}
+
 async function camara3dGenerar(t: Trabajo, h: Herramientas): Promise<Salida> {
   const { p } = await versionDeProyecto(t.proyectoId!);
   let ultima = "";
@@ -539,6 +550,8 @@ export const EJECUTORES: Record<TipoTrabajo, (t: Trabajo, h: Herramientas) => Pr
   "workflow.correr": workflowCorrer,
   "escena3d.crear": escena3dCrear,
   "camara3d.generar": camara3dGenerar,
+  "invitacion.foto": invitacionFoto,
+  "invitacion.qr": invitacionQr,
   "demo.crear": demoCrear,
   "voz.regenerar": vozRegenerar,
   "proyecto.traducir": proyectoTraducir,

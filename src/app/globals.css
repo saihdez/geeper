@@ -47,13 +47,13 @@ label:has(input.sr-only:focus-visible), label:has(input[type="file"]:focus-visib
 .etiqueta { font-size: .8rem; color: var(--color-tenue); display: block; margin-bottom: .25rem; }
 
 /* Barra de arriba (A11-16): en ventanas angostas sólo se ven las secciones de todos los días y el resto
-   va en «Más» (src/components/barra.tsx). Desde 1280 px caben todas en una fila y «Más» no hace falta. */
+   va en «Más» (src/components/barra.tsx). Desde 1440 px caben todas en una fila y «Más» no hace falta. */
 .barra-mas { position: relative; }
 .barra-mas > summary { list-style: none; }
 .barra-mas > summary::-webkit-details-marker { display: none; }
 .barra-mas > ul { position: absolute; right: 0; top: 100%; }
-@media (min-width: 1280px) { .barra-mas { display: none; } }
-@media (max-width: 1279.98px) { .barra .barra-extra { display: none; } }
+@media (min-width: 1440px) { .barra-mas { display: none; } }
+@media (max-width: 1439.98px) { .barra .barra-extra { display: none; } }
 /* En un teléfono el menú va a lo ancho, debajo de la barra, sin salirse de la pantalla. */
 @media (max-width: 639.98px) {
   .barra-mas { position: static; }

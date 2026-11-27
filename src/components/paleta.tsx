@@ -1,6 +1,6 @@
 "use client";
 /**
- * Buscador de acciones (Ctrl+K o ⌘K, o el botón «Buscar acción» de la barra): se escribe lo que se
+ * Buscador de acciones (Ctrl+K o ⌘K, o la lupa de la barra): se escribe lo que se
  * quiere hacer («quitar silencios», «cambiar a 16:9», «renderizar») y se ejecuta sin buscar el botón.
  * Idea de la paleta de comandos de PdfCraft. Las páginas suman sus acciones con useAccionesPaleta.
  */
@@ -156,11 +156,12 @@ export function Paleta() {
 
   return (
     <>
-      <button type="button" onClick={abrir}
-        className="ml-auto flex items-center gap-2 rounded border border-borde px-2 py-1 text-tenue hover:text-white"
+      <button type="button" onClick={abrir} aria-label="Buscar acción" title="Buscar acción (Ctrl K)"
+        className="ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-borde text-tenue transition hover:bg-white/5 hover:text-white"
         aria-keyshortcuts="Control+K Meta+K">
-        Buscar acción
-        <kbd className="rounded bg-white/10 px-1 font-mono text-xs">Ctrl K</kbd>
+        <svg viewBox="0 0 24 24" aria-hidden="true" className="h-[18px] w-[18px] fill-none stroke-current" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
+        </svg>
       </button>
       <dialog ref={dialogo} onClose={cerrar} onClick={(e) => { if (e.target === e.currentTarget) cerrar(); }}
         aria-label="Buscar acción"

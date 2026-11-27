@@ -2,9 +2,10 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import type { Invitacion } from "@/lib/invitaciones/esquema";
+import { normalizarUrlPublica, type Invitacion } from "@/lib/invitaciones/esquema";
 import { Aviso, pedir, useSondeo } from "./comun";
 import { FormInvitacion } from "./form-invitacion";
+import { PanelFoto, PanelQr } from "./invitacion-imagenes";
 
 interface Resumen {
   slug: string;
@@ -76,6 +77,7 @@ export function VistaInvitacion({ slug }: { slug: string }) {
   if (!inv) return <p className="text-sm text-tenue">Cargando…</p>;
   const v = inv.actualizada;
   const urlActual = url ?? inv.urlPublica ?? "";
+  const urlCorregida = inv.urlPublica ? normalizarUrlPublica(inv.urlPublica) : "";
 
   async function guardarUrl(nueva: string | null) {
     setOcupado(true);
@@ -139,24 +141,22 @@ export function VistaInvitacion({ slug }: { slug: string }) {
             {inv.urlPublica && <button className="boton" disabled={ocupado} onClick={() => guardarUrl(null)}>Quitar</button>}
           </div>
           {falla && <Aviso tipo="error">{falla}</Aviso>}
+          {inv.urlPublica && urlCorregida !== inv.urlPublica && (
+            <Aviso tipo="error">
+              Esa dirección es la del panel de Netlify, no la de tu invitación: el QR llevaría a otra página.
+              <button type="button" className="boton ml-2 mt-2" disabled={ocupado} onClick={() => guardarUrl(urlCorregida)}>Usar {urlCorregida}</button>
+            </Aviso>
+          )}
           {(resubir || inv.urlPublica) && (
             <Aviso tipo="info">
               Último paso: descarga el .zip otra vez y vuelve a arrastrar la carpeta en Netlify (en tu sitio → Deploys). Así la vista previa
               de WhatsApp sale con la imagen. Comparte el enlace después de eso.
             </Aviso>
           )}
-          {inv.urlPublica && (
-            <div className="flex flex-wrap items-center gap-4">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={archivo(slug, "qr.svg", v)} alt="Código QR de la invitación" className="h-36 w-36 rounded bg-white p-1" />
-              <div className="space-y-2 text-sm">
-                <p>El QR sirve para imprimirlo o ponerlo al final de un video.</p>
-                <a className="boton" href={`${archivo(slug, "qr.svg", v)}&descargar=1`}>Descargar QR</a>
-                <a className="boton ml-2" href={`https://wa.me/?text=${encodeURIComponent(inv.urlPublica)}`} target="_blank" rel="noopener">Mandar por WhatsApp</a>
-              </div>
-            </div>
-          )}
+          {inv.urlPublica && <PanelQr inv={inv} alCambiar={(a) => { setAvisos(a); void recargar(); }} />}
         </section>
+
+        <PanelFoto inv={inv} inicial={params.get("foto") ?? ""} alCambiar={(a) => { setAvisos(a); void recargar(); }} />
 
         <section className="text-sm text-tenue">
           <p>Quien tenga el enlace verá el lugar y el WhatsApp de confirmación. La página no aparece en buscadores.</p>

@@ -88,8 +88,21 @@ export const Invitacion = Entrada.omit({ musicaEnlace: true, plantilla: true }).
   musicaEnlace: opcional(500),
   foto: z.literal("foto.webp").optional(),
   urlPublica: httpsUrl.optional(),
+  /** QR con dibujo elegido (imagenes.ts) y la dirección que lleva: si la dirección cambia, ya no sirve. */
+  qrArte: z.object({ archivo: z.literal("qr-arte.png"), url: z.string() }).optional(),
 });
 export type Invitacion = z.infer<typeof Invitacion>;
+
+/**
+ * Corrige direcciones que no son la de la invitación publicada: el panel de Netlify
+ * (`app.netlify.com/drop/<sitio>`, `/sites/<sitio>/…`, `/projects/<sitio>/…`) → `https://<sitio>.netlify.app/`.
+ */
+export function normalizarUrlPublica(url: string): string {
+  const u = url.trim();
+  const m = /^https?:\/\/app\.netlify\.com\/(?:drop|sites|projects)\/([a-z0-9][a-z0-9-]*)/i.exec(u);
+  if (m) return `https://${m[1]!.toLowerCase()}.netlify.app/`;
+  return u.replace(/^http:\/\//i, "https://");
+}
 
 /** «2026-12-15» ya pasó en esa zona horaria (se compara la fecha del evento con la de hoy allí). */
 export function fechaPasada(fecha: string, zona: string, ahora = new Date()): boolean {
