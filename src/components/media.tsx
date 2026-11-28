@@ -10,7 +10,11 @@ interface EstadoInstalacion {
   detalle: string;
 }
 interface Lanzamiento { version: string; fecha: string; url: string; notas: string }
-type FilaApp = AppCraft & { release: string; instalada: string | null; versiones: string[]; ultima: Lanzamiento | null; instalacion: EstadoInstalacion | null; escritorio?: boolean };
+type FilaApp = AppCraft & {
+  release: string; instalada: string | null; versiones: string[]; ultima: Lanzamiento | null; instalacion: EstadoInstalacion | null; escritorio?: boolean;
+  /** Falta un paso en la computadora para que abra (el comando que hay que correr). */
+  falta?: string | null;
+};
 
 /** «0.25.0» > «0.24.1». */
 const masNueva = (a: string, b: string) => {
@@ -59,7 +63,7 @@ export function Media() {
           Las apps Craft de <a className="underline" href="https://github.com/storytold" target="_blank" rel="noreferrer">storytold</a> con
           su interfaz original, dentro de Geeper. Cada una se instala una vez (la versión oficial, verificada) y se abre a pantalla completa.
           Abrir y guardar usan el selector de archivos del navegador: lo que guardes se descarga a tu carpeta de Descargas.
-          Sus menús están en inglés.
+          Sus menús están en inglés. Avnac Studio, para diseñar portadas y pósters, se abre como programa en su propia ventana y guarda solo.
         </p>
       </div>
       {error && <Aviso tipo="error">No se pudo leer la lista: {error}</Aviso>}
@@ -88,6 +92,12 @@ export function Media() {
                       <Barra valor={a.instalacion!.progreso} etiqueta={`Avance: instalando ${a.nombre}`} />
                       <p className="text-xs text-tenue" role="status">{a.instalacion!.detalle}</p>
                     </>
+                  ) : a.soloEscritorio && a.instalada && a.falta ? (
+                    <div className="space-y-1 text-xs">
+                      <p className="text-amber-300">Ya está instalada, pero a esta computadora le falta una pieza para abrirla. Pídele a quien administra el equipo que corra esto una vez en una terminal:</p>
+                      <code className="block select-all rounded bg-black/40 px-2 py-1">{a.falta}</code>
+                      <button type="button" className="boton" onClick={() => void recargar()}>Ya lo hice, revisar otra vez</button>
+                    </div>
                   ) : a.soloEscritorio && a.instalada ? (
                     <div className="flex flex-wrap items-center gap-2">
                       <button type="button" className="boton boton-primario" onClick={() => void escritorio(a, "abrir")}>Abrir {a.nombre}</button>

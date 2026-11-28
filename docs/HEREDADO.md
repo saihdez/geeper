@@ -912,10 +912,24 @@ reescritas. Casi todo es de diseño estático e imprenta; a Geeper le sirve lo q
 | Recorte con punto focal (`image-fit.ts`, `focalPoint`) | El recorte de la imagen de la portada sigue la cara de YuNet (`asset.foco`) si es estable (cobertura ≥ 0,5, dispersión ≤ 0,12), con la cara al 40 % del alto; si no, al centro como antes |
 | Zonas seguras | En 16:9, «Título abajo» y «Banda de color» ya no llegan a la esquina de la duración |
 
+**En Media (el programa oficial, aparte)**
+
+Avnac Studio está en Media → «Imagen y diseño» (`src/lib/avnac.ts`): «Instalar» baja la release fijada
+(v0.4.1), la verifica con la suma SHA-256 fijada en el código y «Abrir» la lanza en su propia ventana, como
+AniCraft. Es un programa aparte (GPL, sin enlazar ni copiar nada), igual que ComfyUI.
+
+- **Linux / WSL**: ejecutable suelto en `<herramientas>/avnac-studio/<versión>`. Necesita WebKitGTK 4.1
+  (`sudo apt install -y libwebkit2gtk-4.1-0`, una vez): si falta, Media muestra ese comando en vez de «Abrir».
+- **Windows**: su instalador oficial (NSIS de Wails) en silencio, `/S /D=<herramientas>\avnac-studio`; pide
+  administrador una vez (UAC) e instala WebView2 si falta. Deja accesos en el escritorio y el menú Inicio.
+- **macOS**: sólo publica `.dmg`; queda el enlace a la release.
+- Para actualizar: cambiar `version` y las cuatro sumas de `AVNAC` en `src/lib/avnac.ts` (están en su
+  `SHA256SUMS.txt`).
+
 **Descartado**
 
-- El motor Saraswati, los tableros vectoriales y el editor: Geeper compone portadas con PhotoCraft y el
-  video con su compilador; un segundo editor de lienzo no suma.
+- El motor Saraswati, los tableros vectoriales y el editor *dentro* de Geeper: Geeper compone portadas con
+  PhotoCraft y el video con su compilador; el editor completo se usa como programa aparte (arriba).
 - El servidor MCP dentro de la app (14 herramientas, token en el llavero): idea buena para más adelante
   (que un agente arme portadas o escenas desde Claude Code), pero hoy el agente trabaja con la skill
   `geeper` y `scripts/proponer.ts`, con el «sí» de la persona. Anotado como posible.

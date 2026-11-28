@@ -1,3 +1,4 @@
+import { AVNAC, AVNAC_INSTALABLE, estadoAvnac, instalacionAvnac, paginaAvnac } from "@/lib/avnac";
 import { ESCRITORIO_CRAFT, instalacionEscritorio, versionEscritorio } from "@/lib/craft-escritorio";
 import { APPS_CRAFT, instalacionWeb, paginaRelease, versionesWeb, versionWeb } from "@/lib/craft-web";
 import { json, manejar } from "@/lib/http";
@@ -9,8 +10,8 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   return manejar(async () => {
     const nov = new Map((await leerCache())?.novedades.map((n) => [n.id, n]) ?? []);
-    return json(
-      await Promise.all(
+    const avnac = await estadoAvnac();
+    const craft = await Promise.all(
         APPS_CRAFT.map(async (a) => ({
           ...a,
           release: paginaRelease(a),
@@ -21,7 +22,25 @@ export async function GET() {
           // Las que no tienen versión web se instalan como programa (Windows y Linux; macOS: descarga).
           escritorio: a.soloEscritorio ? ESCRITORIO_CRAFT : undefined,
         })),
-      ),
-    );
+      );
+    // Avnac Studio: otra app de diseño (no es de storytold), con su programa oficial.
+    const filaAvnac = {
+      app: AVNAC.id,
+      nombre: AVNAC.nombre,
+      version: AVNAC.version,
+      grupo: "Imagen y diseño" as const,
+      que: "Diseño de portadas, pósters y piezas para redes: textos, formas, fotos, capas y varias páginas.",
+      comoA: "Canva",
+      paraGeeper: "Diseñar a mano la portada o un póster del video; exporta PNG para subirlo como imagen.",
+      soloEscritorio: true,
+      release: paginaAvnac,
+      instalada: avnac.instalada,
+      falta: avnac.falta,
+      versiones: [],
+      ultima: null,
+      instalacion: instalacionAvnac(),
+      escritorio: AVNAC_INSTALABLE,
+    };
+    return json([...craft.slice(0, 1), filaAvnac, ...craft.slice(1)]);
   });
 }

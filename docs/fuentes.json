@@ -713,9 +713,11 @@
       ],
       "commit": "8db48f3",
       "revisado": "2026-11-27",
-      "que": "Editor de diseño de escritorio (Wails + Go, GPL-3.0: sólo ideas, nunca código ni textos). Se tomó la idea de validar con medidas el diseño ya armado y de mirarlo chico: revisión de portadas (letra en vista chica, contraste medido alrededor del título, esquina de la duración, márgenes, veredicto), centro óptico, recorte con foco (la cara) y el método de crítica para el agente. Revisar frontend/src/lib/mcp/validate.ts e image-fit.ts y internal/skill/critique.",
+      "que": "Editor de diseño de escritorio (Wails + Go, GPL-3.0: sólo ideas, nunca código ni textos). Su programa oficial está en Media (release fijada v0.4.1, sumas en src/lib/avnac.ts: al actualizar, cambiar versión y sumas). Se tomó la idea de validar con medidas el diseño ya armado y de mirarlo chico: revisión de portadas (letra en vista chica, contraste medido alrededor del título, esquina de la duración, márgenes, veredicto), centro óptico, recorte con foco (la cara) y el método de crítica para el agente. Revisar frontend/src/lib/mcp/validate.ts e image-fit.ts y internal/skill/critique.",
       "archivos": [
         "src/lib/revisar-portada.ts",
+        "src/lib/avnac.ts",
+        "src/app/api/media/route.ts",
         "src/lib/portada.ts",
         "src/components/panel-portada.tsx",
         ".claude/agents/geeper-experto.md"
@@ -723,6 +725,7 @@
       "docs": "docs/HEREDADO.md#avnac-studio-striker561-gpl-30--revisión-2026-11-27-commit-8db48f3",
       "pruebas": [
         "tests/revisar-portada.test.ts",
+        "tests/avnac.test.ts",
         "tests/portadas-color.test.ts"
       ]
     }
