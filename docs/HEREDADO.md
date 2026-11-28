@@ -962,6 +962,16 @@ Windows trae todo dentro de una carpeta; `carpetaRaiz` la toma sola. Para constr
 con la sesión de la persona (lo dice la tarjeta); el programa usa la tarjeta de video para dibujar su
 ventana (egui/wgpu), no para generar.
 
+**Datos fijos (2026-11-28):** el zip portable de Windows trae `portable.txt`, así que Craft Anything
+guarda configuración y motores (Ghidra, Java) en `CraftAnythingData` junto al programa, dentro de la
+carpeta de la versión: al actualizar se perdían y volvía a bajar 740 MB. Geeper lo abre con
+`CRAFT_ANYTHING_CONFIG_DIR=<herramientas>/craft-anything-escritorio/datos` (`prepararDatos` en
+`craft-escritorio.ts`) y la primera vez pasa ahí lo que ya había (de esta versión o de la más reciente).
+En la PC del dueño, Ghidra 12.1.4 se copió de `~/.local/opt` (WSL; trae el descompilador de Windows) a
+`%LOCALAPPDATA%\Geeper\herramientas\ghidra` y el Java que Craft Anything ya había bajado a
+`herramientas\java`; `config.toml` los nombra en `[engines.ghidra]` y `[engines.tools] java`.
+`craft-anything-cli doctor`: Ghidra, Java de Ghidra y Java en «ok».
+
 **Revisado y ya cubierto**
 
 - Captura de marca (colores, letras, maquetación medida): ya la hace `marca-web.ts` (OpenDesign).
