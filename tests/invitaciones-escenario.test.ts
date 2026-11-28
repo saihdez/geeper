@@ -102,4 +102,11 @@ describe("escenario del tema", () => {
     // Sin fondo plano de color vivo (gris): no se recorta.
     expect(recortarPixeles(new Uint8Array(lado * lado * 4).fill(128), lado)).toBeNull();
   });
+
+  it("nombres para el enlace personalizado de Netlify", async () => {
+    const { nombresEnlace } = await import("@/lib/invitaciones/esquema");
+    expect(nombresEnlace({ tipo: "xv", nombres: "Mariangel Campos Porras", fecha: "2027-02-20" })).toEqual(["xv-mariangel", "xv-mariangel-campos", "xv-mariangel-2027"]);
+    expect(nombresEnlace({ tipo: "boda", nombres: "Ana & José Luis", fecha: "2030-05-01" })).toEqual(["ana-y-jose", "boda-ana-y-jose", "ana-y-jose-2030"]);
+    expect(nombresEnlace({ tipo: "cumpleanos", nombres: "Sofía", fecha: "2030-05-01" })[0]).toBe("cumple-sofia");
+  });
 });

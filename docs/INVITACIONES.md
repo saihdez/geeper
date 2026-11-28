@@ -257,8 +257,13 @@ momento, que me lleve por las ramas o raíces». `escenario.ts`, para todas las 
   «respira» (zoom lento). Encima van la bruma que cruza en la capa media, un velo con el color del fondo
   para que se lea la portada, los rayos (bosque y jardín), las partículas y el camino. Con «reducir
   movimiento» la foto se queda quieta y la bruma va más lenta. «Volver al fondo dibujado» lo quita.
-- **Imagen del enlace en WhatsApp**: con un QR con dibujo en uso, se elige entre la portada (1200×630) y
-  el QR (800×800, `vistaPrevia: "qr"`). `og:image` lleva `?v=<guardado>` para que WhatsApp no use la
+- **Imagen del enlace en WhatsApp** (`vistaPrevia`): por defecto **el sobre cerrado** con su sello, grande y al
+  centro sobre el fondo de la invitación (foto de la página real, 1200×630; lo importante cabe en el cuadrado
+  del medio que WhatsApp muestra en la miniatura). También la portada o el QR (800×800; en WhatsApp queda
+  pequeño).
+- **Enlace personalizado** («🔗 Personaliza el enlace»): `nombresEnlace` propone `xv-mariangel`,
+  `ana-y-jose`… y la pantalla explica cómo cambiar el nombre del sitio en Netlify (gratis). Al pegar la
+  dirección nueva, el QR con dibujo viejo se descarta (lleva la dirección adentro). `og:image` lleva `?v=<guardado>` para que WhatsApp no use la
   imagen vieja. Después hay que volver a subir el .zip.
 
 ### Efecto al abrir el sobre (hecho el 2026-11-28)

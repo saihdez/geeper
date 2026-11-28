@@ -28,7 +28,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
   return manejar(async () => {
     const { slug } = await ctx.params;
     const cuerpo: unknown = await req.json();
-    const vp = z.object({ vistaPrevia: z.enum(["portada", "qr"]) }).safeParse(cuerpo);
+    const vp = z.object({ vistaPrevia: z.enum(["sobre", "portada", "qr"]) }).safeParse(cuerpo);
     if (vp.success) {
       const { inv, avisos } = await ponerVistaPrevia(slug, vp.data.vistaPrevia);
       return json({ invitacion: inv, avisos });

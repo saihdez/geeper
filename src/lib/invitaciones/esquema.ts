@@ -119,8 +119,8 @@ export const Invitacion = Entrada.omit({ musicaEnlace: true, plantilla: true }).
     movimiento: Movimiento,
     figuras: z.array(z.string().regex(/^efecto-\d\.webp$/)).min(1).max(6),
   }).optional(),
-  /** Imagen del enlace en WhatsApp: la portada (por defecto) o el QR con dibujo. */
-  vistaPrevia: z.enum(["portada", "qr"]).optional(),
+  /** Imagen del enlace en WhatsApp: el sobre cerrado (por defecto), la portada o el QR con dibujo. */
+  vistaPrevia: z.enum(["sobre", "portada", "qr"]).optional(),
   retoques: Retoques.optional(),
   ocultas: z.array(Seccion).optional(),
   /** Pedido de Google Forms del que salió (formularios.ts). */
@@ -143,4 +143,27 @@ export function normalizarUrlPublica(url: string): string {
 export function fechaPasada(fecha: string, zona: string, ahora = new Date()): boolean {
   const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: zona, year: "numeric", month: "2-digit", day: "2-digit" }).format(ahora);
   return fecha < hoy;
+}
+
+const PREFIJO_ENLACE: Record<Tipo, string> = { boda: "boda", xv: "xv", cumpleanos: "cumple", bautizo: "bautizo", babyshower: "babyshower", graduacion: "graduacion", otro: "evento" };
+
+/**
+ * Nombres para el enlace de Netlify («xv-mariangel» → https://xv-mariangel.netlify.app): sólo minúsculas,
+ * números y guiones. Varios por si el primero ya está tomado.
+ */
+export function nombresEnlace(inv: Pick<Invitacion, "tipo" | "nombres" | "fecha">): string[] {
+  const limpio = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const pre = PREFIJO_ENLACE[inv.tipo];
+  const partes = inv.nombres.split(/\s*(?:&|\by\b|\be\b|,|\+)\s*/i).map((p) => p.trim()).filter(Boolean);
+  const anio = inv.fecha.slice(0, 4);
+  let opciones: string[];
+  if (partes.length >= 2) {
+    const a = limpio(partes[0]!.split(/\s+/)[0]!), b = limpio(partes[1]!.split(/\s+/)[0]!);
+    opciones = [`${a}-y-${b}`, `${pre}-${a}-y-${b}`, `${a}-y-${b}-${anio}`];
+  } else {
+    const palabras = (partes[0] ?? inv.nombres).split(/\s+/).map(limpio).filter(Boolean);
+    const nombre = palabras[0] ?? "invitacion";
+    opciones = [`${pre}-${nombre}`, palabras[1] ? `${pre}-${nombre}-${palabras[1]}` : `${nombre}-${pre}`, `${pre}-${nombre}-${anio}`];
+  }
+  return [...new Set(opciones.map((o) => o.slice(0, 60).replace(/-+$/, "")))];
 }

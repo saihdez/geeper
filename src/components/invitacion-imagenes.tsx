@@ -141,7 +141,7 @@ export function PanelQr({ inv, alCambiar }: { inv: Invitacion; alCambiar: (aviso
   const usado = inv.qrArte?.url === url;
   const [cambiandoVista, setCambiandoVista] = useState(false);
 
-  async function vistaPrevia(v: "portada" | "qr") {
+  async function vistaPrevia(v: "sobre" | "portada" | "qr") {
     setFalla(null);
     setCambiandoVista(true);
     try {
@@ -189,14 +189,13 @@ export function PanelQr({ inv, alCambiar }: { inv: Invitacion; alCambiar: (aviso
             <a className="boton" href={archivo(inv.slug, "qr.png", inv.actualizada, true)}>Descargar QR</a>
             <a className="boton" href={`https://wa.me/?text=${encodeURIComponent(url)}`} target="_blank" rel="noopener">Mandar por WhatsApp</a>
           </div>
-          {usado && (
-            <fieldset className="space-y-1" disabled={cambiandoVista}>
+          <fieldset className="space-y-1" disabled={cambiandoVista}>
               <legend className="text-xs text-tenue">Imagen que se ve al mandar el enlace por WhatsApp</legend>
-              <label className="flex items-center gap-2"><input type="radio" name={`vista-${inv.slug}`} checked={inv.vistaPrevia !== "qr"} onChange={() => void vistaPrevia("portada")} />La portada (nombre y foto)</label>
-              <label className="flex items-center gap-2"><input type="radio" name={`vista-${inv.slug}`} checked={inv.vistaPrevia === "qr"} onChange={() => void vistaPrevia("qr")} />El QR con dibujo</label>
+              <label className="flex items-center gap-2"><input type="radio" name={`vista-${inv.slug}`} checked={(inv.vistaPrevia ?? "sobre") === "sobre"} onChange={() => void vistaPrevia("sobre")} />El sobre cerrado, con su sello (recomendado)</label>
+              <label className="flex items-center gap-2"><input type="radio" name={`vista-${inv.slug}`} checked={inv.vistaPrevia === "portada"} onChange={() => void vistaPrevia("portada")} />La portada (nombres y foto)</label>
+              {usado && <label className="flex items-center gap-2"><input type="radio" name={`vista-${inv.slug}`} checked={inv.vistaPrevia === "qr"} onChange={() => void vistaPrevia("qr")} />El QR con dibujo (en WhatsApp se ve pequeño)</label>}
               <p className="text-xs text-tenue">{cambiandoVista ? "Rehaciendo la imagen…" : "Después de cambiarla, descarga el .zip y vuelve a subirlo a Netlify."}</p>
             </fieldset>
-          )}
         </div>
       </div>
 

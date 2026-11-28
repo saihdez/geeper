@@ -328,7 +328,7 @@ export async function quitarFondo(slug: string): Promise<{ inv: Invitacion; avis
 }
 
 /** Imagen del enlace en WhatsApp: la portada o el QR con dibujo. Rehace la página y la imagen. */
-export async function ponerVistaPrevia(slug: string, vistaPrevia: "portada" | "qr"): Promise<{ inv: Invitacion; avisos: string[] }> {
+export async function ponerVistaPrevia(slug: string, vistaPrevia: "sobre" | "portada" | "qr"): Promise<{ inv: Invitacion; avisos: string[] }> {
   const previa = await leerInvitacion(slug);
   const inv = Invitacion.parse({ ...previa, vistaPrevia, actualizada: new Date().toISOString() });
   await escribirAtomico(path.join(dirInvitacion(slug), "invitacion.json"), JSON.stringify(inv, null, 2));
@@ -598,7 +598,7 @@ export async function construir(inv: Invitacion, op: { portada?: boolean } = {})
 
   if (op.portada ?? !process.env.VITEST) {
     try {
-      await hacerPortada(inv, fuentes.css, fotoB64, path.join(pub, "portada-og.jpg"));
+      await hacerPortada(inv, fuentes.css, fotoB64, path.join(pub, "portada-og.jpg"), html);
     } catch {
       avisos.push("No se pudo hacer la imagen de vista previa para WhatsApp (falta el navegador interno). La invitación funciona igual.");
     }
@@ -655,7 +655,17 @@ export function htmlPortada(inv: Invitacion, fuentesCss: string, fotoB64?: strin
 <body>${foto}<div><p class="pre">${esc(corto)}</p><h1>${esc(inv.nombres)}</h1><div class="linea"></div><p class="fecha">${esc(f.fecha)}</p><p class="fecha">${esc(inv.lugar.nombre)}</p></div></body></html>`;
 }
 
-async function hacerPortada(inv: Invitacion, fuentesCss: string, fotoB64: string | undefined, destino: string): Promise<void> {
+/**
+ * El sobre cerrado, grande y al centro sobre el fondo de la invitación (con su escenario y partículas):
+ * lo importante cabe en el cuadrado del medio, que es lo que WhatsApp muestra en la miniatura.
+ */
+const CSS_FOTO_SOBRE = `html,body{overflow:hidden!important}
+.portada>*:not(.sobre){display:none!important}
+.portada{min-height:100vh!important;padding:0!important;margin:0!important;display:flex!important;align-items:center;justify-content:center}
+.resto,.musica,.pista,.desliza{display:none!important}
+.sobre{margin:0!important;transform-origin:50% 50%}`;
+
+async function hacerPortada(inv: Invitacion, fuentesCss: string, fotoB64: string | undefined, destino: string, paginaHtml?: string): Promise<void> {
   const pw = await import("playwright-core");
   const nav = await pw.chromium.launch({ executablePath: chrome() });
   try {
@@ -665,8 +675,15 @@ async function hacerPortada(inv: Invitacion, fuentesCss: string, fotoB64: string
     const html = conQr
       ? `<!doctype html><style>html,body{margin:0}img{display:block;width:800px;height:800px}</style><img src="data:image/png;base64,${conQr}">`
       : htmlPortada(inv, fuentesCss, fotoB64);
-    await page.setContent(html, { waitUntil: "load", timeout: 30_000 });
+    const sobre = !conQr && (inv.vistaPrevia ?? "sobre") === "sobre" && paginaHtml;
+    await page.setContent(sobre ? paginaHtml : html, { waitUntil: "load", timeout: 30_000 });
     await page.evaluate(() => document.fonts.ready);
+    if (sobre) {
+      await page.addStyleTag({ content: CSS_FOTO_SOBRE });
+      // Que el sobre ocupe ~560×400 px del centro, sea cual sea su tamaño en la página.
+      await page.evaluate(`(() => { const s = document.querySelector('.sobre'); const r = s.getBoundingClientRect(); s.style.transform = 'scale(' + Math.min(560 / r.width, 400 / r.height) + ')'; })()`);
+      await page.waitForTimeout(700);
+    }
     const jpg = await page.screenshot({ type: "jpeg", quality: 86 });
     await escribirAtomico(destino, jpg);
   } finally {

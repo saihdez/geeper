@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
-import { normalizarUrlPublica, type Invitacion } from "@/lib/invitaciones/esquema";
+import { nombresEnlace, normalizarUrlPublica, type Invitacion } from "@/lib/invitaciones/esquema";
 import { Aviso, pedir, useSondeo } from "./comun";
 import { FormInvitacion } from "./form-invitacion";
 import { PanelFormularios } from "./invitacion-formularios";
@@ -151,6 +151,7 @@ export function VistaInvitacion({ slug }: { slug: string }) {
               <button type="button" className="boton ml-2 mt-2" disabled={ocupado} onClick={() => guardarUrl(urlCorregida)}>Usar {urlCorregida}</button>
             </Aviso>
           )}
+          <EnlacePropio inv={inv} />
           {(resubir || inv.urlPublica) && (
             <Aviso tipo="info">
               Último paso: descarga el .zip otra vez y vuelve a arrastrar la carpeta en Netlify (en tu sitio → Deploys). Así la vista previa
@@ -187,5 +188,43 @@ export function EditarInvitacion({ slug }: { slug: string }) {
       <h1 className="text-xl font-semibold">Cambiar la invitación</h1>
       <FormInvitacion key={datos.invitacion.actualizada} inicial={datos.invitacion} />
     </div>
+  );
+}
+
+/** Cambiar el nombre del sitio en Netlify (gratis): de «inspiring-malasada-39aaf3» a «xv-mariangel». */
+function EnlacePropio({ inv }: { inv: Invitacion }) {
+  const [copiado, setCopiado] = useState<string | null>(null);
+  const actual = inv.urlPublica ? new URL(inv.urlPublica).hostname : null;
+  const opciones = nombresEnlace(inv);
+  const yaPropio = actual && opciones.some((o) => actual.startsWith(`${o}.`));
+  async function copiar(n: string) {
+    await navigator.clipboard.writeText(n).catch(() => {});
+    setCopiado(n);
+  }
+  return (
+    <details className="rounded-lg border border-white/10 p-3 text-sm" open={!!actual && !yaPropio}>
+      <summary className="cursor-pointer font-medium">🔗 Personaliza el enlace (gratis)</summary>
+      <div className="mt-2 space-y-2">
+        <p className="text-tenue">
+          {actual ? <>Ahora es <code>{actual}</code>. </> : null}
+          Puedes cambiarlo por uno con su nombre, por ejemplo <code>{opciones[0]}.netlify.app</code>. Toca uno para copiarlo:
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {opciones.map((o) => (
+            <button key={o} type="button" className="boton" onClick={() => void copiar(o)}>{copiado === o ? "✓ Copiado" : o}</button>
+          ))}
+        </div>
+        <ol className="list-decimal space-y-1 pl-5">
+          <li>Entra a <a className="underline" href="https://app.netlify.com" target="_blank" rel="noopener">Netlify</a> y abre tu sitio.</li>
+          <li>Ve a <b>Site configuration</b> (configuración del sitio) → <b>Change site name</b> (cambiar nombre).</li>
+          <li>Pega el nombre y guarda. Si dice que ya está tomado, prueba otro de la lista.</li>
+          <li>Tu enlace queda <code>https://{opciones[0]}.netlify.app</code>: pégalo arriba y toca <b>Guardar dirección</b>.</li>
+        </ol>
+        <p className="text-xs text-tenue">
+          El enlace viejo deja de funcionar: manda el nuevo. Si ya hiciste el QR con dibujo, hazlo otra vez (lleva la dirección adentro).
+          Un dominio propio (como <code>mariangel.com</code>) también se puede, pero cuesta unos US$10-15 al año.
+        </p>
+      </div>
+    </details>
   );
 }
