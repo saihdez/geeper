@@ -77,7 +77,7 @@ canvas.particulas{position:fixed;inset:0;width:100%;height:100%;pointer-events:n
 .portada{min-height:100svh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:40px 0}
 .pre{letter-spacing:.32em;text-transform:uppercase;font-size:.78rem;margin:0}
 .script{font-family:var(--f-titulos);font-weight:400;line-height:1.1;margin:0}
-.nombres{font-size:clamp(2.6rem,12vw,3.7rem)}
+.nombres{font-size:clamp(2.3rem,11vw,3.7rem);max-width:100%}
 .sobre{position:relative;width:min(84vw,340px);aspect-ratio:3/2;margin:46px 0 10px;perspective:1000px;transition:margin-top .6s ease .3s}
 .sobre-fondo{position:absolute;inset:0;background:color-mix(in srgb,var(--sobre) 80%,#000);border-radius:8px;box-shadow:0 22px 44px rgba(0,0,0,.38)}
 .carta{position:absolute;left:6%;right:6%;top:6%;bottom:6%;z-index:1;background:var(--tarjeta);color:var(--tinta);border-radius:6px;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:transform .9s cubic-bezier(.2,.8,.2,1) .5s}
@@ -96,8 +96,11 @@ background:radial-gradient(circle at 35% 30%,color-mix(in srgb,var(--sello) 55%,
 .abierto .sobre{margin-top:min(44vw,190px)}
 .cerrado .resto{display:none}
 .tarjeta{background:var(--tarjeta);color:var(--tinta);border-radius:22px;padding:30px 22px;margin:26px 0;text-align:center;box-shadow:0 14px 34px rgba(0,0,0,.22)}
-.arco{border-radius:190px 190px 22px 22px;padding-top:52px}
-.tarjeta h2{font-family:var(--f-titulos);font-weight:400;font-size:2.5rem;line-height:1.1;margin:0 0 10px}
+.arco{border-radius:min(190px,46vw) min(190px,46vw) 22px 22px;padding-top:clamp(58px,17vw,78px)}
+.arco>h2{padding:0 6%}
+.tarjeta h2{font-family:var(--f-titulos);font-weight:400;font-size:clamp(1.9rem,9.5vw,2.5rem);line-height:1.1;margin:0 0 10px}
+h1,h2,.script,.mayus,caption,.pre{text-wrap:balance}
+.tarjeta p{overflow-wrap:break-word}
 .adorno{width:150px;height:16px;fill:none;stroke:var(--acento);stroke-width:1.5;display:block;margin:6px auto 14px}
 .adorno .relleno{fill:color-mix(in srgb,var(--acento) 35%,transparent);stroke-linecap:round;stroke-linejoin:round}
 .mayus{letter-spacing:.24em;text-transform:uppercase;font-size:.8rem}
@@ -108,7 +111,7 @@ background:radial-gradient(circle at 35% 30%,color-mix(in srgb,var(--sello) 55%,
 .boton svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .boton:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--acento);outline-offset:2px}
 table.mes{margin:10px auto 0;border-collapse:collapse;font-size:.95rem}
-.mes caption{font-family:var(--f-titulos);font-size:2.3rem;margin-bottom:6px}
+.mes caption{font-family:var(--f-titulos);font-size:clamp(1.8rem,9vw,2.3rem);margin-bottom:6px}
 .mes th{font-weight:600;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;padding:4px 6px}
 .mes td{width:40px;height:38px;text-align:center;position:relative}
 .mes .dia-evento{font-weight:700}
@@ -157,7 +160,11 @@ var cuenta=${partesCuentaAtras.toString()};
 var mensaje=${mensajeConfirmacion.toString()};
 var reducido=matchMedia('(prefers-reduced-motion: reduce)').matches;
 var b=document.body,audio=document.getElementById('audio'),btnM=document.getElementById('musica');
-function abrir(){if(b.classList.contains('abierto'))return;b.classList.add('abierto');b.classList.remove('cerrado');
+// Títulos que siempre caben: si una palabra no entra con la letra final, se achica ese título (hasta 55 %).
+function ajustar(){document.querySelectorAll('.tarjeta h2,.nombres,.pie .script,.carta .script,.mes caption,.pre').forEach(function(e){if(!e.clientWidth)return;e.style.fontSize='';
+ var t=0,base=parseFloat(getComputedStyle(e).fontSize);while(e.scrollWidth>e.clientWidth+1&&t++<14){e.style.fontSize=(base*Math.pow(.95,t))+'px'}})}
+ajustar();if(document.fonts&&document.fonts.ready)document.fonts.ready.then(ajustar);var rt;addEventListener('resize',function(){clearTimeout(rt);rt=setTimeout(ajustar,150)});
+function abrir(){if(b.classList.contains('abierto'))return;b.classList.add('abierto');b.classList.remove('cerrado');ajustar();
  if(audio){audio.play().then(function(){btnM.hidden=false;btnM.setAttribute('aria-pressed','true')}).catch(function(){btnM.hidden=false;btnM.setAttribute('aria-pressed','false')});}
  setTimeout(function(){var s=document.getElementById('mensaje');if(s)s.scrollIntoView({behavior:reducido?'auto':'smooth'})},reducido?50:1600);}
 document.getElementById('sello').addEventListener('click',abrir);

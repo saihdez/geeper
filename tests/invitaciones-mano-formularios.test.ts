@@ -93,6 +93,17 @@ describe("corregir a mano", () => {
   });
 });
 
+describe("los textos caben en sus formas", () => {
+  it("los títulos de las tarjetas en arco empiezan donde el arco ya es ancho y se achican si una palabra no cabe", () => {
+    const html = compilar(inv(), { fuentesCss: "" }, 0).html;
+    expect(html).toMatch(/\.arco\{border-radius:min\(190px,46vw\)[^}]*padding-top:clamp\(58px/);
+    expect(html).toContain(".arco>h2{padding:0 6%}");
+    expect(html).toContain("text-wrap:balance");
+    expect(html).toContain("function ajustar()");
+    expect(html).toContain("document.fonts.ready.then(ajustar)");
+  });
+});
+
 describe("Google Forms", () => {
   const preguntas = Object.fromEntries(PREGUNTAS.map((p, i) => [p.campo, `q${i}`]));
   const r = (v: Record<string, string>) => ({
