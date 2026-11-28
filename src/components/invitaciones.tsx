@@ -160,7 +160,7 @@ export function VistaInvitacion({ slug }: { slug: string }) {
           {inv.urlPublica && <PanelQr inv={inv} alCambiar={(a) => { setAvisos(a); void recargar(); }} />}
         </section>
 
-        <PanelAvnac slug={slug} />
+        <PanelAvnac slug={slug} alTraer={(a) => { setAvisos(a); void recargar(); }} />
 
         <PanelFoto inv={inv} inicial={params.get("foto") ?? ""} alCambiar={(a) => { setAvisos(a); void recargar(); }} />
 

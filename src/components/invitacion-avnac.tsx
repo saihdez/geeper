@@ -13,10 +13,33 @@ interface Resultado {
  * «Editar en Avnac Studio»: la invitación entra con todas sus piezas sueltas (una página por parte) para
  * diseñarla a gusto y sacar imagen o PDF. La página interactiva se corrige con «Corregir textos».
  */
-export function PanelAvnac({ slug }: { slug: string }) {
+export function PanelAvnac({ slug, alTraer }: { slug: string; alTraer: (avisos: string[]) => void }) {
   const [ocupado, setOcupado] = useState(false);
   const [r, setR] = useState<Resultado | null>(null);
   const [falla, setFalla] = useState<string | null>(null);
+  const [trayendo, setTrayendo] = useState(false);
+  const [traido, setTraido] = useState<{ cambios: string[]; avisos: string[] } | null>(null);
+
+  async function traer(archivo?: File) {
+    setTrayendo(true);
+    setFalla(null);
+    setTraido(null);
+    try {
+      let init: RequestInit = { method: "PUT" };
+      if (archivo) {
+        const fd = new FormData();
+        fd.set("archivo", archivo);
+        init = { method: "PUT", body: fd };
+      }
+      const t = await pedir<{ cambios: string[]; avisos: string[] }>(`/api/invitaciones/${slug}/avnac`, init);
+      setTraido(t);
+      if (t.cambios.length) alTraer(t.avisos);
+    } catch (e) {
+      setFalla(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTrayendo(false);
+    }
+  }
 
   async function abrir() {
     setOcupado(true);
@@ -41,6 +64,23 @@ export function PanelAvnac({ slug }: { slug: string }) {
       <div className="flex flex-wrap gap-2">
         <button type="button" className="boton boton-primario" disabled={ocupado} onClick={abrir}>{ocupado ? "Preparando…" : "Abrir en Avnac Studio"}</button>
         <a className="boton" href={`/api/invitaciones/${slug}/avnac`} download>Descargar el diseño</a>
+      </div>
+      <div className="space-y-2 border-t border-white/10 pt-3">
+        <p className="text-sm">
+          ¿Ya la cambiaste en Avnac? Trae los cambios a la página interactiva: los textos, las partes que borraste, los colores, las
+          letras y la foto del sobre. Las posiciones y los tamaños no pasan: la página se acomoda sola a cada teléfono.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" className="boton" disabled={trayendo} onClick={() => traer()}>{trayendo ? "Trayendo…" : "Traer los cambios de Avnac"}</button>
+          <label className="boton cursor-pointer">
+            Subir un archivo de Avnac
+            <input type="file" className="sr-only" accept=".avnac,.json,application/json" disabled={trayendo} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void traer(f); }} />
+          </label>
+        </div>
+        {traido && (traido.cambios.length
+          ? <Aviso tipo="info">Listo, pasé a la invitación: {traido.cambios.join(", ")}. Ya se ve en el teléfono de la izquierda; vuelve a descargar el .zip para subirla.</Aviso>
+          : <Aviso tipo="info">No encontré cambios en los textos, colores, letras, foto o partes. Recuerda que las posiciones y los tamaños no pasan a la página.</Aviso>)}
+        {traido?.avisos.map((a) => <Aviso key={a} tipo="alerta">{a}</Aviso>)}
       </div>
       {falla && <Aviso tipo="error">{falla}</Aviso>}
       {r && r.abierta && (

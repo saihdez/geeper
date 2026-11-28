@@ -15,14 +15,14 @@ import { correr } from "../proceso";
 import { CACHE_HF, dirDatos, FFMPEG } from "../rutas";
 import { TIPOS_INFO } from "./catalogo";
 import { estiloDe } from "./estilo";
-import { asegurarContraste } from "./tema";
+import { asegurarContraste, Tema } from "./tema";
 import { basesDe, compilar, esc, iniciales, retoquesVigentes, titulos } from "./compilar";
 import { instanteUTC, textosFecha } from "./calendario";
 import { leerEnlaceMusica, resolverEnlaceMusica } from "./enlaces";
 import { Entrada, fechaPasada, Invitacion, normalizarUrlPublica, Retoques, Seccion, SLUG, type EstiloId } from "./esquema";
 import { z } from "zod";
 import { copiarElegida, pngQrBase } from "./imagenes";
-import { disenoAvnac, nombreArchivoAvnac } from "./avnac";
+import { cambiosDesdeAvnac, disenoAvnac, leerDisenoAvnac, nombreArchivoAvnac } from "./avnac";
 import { abrirAvnac } from "../avnac";
 import { SISTEMA } from "../plataforma";
 import { spawn } from "node:child_process";
@@ -384,6 +384,89 @@ export async function abrirEnAvnac(slug: string): Promise<{ archivo: string; abi
     return { archivo: nombre, abierta: false, motivo: e instanceof Error ? e.message : String(e) };
   }
 }
+
+/** Carpeta donde Avnac guarda sus diseños: `<UserConfigDir>/avnac-studio/documents` (os.UserConfigDir de Go). */
+export function dirDocumentosAvnac(): string {
+  const base = SISTEMA === "windows" ? (process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming"))
+    : SISTEMA === "mac" ? path.join(os.homedir(), "Library", "Application Support")
+    : (process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), ".config"));
+  return path.join(base, "avnac-studio", "documents");
+}
+
+const comparable = (s: string) => s.normalize("NFC").toLowerCase().replace(/\s+/g, " ").trim();
+
+/**
+ * El diseño de esta invitación tal como quedó en Avnac: el de su lista con el nombre del archivo que armó
+ * Geeper (Avnac lo nombra así al importarlo), el más reciente. Lee `pages.json` (todas las páginas; es lo
+ * que Avnac toma como cierto) y, si no está, la página de `document.json`.
+ */
+export async function buscarEnAvnac(inv: Invitacion): Promise<unknown> {
+  const raiz = dirDocumentosAvnac();
+  const buscado = comparable(nombreArchivoAvnac(inv).replace(/\.workspace\.avnac$/, ""));
+  let mejor: { dir: string; cuando: number } | null = null;
+  for (const id of await fs.readdir(raiz).catch(() => [] as string[])) {
+    const meta = await fs.readFile(path.join(raiz, id, "meta.json"), "utf8").then((t) => JSON.parse(t) as { name?: string; updatedAt?: number }, () => null);
+    const nombre = comparable(meta?.name ?? "");
+    if (!nombre || !(nombre === buscado || nombre.startsWith(`${buscado} `) || nombre.startsWith(`${buscado}-`))) continue;
+    const cuando = meta?.updatedAt ?? 0;
+    if (!mejor || cuando > mejor.cuando) mejor = { dir: path.join(raiz, id), cuando };
+  }
+  if (!mejor) throw new Error(`No encontré «${nombreArchivoAvnac(inv).replace(/\.workspace\.avnac$/, "")}» en Avnac Studio. Si ya lo importaste y le cambiaste el nombre, expórtalo desde Avnac (Export, como .avnac) y súbelo aquí.`);
+  const paginas = await fs.readFile(path.join(mejor.dir, "pages.json"), "utf8").catch(() => "");
+  if (paginas.trim()) return JSON.parse(paginas);
+  const registro = JSON.parse(await fs.readFile(path.join(mejor.dir, "document.json"), "utf8")) as { document?: unknown };
+  return registro.document;
+}
+
+/** Qué se trajo de Avnac, en palabras para la persona. */
+export interface ResultadoAvnac {
+  cambios: string[];
+  avisos: string[];
+}
+
+/**
+ * Pasa a la página interactiva lo que se cambió en Avnac: textos, partes borradas, colores, letras y la foto
+ * del sobre. Sin `raw`, lo lee de la carpeta de Avnac (`buscarEnAvnac`). Colores y letras quedan en el tema
+ * de la invitación (si tenía un estilo fijo, se vuelve un tema con esos colores).
+ */
+export async function traerDeAvnac(slug: string, raw?: unknown): Promise<ResultadoAvnac> {
+  const previa = await leerInvitacion(slug);
+  const dir = dirInvitacion(slug);
+  const paginas = leerDisenoAvnac(raw === undefined ? await buscarEnAvnac(previa) : raw);
+  if (!paginas?.length) throw new Error("Ese archivo no es un diseño de Avnac Studio. Expórtalo desde Avnac (Export, como .avnac) y vuelve a intentar.");
+  const fotoActual = previa.foto ? (await fs.readFile(path.join(dir, previa.foto))).toString("base64") : undefined;
+  const c = cambiosDesdeAvnac(previa, paginas, fotoActual);
+  const cambios: string[] = [];
+  let inv = previa;
+
+  if (Object.keys(c.colores).length || c.letras.titulos || c.letras.texto) {
+    const e = estiloDe(inv);
+    const base = inv.plantilla === "tema" && inv.tema ? inv.tema
+      : Tema.parse({ idea: "", nombre: "Mi diseño", colores: e.colores, letras: e.letras, adorno: e.adorno, particulas: e.particulas, fondo: e.fondo, textos: {} });
+    const colores = { ...base.colores, ...c.colores, ...(c.colores.fondo ? { fondo2: c.colores.fondo } : {}) };
+    const tema = Tema.parse({ ...base, colores: asegurarContraste(colores), letras: { ...base.letras, ...c.letras } });
+    inv = Invitacion.parse({ ...inv, plantilla: "tema", tema });
+    if (Object.keys(c.colores).length) cambios.push("los colores");
+    if (c.letras.titulos) cambios.push(`la letra de los títulos (${c.letras.titulos})`);
+    if (c.letras.texto) cambios.push(`la letra del texto (${c.letras.texto})`);
+  }
+  if (c.foto) {
+    const [, tipo, datos] = /^data:image\/([a-z]+);base64,(.*)$/s.exec(c.foto)!;
+    await procesarFoto(new File([Buffer.from(datos!, "base64")], `avnac.${tipo === "jpeg" ? "jpg" : tipo}`), path.join(dir, "foto.webp"));
+    inv = Invitacion.parse({ ...inv, foto: "foto.webp" });
+    cambios.push("la foto del sobre");
+  }
+  if (inv !== previa) await escribirAtomico(path.join(dir, "invitacion.json"), JSON.stringify({ ...inv, actualizada: new Date().toISOString() }, null, 2));
+
+  const ocultas = [...new Set([...(inv.ocultas ?? []), ...c.ocultas])] as z.infer<typeof Seccion>[];
+  const nTextos = Object.keys(c.textos).length;
+  if (nTextos) cambios.unshift(nTextos === 1 ? "1 texto" : `${nTextos} textos`);
+  if (c.ocultas.length) cambios.push(`se ocultó: ${c.ocultas.map((o) => NOMBRE_PARTE[o] ?? o).join(", ")}`);
+  const { avisos } = await guardarCambiosMano(slug, { textos: c.textos, ocultas });
+  return { cambios, avisos: [...c.avisos, ...avisos] };
+}
+
+const NOMBRE_PARTE: Record<string, string> = { mensaje: "el mensaje", fecha: "la fecha", cuenta: "la cuenta atrás", lugar: "la ubicación", dress: "el código de vestimenta", rsvp: "la confirmación", regalos: "los regalos", comparte: "el hashtag" };
 
 /** Abre la carpeta del archivo con el archivo marcado (Windows) o la carpeta (Linux/macOS), sin esperar. */
 function mostrarEnCarpeta(ruta: string) {

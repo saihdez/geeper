@@ -220,6 +220,12 @@ Avnac Studio» (el diseño para imprimir o compartir como imagen).
   nombre. Respeta los retoques y las partes ocultas. Los adornos van como SVG con sus colores puestos.
 - Avnac no abre archivos al arrancar: Geeper deja `<GEEPER_DATA>/Avnac/<nombre>.workspace.avnac`, abre Avnac
   y muestra el archivo en el explorador; la persona toca «Import» una vez. También se puede descargar.
+- **De vuelta** («Traer los cambios de Avnac»): Geeper lee el diseño de la carpeta de Avnac
+  (`<UserConfigDir>/avnac-studio/documents/<id>/pages.json`, el más reciente con el nombre del archivo) o un
+  archivo exportado de Avnac. Cada pieza lleva el id `<parte>--<pieza>` (textos: `<parte>--ed-<clave>`), que
+  Avnac guarda como `avnacLayerId`. Pasan a la página: textos (como retoques), partes borradas (se ocultan),
+  colores lisos, letras de la lista cerrada y la foto del sobre; colores y letras convierten el estilo en
+  tema. Posiciones y tamaños no pasan (la página se acomoda al teléfono) y se dice en pantalla.
 - Los títulos se achican para que la palabra más larga quepa (Cinzel y otras letras anchas se miden más
   anchas). No se pudo correr el importador de Avnac aquí: la prueba revisa las mismas condiciones que su código.
 
