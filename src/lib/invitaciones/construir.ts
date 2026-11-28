@@ -16,10 +16,11 @@ import { CACHE_HF, dirDatos, FFMPEG } from "../rutas";
 import { TIPOS_INFO } from "./catalogo";
 import { estiloDe } from "./estilo";
 import { asegurarContraste } from "./tema";
-import { compilar, esc, iniciales, titulos } from "./compilar";
+import { basesDe, compilar, esc, iniciales, retoquesVigentes, titulos } from "./compilar";
 import { instanteUTC, textosFecha } from "./calendario";
 import { leerEnlaceMusica, resolverEnlaceMusica } from "./enlaces";
-import { Entrada, fechaPasada, Invitacion, normalizarUrlPublica, SLUG, type EstiloId } from "./esquema";
+import { Entrada, fechaPasada, Invitacion, normalizarUrlPublica, Retoques, Seccion, SLUG, type EstiloId } from "./esquema";
+import { z } from "zod";
 import { copiarElegida, pngQrBase } from "./imagenes";
 
 export const ARCHIVOS_PUBLICOS = ["index.html", "invitacion.ics", "portada-og.jpg", "qr.svg", "qr.png", "invitacion.zip"] as const;
@@ -184,7 +185,7 @@ export interface Subidas {
 }
 
 /** Crea (sin `slug`) o actualiza una invitación y la vuelve a construir. */
-export async function guardarInvitacion(entrada: unknown, subidas: Subidas, slug?: string): Promise<{ inv: Invitacion; avisos: string[] }> {
+export async function guardarInvitacion(entrada: unknown, subidas: Subidas, slug?: string, extra: { formulario?: string } = {}): Promise<{ inv: Invitacion; avisos: string[] }> {
   const e = Entrada.parse(entrada);
   const previa = slug ? await leerInvitacion(slug) : null;
   if (!previa && fechaPasada(e.fecha, e.zona)) throw new Error("La fecha del evento ya pasó.");
@@ -214,7 +215,7 @@ export async function guardarInvitacion(entrada: unknown, subidas: Subidas, slug
   const ahora = new Date().toISOString();
   const { plantilla, musicaEnlace, tema, ...resto } = e;
   if (plantilla === "tema" && !tema) throw new Error("Falta diseñar el tema: escribe tu idea y toca «Diseñar mi tema», o elige uno de los estilos.");
-  const inv = Invitacion.parse({
+  const armada = Invitacion.parse({
     ...resto,
     version: 1,
     slug: id,
@@ -226,9 +227,17 @@ export async function guardarInvitacion(entrada: unknown, subidas: Subidas, slug
     musicaEnlace: musica.tipo === "spotify" || musica.tipo === "youtube" ? musicaEnlace : undefined,
     foto,
     urlPublica: previa?.urlPublica,
+    qrArte: previa?.qrArte,
+    retoques: previa?.retoques,
+    ocultas: previa?.ocultas,
+    formulario: extra.formulario ?? previa?.formulario,
   });
+  // Los textos corregidos a mano siguen, salvo los de un dato que acaba de cambiar.
+  const { vigentes, viejos } = retoquesVigentes(armada);
+  const inv = Invitacion.parse({ ...armada, retoques: Object.keys(vigentes).length ? vigentes : undefined });
   await escribirAtomico(path.join(dir, "invitacion.json"), JSON.stringify(inv, null, 2));
   const avisos = await construir(inv);
+  if (viejos.length) avisos.unshift(`Cambiaste datos que habías corregido a mano (${viejos.length === 1 ? "1 texto" : `${viejos.length} textos`}): ahí quedó el texto nuevo. Si quieres, vuelve a «Corregir a mano».`);
   return { inv, avisos };
 }
 
@@ -298,16 +307,59 @@ export async function usarPropuesta(slug: string, archivo: string): Promise<{ in
   return { inv, avisos: await construir(inv) };
 }
 
+export const CambiosMano = z.object({
+  /** clave → texto escrito a mano. Un texto vacío o igual al de Geeper quita el retoque. */
+  textos: z.record(z.string(), z.string().max(1200)),
+  ocultas: z.array(Seccion),
+});
+
+/** Guarda lo corregido a mano sobre la página terminada y la vuelve a construir. */
+export async function guardarCambiosMano(slug: string, cambios: z.input<typeof CambiosMano>): Promise<{ inv: Invitacion; avisos: string[] }> {
+  const c = CambiosMano.parse(cambios);
+  const previa = await leerInvitacion(slug);
+  const bases = basesDe(previa);
+  const retoques: Retoques = { ...retoquesVigentes(previa).vigentes };
+  for (const [clave, texto] of Object.entries(c.textos)) {
+    const base = bases[clave];
+    if (base === undefined) continue; // un texto que ya no está en la página
+    const limpio = texto.replace(/\r\n?/g, "\n").replace(/[ \t]+\n/g, "\n").trim();
+    if (!limpio || limpio === base) delete retoques[clave];
+    else retoques[clave] = { texto: limpio, base };
+  }
+  const inv = Invitacion.parse({
+    ...previa,
+    retoques: Object.keys(Retoques.parse(retoques)).length ? retoques : undefined,
+    ocultas: c.ocultas.length ? [...new Set(c.ocultas)] : undefined,
+    actualizada: new Date().toISOString(),
+  });
+  await escribirAtomico(path.join(dirInvitacion(slug), "invitacion.json"), JSON.stringify(inv, null, 2));
+  return { inv, avisos: await construir(inv) };
+}
+
+/** Letras, foto y audio de la invitación, listos para `compilar`. */
+async function recursosDe(inv: Invitacion) {
+  const dir = dirInvitacion(inv.slug);
+  const fuentes = await fuentesDe(estiloDe(inv).letras);
+  const fotoB64 = inv.foto ? (await fs.readFile(path.join(dir, inv.foto))).toString("base64") : undefined;
+  const musicaB64 = inv.musica.tipo === "archivo" ? (await fs.readFile(path.join(dir, "musica.mp3"))).toString("base64") : undefined;
+  return { fuentes, fotoB64, musicaB64 };
+}
+
+/** La página en modo «Corregir a mano» (sin audio: no hace falta para escribir). */
+export async function htmlEditor(slug: string): Promise<string> {
+  const inv = await leerInvitacion(slug);
+  const { fuentes, fotoB64 } = await recursosDe(inv);
+  return compilar(inv, { fuentesCss: fuentes.css, fotoB64 }, Date.now(), { editor: true }).html;
+}
+
 /** Rehace `publicar/` desde el json. Devuelve avisos para la persona (nunca falla por la portada o las letras). */
 export async function construir(inv: Invitacion, op: { portada?: boolean } = {}): Promise<string[]> {
   const dir = dirInvitacion(inv.slug);
   const pub = path.join(dir, "publicar");
   await fs.mkdir(pub, { recursive: true });
   const avisos: string[] = [];
-  const fuentes = await fuentesDe(estiloDe(inv).letras);
+  const { fuentes, fotoB64, musicaB64 } = await recursosDe(inv);
   if (fuentes.aviso) avisos.push(fuentes.aviso);
-  const fotoB64 = inv.foto ? (await fs.readFile(path.join(dir, inv.foto))).toString("base64") : undefined;
-  const musicaB64 = inv.musica.tipo === "archivo" ? (await fs.readFile(path.join(dir, "musica.mp3"))).toString("base64") : undefined;
   const { html, ics } = compilar(inv, { fuentesCss: fuentes.css, fotoB64, musicaB64 });
 
   const peso = Buffer.byteLength(html);

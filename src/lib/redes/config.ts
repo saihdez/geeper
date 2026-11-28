@@ -5,7 +5,8 @@
  *   "youtube":   { "clientId": "...", "clientSecret": "..." },
  *   "tiktok":    { "clientKey": "...", "clientSecret": "...", "publicacionDirecta": false },
  *   "instagram": { "appId": "...", "appSecret": "..." },
- *   "facebook":  { "appId": "...", "appSecret": "..." }
+ *   "facebook":  { "appId": "...", "appSecret": "..." },
+ *   "formularios": { "clientId": "...", "clientSecret": "..." }
  * }
  */
 import os from "node:os";
@@ -34,6 +35,8 @@ export const Config = z.object({
   tiktok: z.object({ clientKey: z.string().min(1), clientSecret: z.string().min(1), publicacionDirecta: z.boolean().default(false) }).optional(),
   instagram: z.object({ appId: z.string().min(1), appSecret: z.string().min(1) }).optional(),
   facebook: z.object({ appId: z.string().min(1), appSecret: z.string().min(1) }).optional(),
+  /** App de Google para los formularios de las invitaciones; si falta, se usa la de YouTube (misma consola). */
+  formularios: z.object({ clientId: z.string().min(1), clientSecret: z.string().min(1) }).optional(),
 });
 export type ConfigRedes = z.infer<typeof Config>;
 

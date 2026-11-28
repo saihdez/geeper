@@ -195,6 +195,40 @@ En la página de cada invitación (usan la tarjeta: van por la cola, con el avis
 - **Dirección mal pegada**: si se pega la del panel de Netlify (`app.netlify.com/drop/<sitio>`), Geeper la
   cambia por `https://<sitio>.netlify.app/` y lo avisa.
 
+### Corregir a mano (hecho el 2026-11-27)
+
+«✏️ Corregir a mano» abre la invitación terminada en un iframe aislado (`srcDoc`, sólo `allow-scripts`).
+Cada texto lleva una clave estable (`data-ed`) y se escribe en su lugar; cada parte (`data-sec`) tiene
+«Ocultar esta parte». El iframe avisa con `postMessage` y Geeper guarda todo de una vez.
+
+- Se guarda en `invitacion.json` como `retoques` (`clave → { texto, base }`) y `ocultas`. La página
+  publicada no lleva nada del editor: sólo el texto final, escapado.
+- `base` es el texto que Geeper había puesto ahí. Si después se cambia ese dato en «Cambiar datos», el
+  retoque deja de valer y se avisa; los demás retoques se conservan.
+- Fecha, hora y lugar se pueden reescribir (lo que se lee), pero el calendario, la cuenta atrás y los
+  mapas siguen saliendo de los datos.
+
+### Datos del cliente con Google Forms (hecho el 2026-11-27)
+
+En Invitaciones, «Pedirle los datos al cliente con Google Forms»: Geeper crea el formulario en la cuenta
+de Google de la persona (Forms API v1, gratis), ella le manda el enlace al cliente y la respuesta arma la
+invitación sola.
+
+- **Permiso**: OAuth con PKCE, igual que YouTube (scopes `forms.body`, `forms.responses.readonly`,
+  `openid email`). La vuelta es `/api/cuentas/callback/formularios`, para que la app de escritorio use su
+  ventana de inicio de sesión. Usa la app `formularios` de `redes.json` o, si no hay, la de `youtube`
+  (hay que activar Google Forms API y agregar ese redirect URI). El token va cifrado en
+  `~/.config/geeper/google-formularios.json`.
+- **Pedidos** en `<GEEPER_DATA>/invitaciones-formularios/<id>.json`, con el `questionId` de cada
+  pregunta: las respuestas se leen por pregunta, no por título.
+- **Respuesta → invitación** (`formularios.ts`): fecha y hora de Google se normalizan; lo opcional que
+  no sirve (mapa sin https, pases que no son número, canción no reconocida) se deja fuera con aviso; si la
+  persona describió su idea, sale un tema por palabras clave (sin GPU; se puede rediseñar con IA en
+  «Cambiar datos»). Si falla algo obligatorio, se guardan las respuestas y «Completar con sus respuestas»
+  abre el formulario de Geeper ya lleno.
+- Mientras la pantalla está abierta se buscan respuestas cada minuto (pedidos de los últimos 60 días). Si
+  el cliente cambia su respuesta, se actualiza la misma invitación y se conservan los retoques a mano.
+
 ## 5. Video para estados (opcional, el fuerte de Geeper)
 
 Botón **«Hacer video para estados»**: 12–15 s, 1080×1920, con Hyperframes y la misma plantilla:

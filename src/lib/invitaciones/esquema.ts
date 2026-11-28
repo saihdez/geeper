@@ -16,6 +16,17 @@ export type EstiloId = z.infer<typeof EstiloId>;
 export type Tipo = z.infer<typeof Tipo>;
 export type PlantillaId = z.infer<typeof PlantillaId>;
 
+/** Partes de la página que se pueden ocultar en «Corregir a mano». */
+export const SECCIONES = ["mensaje", "cancion", "fecha", "cuenta", "lugar", "dress", "rsvp", "regalos", "comparte"] as const;
+export const Seccion = z.enum(SECCIONES);
+
+/**
+ * Textos corregidos a mano sobre la página terminada: `clave` → el texto nuevo y `base`, el texto que
+ * Geeper puso ahí. Si después cambian los datos y ese texto ya no es el mismo, el retoque deja de valer.
+ */
+export const Retoques = z.record(z.string().regex(/^[a-z][a-z0-9-]{0,29}$/), z.object({ texto: z.string().max(1200), base: z.string().max(2000) }));
+export type Retoques = z.infer<typeof Retoques>;
+
 export const SLUG = /^[a-z0-9][a-z0-9-]{2,80}$/;
 
 /** ¿Es una zona horaria que entiende el sistema (IANA)? */
@@ -90,6 +101,10 @@ export const Invitacion = Entrada.omit({ musicaEnlace: true, plantilla: true }).
   urlPublica: httpsUrl.optional(),
   /** QR con dibujo elegido (imagenes.ts) y la dirección que lleva: si la dirección cambia, ya no sirve. */
   qrArte: z.object({ archivo: z.literal("qr-arte.png"), url: z.string() }).optional(),
+  retoques: Retoques.optional(),
+  ocultas: z.array(Seccion).optional(),
+  /** Pedido de Google Forms del que salió (formularios.ts). */
+  formulario: z.string().optional(),
 });
 export type Invitacion = z.infer<typeof Invitacion>;
 

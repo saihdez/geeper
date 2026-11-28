@@ -18,8 +18,11 @@ export function challenge(verifier: string, formato: "S256" | "S256-hex" = "S256
   return formato === "S256-hex" ? h.digest("hex") : h.digest("base64url");
 }
 
+/** Además de las redes, el permiso de Google Forms para las invitaciones (invitaciones/google.ts). */
+export type IdOauth = IdRed | "formularios";
+
 export interface EstadoOauth {
-  red: IdRed;
+  red: IdOauth;
   state: string;
   verifier: string;
   /** Si se reconecta una cuenta concreta. */
@@ -27,7 +30,7 @@ export interface EstadoOauth {
   exp: number;
 }
 
-export function nuevoEstado(red: IdRed, cuentaId?: string, ahora = Date.now()): EstadoOauth {
+export function nuevoEstado(red: IdOauth, cuentaId?: string, ahora = Date.now()): EstadoOauth {
   return { red, state: randomBytes(24).toString("base64url"), verifier: nuevoVerifier(), cuentaId, exp: ahora + DURACION_OAUTH_MS };
 }
 

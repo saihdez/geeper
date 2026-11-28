@@ -8,7 +8,7 @@
 import { ciudadDeZona, TIPOS_INFO } from "./catalogo";
 import { instanteUTC, partesCuentaAtras, semanasDelMes, textosFecha } from "./calendario";
 import { ics, mensajeConfirmacion, urlGoogleCalendar, urlMaps, urlReproductor, urlWaze, type Evento } from "./enlaces";
-import type { Invitacion } from "./esquema";
+import type { Invitacion, Retoques } from "./esquema";
 import { divisor, esquinas, estiloDe, pilaLetra, scriptParticulas, texturaFondo, type Estilo } from "./estilo";
 
 export interface Recursos {
@@ -170,7 +170,7 @@ var estado=document.getElementById('c-estado'),antes=null;
 function tic(){var ahora=Date.now(),p=cuenta(D.inicio,ahora);nums.dias.textContent=p.dias;nums.horas.textContent=p.horas;nums.minutos.textContent=p.minutos;nums.segundos.textContent=p.segundos;
  if(p.listo){estado.textContent=ahora<D.fin?'¡Hoy es el día!':'Gracias por acompañarnos';if(antes===false||(antes===null&&ahora<D.fin))confeti();}
  antes=p.listo;}
-tic();setInterval(tic,1000);
+if(nums.dias){tic();setInterval(tic,1000);}
 function confeti(){if(reducido)return;var c=document.createElement('canvas');c.className='confeti';c.setAttribute('aria-hidden','true');document.body.appendChild(c);
  var x=c.getContext('2d'),w=c.width=innerWidth,h=c.height=innerHeight,cs=[D.acento,D.claro,D.tarjeta],ps=[];
  for(var i=0;i<140;i++)ps.push({x:Math.random()*w,y:-20-Math.random()*h*.5,v:2+Math.random()*3,g:Math.random()*6,r:4+Math.random()*5,c:cs[i%3]});
@@ -183,55 +183,140 @@ if(f)f.addEventListener('submit',function(e){e.preventDefault();var fd=new FormD
 })();`;
 }
 
-export function compilar(inv: Invitacion, r: Recursos, ahora = Date.now()): { html: string; ics: string } {
-  const e = estiloDe(inv);
-  const tx = e.textos;
-  const ADORNO = divisor(e.adorno);
-  const t = TIPOS_INFO[inv.tipo];
+/**
+ * Los textos de la página que se pueden corregir a mano, con lo que Geeper pone en cada uno.
+ * Las claves son estables: un retoque guardado se aplica mientras su `base` siga siendo esa.
+ */
+export function basesDe(inv: Invitacion): Record<string, string> {
+  const tx = estiloDe(inv).textos;
   const ev = armarEvento(inv);
-  const { corto, largo } = titulos(inv);
+  const f = textosFecha(ev.inicio, inv.zona);
+  const { corto } = titulos(inv);
+  const b: Record<string, string> = {
+    pre: corto, nombres: inv.nombres, pista: tx.pista,
+    saludo: tx.saludo, mensaje: inv.mensaje ?? TIPOS_INFO[inv.tipo].mensajes[0], firma: inv.nombres,
+    fecha: f.fecha, hora: f.hora, "btn-gcal": "Google Calendar", "btn-ics": "Agregar al calendario",
+    faltan: tx.faltan,
+    ubicacion: tx.ubicacion, lugar: inv.lugar.nombre, "btn-mapa": "Cómo llegar",
+    rsvp: tx.rsvp, "btn-wa": "Enviar por WhatsApp",
+    "pie-nombres": inv.nombres, "pie-fecha": f.fecha,
+  };
+  // Sólo los textos que están en la página (sin foto en el sobre, con canción, con código de vestimenta…).
+  if (!inv.foto) b.carta = corto;
+  if (urlReproductor(inv.musica)) Object.assign(b, { cancion: tx.cancion, "cancion-nota": "Toca ▶ para escucharla" });
+  if (inv.dressCode.colores.length || inv.dressCode.estilo || inv.dressCode.evitar) b.dress = tx.dress;
+  if (inv.regalos) b.regalos = tx.regalos;
+  if (inv.hashtag) b.comparte = "Comparte";
+  if (inv.lugar.direccion) b.direccion = inv.lugar.direccion;
+  if (inv.dressCode.estilo) b["dress-estilo"] = inv.dressCode.estilo;
+  if (inv.dressCode.evitar) b["dress-evitar"] = inv.dressCode.evitar;
+  if (inv.confirmarAntes) b["rsvp-limite"] = `Por favor, antes del ${textosFecha(instanteUTC(inv.confirmarAntes, "12:00", inv.zona), inv.zona).fecha}`;
+  if (inv.pases) b["rsvp-pases"] = `Pases para ${inv.pases} ${inv.pases === 1 ? "persona" : "personas"}`;
+  if (inv.regalos) b["regalos-texto"] = inv.regalos;
+  return b;
+}
+
+/** Los retoques que siguen valiendo (su texto base no cambió) y los que ya no. */
+export function retoquesVigentes(inv: Invitacion): { vigentes: Retoques; viejos: string[] } {
+  const bases = basesDe(inv);
+  const vigentes: Retoques = {};
+  const viejos: string[] = [];
+  for (const [k, r] of Object.entries(inv.retoques ?? {})) {
+    if (bases[k] === r.base) vigentes[k] = r;
+    else viejos.push(k);
+  }
+  return { vigentes, viejos };
+}
+
+/** Script del modo «Corregir a mano»: textos editables, botones para ocultar y avisos al editor de Geeper. */
+function scriptEditor(): string {
+  return `(function(){var b=document.body;b.classList.add('abierto','editor');b.classList.remove('cerrado');
+document.querySelectorAll('.aparece').forEach(function(e){e.classList.add('visible')});
+function enviar(m){m.geeper='retoque';parent.postMessage(m,'*')}
+document.addEventListener('click',function(e){var a=e.target.closest&&e.target.closest('a,form button,#sello');if(a)e.preventDefault()},true);
+document.addEventListener('submit',function(e){e.preventDefault()},true);
+document.querySelectorAll('[data-ed]').forEach(function(el){el.contentEditable='plaintext-only';if(el.contentEditable!=='plaintext-only')el.contentEditable='true';
+ el.spellcheck=true;el.setAttribute('role','textbox');el.setAttribute('aria-label','Texto: '+el.textContent.slice(0,40));
+ el.addEventListener('keydown',function(e){if(e.key==='Enter'&&!el.hasAttribute('data-varias')){e.preventDefault();el.blur()}});
+ el.addEventListener('paste',function(e){if(el.contentEditable==='true'){e.preventDefault();document.execCommand('insertText',false,(e.clipboardData||window.clipboardData).getData('text/plain'))}});
+ el.addEventListener('input',function(){enviar({clave:el.dataset.ed,texto:el.innerText.replace(/\u00a0/g,' ').trim()})});});
+document.querySelectorAll('[data-sec]').forEach(function(s){var bt=document.createElement('button');bt.type='button';bt.className='ed-ocultar';
+ function pintar(){var o=s.classList.contains('ed-oculta');bt.textContent=o?'Mostrar esta parte':'Ocultar esta parte';bt.setAttribute('aria-pressed',o?'true':'false')}
+ bt.addEventListener('click',function(){s.classList.toggle('ed-oculta');pintar();enviar({seccion:s.dataset.sec,oculta:s.classList.contains('ed-oculta')})});pintar();s.prepend(bt)});
+})();`;
+}
+
+const CSS_EDITOR = `.editor [data-ed]{outline:1.5px dashed color-mix(in srgb,currentColor 45%,transparent);outline-offset:3px;border-radius:4px;cursor:text;min-width:1ch;display:inline-block}
+.editor [data-ed]:hover{outline-color:currentColor}.editor [data-ed]:focus{outline:2px solid #06b6d4;background:color-mix(in srgb,#06b6d4 10%,transparent)}
+.editor section[data-sec]{position:relative}.ed-oculta{opacity:.35}.ed-oculta>*:not(.ed-ocultar){filter:grayscale(1)}
+.ed-ocultar{position:absolute;top:8px;right:8px;z-index:5;font:600 12px/1 system-ui,sans-serif;padding:7px 10px;border-radius:999px;border:0;background:#0f172a;color:#fff;cursor:pointer;opacity:.85}
+.ed-oculta .ed-ocultar{background:#06b6d4;color:#00222a;opacity:1}`;
+
+export interface OpcionesCompilar {
+  /** Página para «Corregir a mano»: textos editables y las partes ocultas se ven atenuadas. */
+  editor?: boolean;
+}
+
+export function compilar(inv: Invitacion, r: Recursos, ahora = Date.now(), op: OpcionesCompilar = {}): { html: string; ics: string } {
+  const e = estiloDe(inv);
+  const ed = !!op.editor;
+  const bases = basesDe(inv);
+  const { vigentes } = retoquesVigentes(inv);
+  /** Texto con su clave: el retoque si sigue valiendo; en el editor, envuelto para poder escribirlo. */
+  const t = (clave: string, varias = false) => {
+    const texto = esc(vigentes[clave]?.texto ?? bases[clave] ?? "").replace(/\n/g, "<br>");
+    return ed ? `<span data-ed="${clave}"${varias ? " data-varias" : ""}>${texto}</span>` : texto;
+  };
+  const ocultas = new Set<string>(inv.ocultas ?? []);
+  const secciones: string[] = [];
+  /** Una parte de la página: fuera si está oculta; en el editor, atenuada y con su botón. */
+  const sec = (clave: string, html: string) => {
+    const oculta = ocultas.has(clave);
+    if (oculta && !ed) return;
+    secciones.push(html.replace(/^<section ([^>]*?)class="/, `<section data-sec="${clave}" $1class="${oculta ? "ed-oculta " : ""}`));
+  };
+  const ADORNO = divisor(e.adorno);
+  const ev = armarEvento(inv);
+  const { largo } = titulos(inv);
   const f = textosFecha(ev.inicio, inv.zona);
   const ciudad = ciudadDeZona(inv.zona);
-  const mensaje = inv.mensaje ?? t.mensajes[0];
   const og = urlOg(inv);
   const reproductor = urlReproductor(inv.musica);
   const colores = inv.dressCode.colores.length ? inv.dressCode.colores : [];
   const datos = { inicio: ev.inicio, fin: ev.fin, zona: inv.zona, whatsapp: inv.whatsapp, evento: largo, acento: e.colores.acento, claro: e.colores.claro, tarjeta: e.colores.tarjeta };
   const maxPersonas = inv.pases ?? 6;
-  const fechaLimite = inv.confirmarAntes ? textosFecha(instanteUTC(inv.confirmarAntes, "12:00", inv.zona), inv.zona).fecha : null;
   const descripcionOg = `${f.fecha} · ${inv.lugar.nombre}`;
 
-  const secciones: string[] = [];
-  secciones.push(`<section id="mensaje" class="tarjeta arco aparece"><h2>${esc(tx.saludo)}</h2>${ADORNO}<p>${esc(mensaje)}</p><p class="script" style="font-size:2rem;margin-top:14px">${esc(inv.nombres)}</p></section>`);
+  sec("mensaje", `<section id="mensaje" class="tarjeta arco aparece"><h2>${t("saludo")}</h2>${ADORNO}<p>${t("mensaje", true)}</p><p class="script" style="font-size:2rem;margin-top:14px">${t("firma")}</p></section>`);
   if (reproductor) {
     const alto = inv.musica.tipo === "spotify" ? 152 : 200;
-    secciones.push(`<section class="tarjeta aparece"><h2>${esc(tx.cancion)}</h2>${ADORNO}<p class="nota">Toca ▶ para escucharla</p><iframe class="reproductor" title="Canción de la invitación" src="${esc(reproductor)}" height="${alto}" loading="lazy" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"></iframe></section>`);
+    sec("cancion", `<section class="tarjeta aparece"><h2>${t("cancion")}</h2>${ADORNO}<p class="nota">${t("cancion-nota")}</p><iframe class="reproductor" title="Canción de la invitación" src="${esc(reproductor)}" height="${alto}" loading="lazy" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"></iframe></section>`);
   }
-  secciones.push(`<section class="tarjeta aparece" aria-labelledby="t-fecha"><h2 id="t-fecha" class="sr">Fecha</h2>${calendarioHtml(ev.inicio, inv.zona)}
-<p class="grande" style="margin-top:14px">${esc(f.fecha)}</p><p>${esc(f.hora)} <span class="nota nota-zona" hidden>(hora de ${esc(ciudad)})</span></p>
-<div class="botones"><a class="boton lleno" href="${esc(urlGoogleCalendar(ev))}" target="_blank" rel="noopener">${ICONO.cal}Google Calendar</a><a class="boton" href="invitacion.ics" download="invitacion.ics">${ICONO.cal}Agregar al calendario</a></div></section>`);
-  secciones.push(`<section class="tarjeta aparece" aria-labelledby="t-cuenta"><h2 id="t-cuenta">${esc(tx.faltan)}</h2>
+  sec("fecha", `<section class="tarjeta aparece" aria-labelledby="t-fecha"><h2 id="t-fecha" class="sr">Fecha</h2>${calendarioHtml(ev.inicio, inv.zona)}
+<p class="grande" style="margin-top:14px">${t("fecha")}</p><p>${t("hora")} <span class="nota nota-zona" hidden>(hora de ${esc(ciudad)})</span></p>
+<div class="botones"><a class="boton lleno" href="${esc(urlGoogleCalendar(ev))}" target="_blank" rel="noopener">${ICONO.cal}${t("btn-gcal")}</a><a class="boton" href="invitacion.ics" download="invitacion.ics">${ICONO.cal}${t("btn-ics")}</a></div></section>`);
+  sec("cuenta", `<section class="tarjeta aparece" aria-labelledby="t-cuenta"><h2 id="t-cuenta">${t("faltan")}</h2>
 <div class="cuenta" role="timer" aria-live="off"><div><b id="c-dias">0</b><span>días</span></div><div><b id="c-horas">0</b><span>horas</span></div><div><b id="c-min">0</b><span>min</span></div><div><b id="c-seg">0</b><span>seg</span></div></div><p id="c-estado" class="grande" style="margin:14px 0 0" aria-live="polite"></p></section>`);
-  secciones.push(`<section class="tarjeta aparece" aria-labelledby="t-lugar"><h2 id="t-lugar">${esc(tx.ubicacion)}</h2>${ADORNO}<p class="mayus">${esc(inv.lugar.nombre)}</p>${inv.lugar.direccion ? `<p>${esc(inv.lugar.direccion)}</p>` : ""}
-<div class="botones"><a class="boton lleno" href="${esc(urlMaps(inv.lugar))}" target="_blank" rel="noopener">${ICONO.mapa}Cómo llegar</a><a class="boton" href="${esc(urlWaze(inv.lugar))}" target="_blank" rel="noopener">${ICONO.mapa}Waze</a></div></section>`);
+  sec("lugar", `<section class="tarjeta aparece" aria-labelledby="t-lugar"><h2 id="t-lugar">${t("ubicacion")}</h2>${ADORNO}<p class="mayus">${t("lugar")}</p>${inv.lugar.direccion ? `<p>${t("direccion")}</p>` : ""}
+<div class="botones"><a class="boton lleno" href="${esc(urlMaps(inv.lugar))}" target="_blank" rel="noopener">${ICONO.mapa}${t("btn-mapa")}</a><a class="boton" href="${esc(urlWaze(inv.lugar))}" target="_blank" rel="noopener">${ICONO.mapa}Waze</a></div></section>`);
   if (colores.length || inv.dressCode.estilo || inv.dressCode.evitar) {
-    secciones.push(`<section class="tarjeta aparece" aria-labelledby="t-dress"><h2 id="t-dress">${esc(tx.dress)}</h2>${ADORNO}${inv.dressCode.estilo ? `<p class="mayus">${esc(inv.dressCode.estilo)}</p>` : ""}
-${colores.length ? `<div class="colores" role="list" aria-label="Colores sugeridos">${colores.map((c) => `<span role="listitem" style="background:${c}" aria-label="color ${c}"></span>`).join("")}</div>` : ""}${inv.dressCode.evitar ? `<p class="nota">${esc(inv.dressCode.evitar)}</p>` : ""}</section>`);
+    sec("dress", `<section class="tarjeta aparece" aria-labelledby="t-dress"><h2 id="t-dress">${t("dress")}</h2>${ADORNO}${inv.dressCode.estilo ? `<p class="mayus">${t("dress-estilo")}</p>` : ""}
+${colores.length ? `<div class="colores" role="list" aria-label="Colores sugeridos">${colores.map((c) => `<span role="listitem" style="background:${c}" aria-label="color ${c}"></span>`).join("")}</div>` : ""}${inv.dressCode.evitar ? `<p class="nota">${t("dress-evitar")}</p>` : ""}</section>`);
   }
   const opcionesPersonas = Array.from({ length: maxPersonas }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join("");
-  secciones.push(`<section class="tarjeta arco aparece" aria-labelledby="t-rsvp"><h2 id="t-rsvp">${esc(tx.rsvp)}</h2>${ADORNO}
-${fechaLimite ? `<p class="nota">Por favor, antes del ${esc(fechaLimite)}</p>` : ""}${inv.pases ? `<p class="nota">Pases para ${inv.pases} ${inv.pases === 1 ? "persona" : "personas"}</p>` : ""}
+  sec("rsvp", `<section class="tarjeta arco aparece" aria-labelledby="t-rsvp"><h2 id="t-rsvp">${t("rsvp")}</h2>${ADORNO}
+${inv.confirmarAntes ? `<p class="nota">${t("rsvp-limite")}</p>` : ""}${inv.pases ? `<p class="nota">${t("rsvp-pases")}</p>` : ""}
 <form id="rsvp"><label for="r-nombre">Tu nombre</label><input id="r-nombre" name="nombre" type="text" autocomplete="name" required maxlength="80">
 <fieldset><legend>¿Asistirás?</legend><div class="opciones"><label><input type="radio" name="asiste" value="si" checked> Sí, ahí estaré</label><label><input type="radio" name="asiste" value="no"> No podré</label></div></fieldset>
 <label for="r-personas">¿Cuántas personas?</label><select id="r-personas" name="personas">${opcionesPersonas}</select>
 <label for="r-nota">Mensaje (opcional)</label><textarea id="r-nota" name="nota" rows="2" maxlength="300"></textarea>
-<button class="boton lleno" type="submit">${ICONO.wa}Enviar por WhatsApp</button></form></section>`);
-  if (inv.regalos) secciones.push(`<section class="tarjeta aparece"><h2>${esc(tx.regalos)}</h2>${ADORNO}<p>${esc(inv.regalos)}</p></section>`);
-  if (inv.hashtag) secciones.push(`<section class="tarjeta aparece"><h2>Comparte</h2><p class="grande">#${esc(inv.hashtag.replace(/^#/, ""))}</p></section>`);
+<button class="boton lleno" type="submit">${ICONO.wa}${t("btn-wa")}</button></form></section>`);
+  if (inv.regalos) sec("regalos", `<section class="tarjeta aparece"><h2>${t("regalos")}</h2>${ADORNO}<p>${t("regalos-texto", true)}</p></section>`);
+  if (inv.hashtag) sec("comparte", `<section class="tarjeta aparece"><h2>${t("comparte")}</h2><p class="grande">#${esc(inv.hashtag.replace(/^#/, ""))}</p></section>`);
 
   const carta = r.fotoB64
     ? `<img src="data:image/webp;base64,${r.fotoB64}" alt="">`
-    : `<p class="mayus" style="margin:0">${esc(corto)}</p><p class="script">${esc(iniciales(inv.nombres))}</p>`;
+    : `<p class="mayus" style="margin:0">${t("carta")}</p><p class="script">${esc(iniciales(inv.nombres))}</p>`;
   const audio = r.musicaB64 && inv.musica.tipo === "archivo"
     ? `<audio id="audio" src="data:audio/mpeg;base64,${r.musicaB64}" loop preload="auto"></audio><button id="musica" class="musica" type="button" aria-label="Música" aria-pressed="false" hidden>${ICONO.nota}</button>`
     : "";
@@ -241,17 +326,17 @@ ${fechaLimite ? `<p class="nota">Por favor, antes del ${esc(fechaLimite)}</p>` :
 <title>${esc(largo)}</title><meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="${e.colores.fondo}">
 <meta name="description" content="${esc(descripcionOg)}"><meta property="og:type" content="website"><meta property="og:title" content="${esc(largo)}"><meta property="og:description" content="${esc(descripcionOg)}">
 ${og ? `<meta property="og:image" content="${esc(og)}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:url" content="${esc(inv.urlPublica!)}"><meta name="twitter:card" content="summary_large_image">` : ""}
-<style>${r.fuentesCss}${css(e)}</style><noscript><style>.cerrado .resto{display:block}.aparece{opacity:1;transform:none}.sello,.pista{display:none}</style></noscript></head>
+<style>${r.fuentesCss}${css(e)}${ed ? CSS_EDITOR : ""}</style><noscript><style>.cerrado .resto{display:block}.aparece{opacity:1;transform:none}.sello,.pista{display:none}</style></noscript></head>
 <body class="cerrado"><main class="pagina">
-<section class="portada">${esquinas(e.adorno)}<p class="pre">${esc(corto)}</p><h1 class="script nombres">${esc(inv.nombres)}</h1>
+<section class="portada">${esquinas(e.adorno)}<p class="pre">${t("pre")}</p><h1 class="script nombres">${t("nombres")}</h1>
 <div class="sobre"><div class="sobre-fondo"></div><div class="carta">${carta}</div><div class="frente"></div><div class="solapa"></div>
 <button id="sello" class="sello" type="button" aria-label="Abrir la invitación">${esc(iniciales(inv.nombres))}</button></div>
-<p class="pista">${esc(tx.pista)}</p></section>
+<p class="pista">${t("pista")}</p></section>
 <div class="resto">${secciones.join("\n")}
-<footer class="pie aparece"><p class="script">${esc(inv.nombres)}</p><p class="mayus">${esc(f.fecha)}</p></footer></div>
+<footer class="pie aparece"><p class="script">${t("pie-nombres")}</p><p class="mayus">${t("pie-fecha")}</p></footer></div>
 </main>${audio}
 <script type="application/json" id="datos">${JSON.stringify(datos).replace(/</g, "\\u003c")}</script>
-<script>${script()}${scriptParticulas(e)}</script></body></html>`;
+<script>${script()}${scriptParticulas(e)}${ed ? scriptEditor() : ""}</script></body></html>`;
 
   return { html, ics: ics(ev, ahora) };
 }

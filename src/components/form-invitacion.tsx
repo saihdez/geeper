@@ -28,28 +28,35 @@ function MuestraEstilo({ c }: { c: { fondo: string; fondo2: string; sobre: strin
   );
 }
 
-export function FormInvitacion({ inicial }: { inicial?: Invitacion }) {
+/** Lo que llegó de un formulario de Google con algún dato por corregir (formularios.ts). */
+export interface BorradorFormulario {
+  formulario: string;
+  datos: Partial<Omit<Invitacion, "lugar" | "dressCode">> & { lugar?: Partial<Invitacion["lugar"]>; dressCode?: Partial<Invitacion["dressCode"]> };
+}
+
+export function FormInvitacion({ inicial, desde }: { inicial?: Invitacion; desde?: BorradorFormulario }) {
   const router = useRouter();
-  const [tipo, setTipo] = useState<Tipo>(inicial?.tipo ?? "boda");
-  const [nombres, setNombres] = useState(inicial?.nombres ?? "");
-  const [fecha, setFecha] = useState(inicial?.fecha ?? "");
-  const [hora, setHora] = useState(inicial?.hora ?? "18:00");
-  const [zona] = useState(inicial?.zona ?? zonaLocal());
-  const [lugarNombre, setLugarNombre] = useState(inicial?.lugar.nombre ?? "");
-  const [direccion, setDireccion] = useState(inicial?.lugar.direccion ?? "");
-  const [mapa, setMapa] = useState(inicial?.lugar.mapa ?? "");
-  const [whatsapp, setWhatsapp] = useState(inicial?.whatsapp ?? "");
-  const [plantilla, setPlantilla] = useState<EstiloId | "">(inicial?.plantilla ?? "");
-  const [tema, setTema] = useState<Tema | null>(inicial?.tema ?? null);
-  const [idea, setIdea] = useState(inicial?.tema?.idea ?? "");
+  const ini = inicial ?? desde?.datos;
+  const [tipo, setTipo] = useState<Tipo>(ini?.tipo ?? "boda");
+  const [nombres, setNombres] = useState(ini?.nombres ?? "");
+  const [fecha, setFecha] = useState(ini?.fecha ?? "");
+  const [hora, setHora] = useState(ini?.hora ?? "18:00");
+  const [zona] = useState(ini?.zona ?? zonaLocal());
+  const [lugarNombre, setLugarNombre] = useState(ini?.lugar?.nombre ?? "");
+  const [direccion, setDireccion] = useState(ini?.lugar?.direccion ?? "");
+  const [mapa, setMapa] = useState(ini?.lugar?.mapa ?? "");
+  const [whatsapp, setWhatsapp] = useState(ini?.whatsapp ?? "");
+  const [plantilla, setPlantilla] = useState<EstiloId | "">(ini?.plantilla ?? "");
+  const [tema, setTema] = useState<Tema | null>(ini?.tema ?? null);
+  const [idea, setIdea] = useState(ini?.tema?.idea ?? "");
   const [disenando, setDisenando] = useState(false);
   const [avisoTema, setAvisoTema] = useState<string | null>(null);
   const [previa, setPrevia] = useState<string | null>(null);
   const [cargandoPrevia, setCargandoPrevia] = useState(false);
-  const [mensaje, setMensaje] = useState(inicial?.mensaje ?? "");
+  const [mensaje, setMensaje] = useState(ini?.mensaje ?? "");
   const [ideasIa, setIdeasIa] = useState<string[]>([]);
   const [pensando, setPensando] = useState(false);
-  const [musicaModo, setMusicaModo] = useState<"enlace" | "archivo" | "ninguna">(inicial?.musica.tipo === "archivo" ? "archivo" : inicial?.musicaEnlace ? "enlace" : "enlace");
+  const [musicaModo, setMusicaModo] = useState<"enlace" | "archivo" | "ninguna">(inicial?.musica.tipo === "archivo" ? "archivo" : ini?.musicaEnlace ? "enlace" : "enlace");
   const [musicaEnlace, setMusicaEnlace] = useState(inicial?.musicaEnlace ?? "");
   const [audio, setAudio] = useState<File | null>(null);
   const [audioInicio, setAudioInicio] = useState(0);
@@ -57,15 +64,15 @@ export function FormInvitacion({ inicial }: { inicial?: Invitacion }) {
   const [foto, setFoto] = useState<File | null>(null);
   const [quitarFoto, setQuitarFoto] = useState(false);
   const [fotoIdea, setFotoIdea] = useState("");
-  const [dressEstilo, setDressEstilo] = useState(inicial?.dressCode.estilo ?? "");
-  const [usarColores, setUsarColores] = useState((inicial?.dressCode.colores.length ?? 0) > 0);
-  const [colores, setColores] = useState<string[]>(inicial?.dressCode.colores.length ? inicial.dressCode.colores : []);
-  const [evitar, setEvitar] = useState(inicial?.dressCode.evitar ?? "");
-  const [confirmarAntes, setConfirmarAntes] = useState(inicial?.confirmarAntes ?? "");
-  const [pases, setPases] = useState(inicial?.pases ? String(inicial.pases) : "");
-  const [regalos, setRegalos] = useState(inicial?.regalos ?? "");
-  const [hashtag, setHashtag] = useState(inicial?.hashtag ?? "");
-  const [duracion, setDuracion] = useState(String(inicial?.duracionHoras ?? 5));
+  const [dressEstilo, setDressEstilo] = useState(ini?.dressCode?.estilo ?? "");
+  const [usarColores, setUsarColores] = useState((ini?.dressCode?.colores?.length ?? 0) > 0);
+  const [colores, setColores] = useState<string[]>(ini?.dressCode?.colores?.length ? ini.dressCode.colores : []);
+  const [evitar, setEvitar] = useState(ini?.dressCode?.evitar ?? "");
+  const [confirmarAntes, setConfirmarAntes] = useState(ini?.confirmarAntes ?? "");
+  const [pases, setPases] = useState(ini?.pases ? String(ini.pases) : "");
+  const [regalos, setRegalos] = useState(ini?.regalos ?? "");
+  const [hashtag, setHashtag] = useState(ini?.hashtag ?? "");
+  const [duracion, setDuracion] = useState(String(ini?.duracionHoras ?? 5));
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -152,6 +159,7 @@ export function FormInvitacion({ inicial }: { inicial?: Invitacion }) {
     const datos = datosFormulario();
     const fd = new FormData();
     fd.set("datos", JSON.stringify(datos));
+    if (desde && !inicial) fd.set("formulario", desde.formulario);
     if (foto) fd.set("foto", foto);
     if (quitarFoto) fd.set("quitarFoto", "1");
     if (musicaModo === "archivo" && audio) {

@@ -1,10 +1,11 @@
 "use client";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { normalizarUrlPublica, type Invitacion } from "@/lib/invitaciones/esquema";
 import { Aviso, pedir, useSondeo } from "./comun";
 import { FormInvitacion } from "./form-invitacion";
+import { PanelFormularios } from "./invitacion-formularios";
 import { PanelFoto, PanelQr } from "./invitacion-imagenes";
 
 interface Resumen {
@@ -21,7 +22,7 @@ interface Resumen {
 const archivo = (slug: string, nombre: string, v?: string) => `/api/invitaciones/${slug}/archivo/${nombre}${v ? `?v=${encodeURIComponent(v)}` : ""}`;
 
 export function PaginaInvitaciones() {
-  const { datos, error } = useSondeo<{ invitaciones: Resumen[] }>("/api/invitaciones", 30_000);
+  const { datos, error, recargar } = useSondeo<{ invitaciones: Resumen[] }>("/api/invitaciones", 30_000);
   return (
     <div className="mx-auto max-w-3xl space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -32,6 +33,7 @@ export function PaginaInvitaciones() {
         Para bodas, XV años, cumpleaños y más: una página para el celular que se abre como un sobre, con música, calendario,
         cuenta atrás, cómo llegar, código de vestimenta y confirmación por WhatsApp. Llenas 5 datos y queda lista.
       </p>
+      <Suspense fallback={null}><PanelFormularios alLlegar={() => void recargar()} /></Suspense>
       {error && <Aviso tipo="error">{error}</Aviso>}
       {datos && !datos.invitaciones.length && (
         <div className="tarjeta p-6 text-center text-sm text-tenue">Todavía no tienes invitaciones. Crea la primera con el botón de arriba.</div>
@@ -123,6 +125,7 @@ export function VistaInvitacion({ slug }: { slug: string }) {
           <a className="boton boton-primario" href={archivo(slug, "invitacion.zip", v)}>Descargar (.zip)</a>
           <a className="boton" href={archivo(slug, "index.html", v)} target="_blank" rel="noopener">Abrir en otra pestaña</a>
           <Link className="boton" href={`/invitaciones/${slug}/editar`}>Cambiar datos</Link>
+          <Link className="boton" href={`/invitaciones/${slug}/a-mano`}>✏️ Corregir a mano</Link>
         </div>
 
         <section className="tarjeta space-y-3 p-4">
