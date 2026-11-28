@@ -972,6 +972,16 @@ En la PC del dueño, Ghidra 12.1.4 se copió de `~/.local/opt` (WSL; trae el des
 `herramientas\java`; `config.toml` los nombra en `[engines.ghidra]` y `[engines.tools] java`.
 `craft-anything-cli doctor`: Ghidra, Java de Ghidra y Java en «ok».
 
+**Automático (2026-11-28):** al abrir Craft Anything, Geeper enciende el servidor de LM Studio
+(`lms server start`, sin ventana; `encenderLmStudio` en `craft-escritorio.ts`) porque sus papeles de IA
+usan modelos locales (gpt-oss-20b, con Qwen3.8-27B y Gemma 4 E4B de respaldo). En la PC del dueño los
+datos ya se pasaron a `craft-anything-escritorio\datos` y la variable de usuario de Windows
+`CRAFT_ANYTHING_CONFIG_DIR` apunta ahí (sirve también con el Geeper instalado antes de este cambio).
+Motores instalados: JADX, Apktool, Rizin y Vineflower (con `engines-install`, verificados) y Frida y
+mitmproxy (`uv tool install`). Sin instalar, todos opcionales: ILSpy (falta el SDK de .NET, pide
+administrador), Wireshark (instalador con administrador y Npcap), objdump/LLDB (Rizin y Ghidra cubren el
+desensamblado), GDB, Binwalk/Unblob (firmware, sólo Linux) y rtl_433 (radio).
+
 **Revisado y ya cubierto**
 
 - Captura de marca (colores, letras, maquetación medida): ya la hace `marca-web.ts` (OpenDesign).

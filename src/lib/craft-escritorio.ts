@@ -6,6 +6,7 @@
  */
 import { spawn } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { APPS_CRAFT, type AppCraft } from "./craft-web";
 import { crearInstalador, type EstadoInstalacion } from "./instalar-craft";
@@ -104,10 +105,33 @@ function datosPortables(base: string, actual: string, nombre: string): string | 
   return otros.sort((a, b) => b.t - a.t)[0]?.ruta ?? null;
 }
 
+/** Apps que usan los modelos locales de LM Studio (Craft Anything los tiene configurados en sus papeles de IA). */
+const USAN_LM_STUDIO = new Set(["craft-anything"]);
+
+/** El CLI de LM Studio en Windows (`%USERPROFILE%\\.lmstudio\\bin\\lms.exe`), o null si no está. */
+export function rutaLms(o: { home?: string; sistema?: typeof SISTEMA; existe?: (p: string) => boolean } = {}): string | null {
+  if ((o.sistema ?? SISTEMA) !== "windows") return null;
+  const p = path.join(o.home ?? os.homedir(), ".lmstudio", "bin", "lms.exe");
+  return (o.existe ?? existsSync)(p) ? p : null;
+}
+
+/**
+ * Enciende el servidor de LM Studio (sin ventana) para que la app encuentre sus modelos aunque LM Studio
+ * esté cerrado. Si ya está encendido no hace nada; si falla, la app lo dice al pedir un modelo.
+ */
+function encenderLmStudio(): void {
+  const lms = rutaLms();
+  if (!lms) return;
+  const hijo = spawn(lms, ["server", "start"], { detached: true, stdio: "ignore", windowsHide: true });
+  hijo.on("error", () => {});
+  hijo.unref();
+}
+
 /** Abre el programa en su propia ventana, sin atarlo a Geeper (sigue abierto si Geeper se cierra). */
 export function abrirEscritorio(a: AppCraft): void {
   const p = programa(a.app);
   if (!existsSync(p)) throw new Error(`${a.nombre} no está instalada.`);
+  if (USAN_LM_STUDIO.has(a.app)) encenderLmStudio();
   const env = { ...process.env, ...prepararDatos(a.app) };
   const hijo = spawn(p, [], { cwd: dirDatos(), env, detached: true, stdio: "ignore", windowsHide: false });
   hijo.on("error", () => {});

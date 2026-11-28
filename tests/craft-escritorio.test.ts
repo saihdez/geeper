@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { appEscritorio, prepararDatos, programa } from "@/lib/craft-escritorio";
+import { appEscritorio, prepararDatos, programa, rutaLms } from "@/lib/craft-escritorio";
 import { SISTEMA } from "@/lib/plataforma";
 import { ESTUDIO } from "@/lib/rutas";
 
@@ -78,5 +78,13 @@ describe("apps Craft de escritorio", () => {
         fs.rmSync(raiz, { recursive: true, force: true });
       }
     });
+  });
+
+  it("encuentra el CLI de LM Studio sólo en Windows y sólo si está instalado", () => {
+    const home = path.join("C:", "Users", "x");
+    const lms = path.join(home, ".lmstudio", "bin", "lms.exe");
+    expect(rutaLms({ home, sistema: "windows", existe: (p) => p === lms })).toBe(lms);
+    expect(rutaLms({ home, sistema: "windows", existe: () => false })).toBeNull();
+    expect(rutaLms({ home, sistema: "linux", existe: () => true })).toBeNull();
   });
 });
