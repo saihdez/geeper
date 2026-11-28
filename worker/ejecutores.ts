@@ -1,4 +1,5 @@
 /** Ejecutores por tipo de trabajo. Cada uno devuelve su resultado y, si toca, el siguiente de la cadena. */
+import { rehacerEscenaDesdeBlend } from "@/lib/blender-editar";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { crearCarpetas, guardarProyecto, registrarAssetsEnDb } from "@/lib/almacen";
@@ -500,6 +501,7 @@ async function escena3dCrear(t: Trabajo, h: Herramientas): Promise<Salida> {
   const c = await crearEscena3d(
     { log: h.log, signal: h.signal, avanzar: (a) => { if (a.etapa !== ultima) void h.etapa((ultima = a.etapa), a.avance); } },
     String(t.payload.corrida ?? ""),
+    { desdeBlend: t.payload.desdeBlend === true },
   );
   h.log(`Escena 3D lista en ${c.segundos} s (${c.dispositivo ?? "?"})`);
   // Pedida desde una escena del editor: se pone sola ahí (versión nueva; se deshace desde el historial).
@@ -510,6 +512,17 @@ async function escena3dCrear(t: Trabajo, h: Herramientas): Promise<Salida> {
     return { resultado: { corrida: c.id, version } };
   }
   return { resultado: { corrida: c.id } };
+}
+
+async function blenderRehacer(t: Trabajo, h: Herramientas): Promise<Salida> {
+  let ultima = "";
+  const r = await rehacerEscenaDesdeBlend(
+    { log: h.log, signal: h.signal, avanzar: (etapa, avance) => { if (etapa !== ultima) void h.etapa((ultima = etapa), avance); } },
+    t.proyectoId!,
+    String(t.payload.escena ?? ""),
+  );
+  h.log(`Escena ${r.numero} con tus cambios de Blender en ${r.segundos} s → versión ${r.version}`);
+  return { resultado: r, siguiente: siguienteDe(t.payload, { version: r.version }) };
 }
 
 async function renderEntregarEj(t: Trabajo, h: Herramientas): Promise<Salida> {
@@ -550,6 +563,7 @@ export const EJECUTORES: Record<TipoTrabajo, (t: Trabajo, h: Herramientas) => Pr
   "workflow.correr": workflowCorrer,
   "escena3d.crear": escena3dCrear,
   "camara3d.generar": camara3dGenerar,
+  "blender.rehacer": blenderRehacer,
   "invitacion.foto": invitacionFoto,
   "invitacion.qr": invitacionQr,
   "demo.crear": demoCrear,

@@ -18,6 +18,7 @@ import { PanelPresentador } from "./panel-presentador";
 import { PanelRehacer } from "./panel-rehacer";
 import { PanelAvatarEscena, PanelAvatarVideo } from "./panel-avatar";
 import { PanelEscena3d } from "./panel-escena3d";
+import { EditarEnBlender } from "./editar-en-blender";
 import { PanelAsistente } from "./panel-asistente";
 import { PanelCamara3d } from "./panel-camara3d";
 import { SelectorEncuadre, type EncuadreV } from "./selector-encuadre";
@@ -380,6 +381,7 @@ function TarjetaEscena({ e, anterior, slug, proyectoId, total, formato, estilo, 
         {(e.visual.tipo === "imagen" || e.visual.source === "mpt") && <PanelCamara3d proyectoId={proyectoId} escena={e.id} numero={e.indice + 1} ocupado={ocupado} />}
         <PanelAvatarEscena proyectoId={proyectoId} escena={e.id} numero={e.indice + 1} ocupado={ocupado} />
         <PanelEscena3d proyectoId={proyectoId} escena={e.id} numero={e.indice + 1} ocupado={ocupado} formato={formato} duracion={e.duracion} />
+        {e.visual.tipo === "video" && e.visual.source === "archivo" && <EditarEnBlender proyectoId={proyectoId} escena={e.id} numero={e.indice + 1} ocupado={ocupado} />}
         {e.visual.tipo === "video" && <PanelRehacer proyectoId={proyectoId} escena={e.id} numero={e.indice + 1} ocupado={ocupado} miniatura={miniatura(slug, e)} />}
       </div>
     </li>

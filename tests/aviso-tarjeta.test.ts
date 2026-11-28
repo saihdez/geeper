@@ -99,6 +99,7 @@ const SITIOS = [
   "src/components/escenas-3d.tsx",
   "src/components/panel-camara3d.tsx",
   "src/components/invitacion-imagenes.tsx",
+  "src/components/editar-en-blender.tsx",
 ];
 
 /**
@@ -120,8 +121,9 @@ const QUIEN_LO_LANZA: Record<string, string[]> = {
   "workflow.correr": ["src/components/workflows.tsx"],
   "proyecto.traducir": ["src/components/panel-traducir.tsx"],
   "voz.disenar": ["src/components/disenar-voz.tsx"],
-  "escena3d.crear": ["src/components/escenas-3d.tsx"],
+  "escena3d.crear": ["src/components/escenas-3d.tsx", "src/components/editar-en-blender.tsx"],
   "camara3d.generar": ["src/components/panel-camara3d.tsx"],
+  "blender.rehacer": ["src/components/editar-en-blender.tsx"],
   "invitacion.foto": ["src/components/invitacion-imagenes.tsx"],
   "invitacion.qr": ["src/components/invitacion-imagenes.tsx"],
   // Sólo desde la terminal (worker/preparar-efectos.ts): no hay botón en la app.

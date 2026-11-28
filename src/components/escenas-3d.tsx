@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { Aviso, AvisoTarjeta, Barra, LineaFalta, archivo, faltanConGuardar, pedir, postJson, useGuardeAntes, useSondeo } from "./comun";
+import { EditarEnBlender } from "./editar-en-blender";
 import { Escuchar } from "./elegir-voz";
 import {
   CALIDADES_3D, COLORES_LOGO, DURACION_3D, ESTILOS_3D, FONDOS_3D, FONDOS_SALIDA_3D, FORMATOS_3D, INFO_PLANTILLAS, MAX_DATOS_3D, MAX_DIALOGO, MOVIMIENTOS_3D, PALETAS_3D,
@@ -701,6 +702,7 @@ function TusEscenas({ corridas, ocupadas, recargar }: { corridas: CorridaV[]; oc
             {c.estado === "hecha" && c.video && <a className="boton text-xs" href={archivo(c.video, true)}>{c.transparente ? "Descargar con fondo" : "Descargar"}</a>}
             {c.estado === "hecha" && c.transparente && <a className="boton text-xs" href={archivo(c.transparente, true)}>Descargar sin fondo</a>}
             <button type="button" className="boton text-xs" onClick={() => void borrar(c.id)}>Borrar</button>
+            {c.estado === "hecha" && <EditarEnBlender corrida={c.id} compacto />}
           </div>
         </li>
       ))}

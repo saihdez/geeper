@@ -52,6 +52,8 @@ export const TIPOS = {
   "escena3d.crear": { motor: "mpt", usaGpu: true, nombre: "Escena 3D" },
   // Cámara 3D sobre la foto de una escena (Blender, Cycles en la GPU).
   "camara3d.generar": { motor: "mpt", usaGpu: true, nombre: "Cámara 3D" },
+  // «Poner mis cambios»: dibuja el .blend de una escena cambiado a mano en Blender (blender-editar.ts).
+  "blender.rehacer": { motor: "mpt", usaGpu: true, nombre: "Tus cambios de Blender" },
   // Invitaciones: la foto del sobre (Z-Image por Wan2GP) y el QR con dibujo (ComfyUI). Toda la tarjeta.
   "invitacion.foto": { motor: "mpt", usaGpu: true, nombre: "Foto de la invitación" },
   "invitacion.qr": { motor: "mpt", usaGpu: true, nombre: "QR con dibujo" },

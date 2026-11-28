@@ -398,12 +398,31 @@ class Escena:
             sueltos = [int(self.p.get("cuadro_imagen") or cuadro_imagen(self.total))]
         if sueltos:
             total = len(sueltos)  # pruebas y portadas: sólo esos cuadros
+            self.s.frame_set(int(sueltos[0]))
+            guardar_editable(self.p.get("guardar_blend"))
             for f in sueltos:
                 self.s.frame_set(int(f))
                 r.filepath = os.path.join(carpeta, f"c_{int(f):04d}.png")
                 bpy.ops.render.render(write_still=True)
             return
+        guardar_editable(self.p.get("guardar_blend"))
         bpy.ops.render.render(animation=True)
+
+
+def guardar_editable(ruta, carpeta_render="//dibujo/c_"):
+    """El .blend de «Abrir en Blender»: con las fotos y la luz adentro (no depende de otros archivos) y con
+    la salida en una carpeta junto a él, para que dibujarlo desde Blender no escriba en otro lado."""
+    if not ruta:
+        return
+    r = bpy.context.scene.render
+    antes = r.filepath
+    r.filepath = carpeta_render
+    try:
+        bpy.ops.file.pack_all()
+    except RuntimeError as x:  # una imagen generada no se puede empaquetar: sigue sin ella
+        print(f"No se pudo meter todo en el .blend: {x}", flush=True)
+    bpy.ops.wm.save_as_mainfile(filepath=ruta, compress=True, copy=True)
+    r.filepath = antes
 
 
 def cuadro_imagen(total):
@@ -1067,9 +1086,8 @@ def main():
         raise ErrorEscena(f"No conozco la plantilla «{pedido.get('plantilla')}».")
     e = Escena(pedido)
     fn(e)
-    if pedido.get("guardar_blend"):
-        bpy.ops.wm.save_as_mainfile(filepath=pedido["guardar_blend"])
     if pedido.get("solo_armar"):
+        guardar_editable(pedido.get("guardar_blend"))
         print("GEEPER_ARMADA", flush=True)
         return
     e.render(pedido["cuadros"])

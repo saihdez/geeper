@@ -198,6 +198,22 @@ def armar(p):
     return s, total
 
 
+def guardar_editable(ruta, carpeta_render="//dibujo/c_"):
+    """El .blend de «Abrir en Blender»: con las fotos y la luz adentro (no depende de otros archivos) y con
+    la salida en una carpeta junto a él, para que dibujarlo desde Blender no escriba en otro lado."""
+    if not ruta:
+        return
+    r = bpy.context.scene.render
+    antes = r.filepath
+    r.filepath = carpeta_render
+    try:
+        bpy.ops.file.pack_all()
+    except RuntimeError as x:  # una imagen generada no se puede empaquetar: sigue sin ella
+        print(f"No se pudo meter todo en el .blend: {x}", flush=True)
+    bpy.ops.wm.save_as_mainfile(filepath=ruta, compress=True, copy=True)
+    r.filepath = antes
+
+
 def render(p, s, total):
     s.render.engine = "CYCLES"
     cy = s.cycles
@@ -232,6 +248,7 @@ def render(p, s, total):
             s.render.filepath = os.path.join(p["cuadros"], f"c_{int(f):04d}.png")
             bpy.ops.render.render(write_still=True)
         return
+    guardar_editable(p.get("guardar_blend"))
     bpy.ops.render.render(animation=True)
 
 

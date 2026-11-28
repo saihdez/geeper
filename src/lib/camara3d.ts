@@ -25,6 +25,8 @@ import type { Contexto } from "./pasos";
 import { correr } from "./proceso";
 import { estimarProfundidad, DEPTH_ANYTHING } from "./profundidad";
 import { FFMPEG, RAIZ_REPO } from "./rutas";
+import { relativaADatos } from "./blender-editar";
+import { existsSync } from "node:fs";
 
 export interface OpcionesCamara3d {
   movimiento?: MovimientoCamara3d;
@@ -111,11 +113,15 @@ export async function generarCamara3dEscena(ctx: ContextoCamara3d, proyectoId: s
     const intensidad = info.relieve < 0.15 ? 0.3 * plan.intensidad : plan.intensidad;
     const pedido = path.join(corrida, "blender.json");
     const cuadros = path.join(corrida, "cuadros");
+    const blend = path.join(ctx.dir, "blender", `${path.basename(corrida)}.blend`);
+    await fs.mkdir(path.dirname(blend), { recursive: true });
     const escala = Number(process.env.GEEPER_BLENDER_ESCALA) || undefined;
     await fs.writeFile(pedido, JSON.stringify({
       imagen: foto, profundidad, formato: p.formato, duracion: plan.largo, movimiento: plan.movimiento, sentido: plan.numero % 2 ? 1 : -1,
       foco, intensidad, calidad: op.calidad ?? "normal", dispositivo: process.env.GEEPER_BLENDER_DISPOSITIVO === "cpu" ? "cpu" : "gpu", cuadros,
       ...(escala ? { escala } : {}),
+      // El .blend editable de «Abrir en Blender» (blender-editar.ts), con la foto adentro.
+      guardar_blend: blend,
     }, null, 2));
     // 3. Blender en la GPU.
     avanzar("Esperando la tarjeta de video", 0.06);
@@ -154,7 +160,7 @@ export async function generarCamara3dEscena(ctx: ContextoCamara3d, proyectoId: s
       tipo: "video",
       source: "archivo",
       licencia: `${a.licencia ?? "La de la foto original"}; cámara 3D hecha en esta PC con Blender y ${DEPTH_ANYTHING.licencia.split(" (")[0]} (Depth Anything V2 Small)`,
-      regenerar: { motor: "blender-camara3d", movimiento, intensidad, imagenDe: a.id, segundos: Math.round((Date.now() - t0) / 1000) },
+      regenerar: { motor: "blender-camara3d", movimiento, intensidad, imagenDe: a.id, segundos: Math.round((Date.now() - t0) / 1000), ...(existsSync(blend) ? { blend: relativaADatos(blend) } : {}) },
     });
     // El foco de la cara sigue valiendo: el encuadre del video es el mismo que el de la foto al empezar.
     if (a.foco) asset.foco = a.foco;

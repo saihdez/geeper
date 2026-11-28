@@ -20,6 +20,7 @@ import {
   COLORES_LOGO, DURACION_3D, ESTILOS_3D, FONDOS_3D, FONDOS_SALIDA_3D, FORMATOS_3D, INFO_PLANTILLAS, MAX_DATOS_3D, MAX_DIALOGO, MAX_SEGUNDOS_PERSONAJE, MOVIMIENTOS_3D,
   PALETAS_3D, PERSONAJES_3D, PLANTILLAS_3D, SALIDAS_3D, TIPOS_DATOS_3D, type Colores3d, type Plantilla3d,
 } from "./escenas3d-catalogo";
+import { dibujarBlend } from "./blender-editar";
 import { tomarGpu } from "./gpu";
 import { formasDeBoca, type FormaBoca } from "./rhubarb";
 import { probar } from "./media";
@@ -75,6 +76,8 @@ export const Corrida3d = z.object({
   dispositivo: z.string().optional(),
   /** Hecha por el director de «Todo en 3D» para este proyecto: no se muestra en «Tus escenas 3D». */
   deVideo: z.string().optional(),
+  /** Se volvió a dibujar desde su .blend cambiado a mano en Blender. */
+  editadaEnBlender: z.boolean().optional(),
   error: z.string().optional(),
 });
 export type Corrida3d = z.infer<typeof Corrida3d>;
@@ -221,6 +224,8 @@ export function pedidoParaBlender(p: Pedido3d, op: { dir: string; cuadros: strin
     personaje: p.personaje,
     hdri: op.hdri,
     cuadros: op.cuadros,
+    // El .blend editable de «Abrir en Blender» (blender-editar.ts).
+    guardar_blend: path.join(op.dir, "escena.blend"),
     // Personaje: la voz (WAV), sus formas de boca y cuánto dura (la voz y medio segundo más).
     ...(op.voz ? { audio: op.voz.wav, boca: op.voz.boca, duracion: Math.min(MAX_SEGUNDOS_PERSONAJE, op.voz.segundos + 0.5) } : {}),
   };
@@ -243,7 +248,7 @@ export interface Contexto3d {
 }
 
 /** Arma y renderiza la escena. Deja video.mp4 y portada.jpg en la carpeta de la corrida. */
-export async function crearEscena3d(ctx: Contexto3d, id: string): Promise<Corrida3d> {
+export async function crearEscena3d(ctx: Contexto3d, id: string, op: { desdeBlend?: boolean } = {}): Promise<Corrida3d> {
   const c = await leerCorrida3d(id);
   if (!c) throw new Error("Esa escena 3D ya no existe.");
   if (!(await versionBlender())) throw new Error("Falta Blender: instálalo con un clic en la página «Escenas 3D».");
@@ -252,6 +257,16 @@ export async function crearEscena3d(ctx: Contexto3d, id: string): Promise<Corrid
   const t0 = Date.now();
   const cuadros = path.join(dir, "cuadros");
   try {
+    if (op.desdeBlend) {
+      // «Poner mis cambios»: se dibuja el .blend tal como lo dejó la persona en Blender.
+      const blend = path.join(dir, "escena.blend");
+      if (!existsSync(blend)) throw new Error("Esta escena no tiene su archivo de Blender (es de antes): créala de nuevo.");
+      const pngs = await dibujarBlend(blend, cuadros, { log: ctx.log, signal: ctx.signal, avanzar, imagen: c.pedido.salida === "imagen" });
+      await guardarSalidas3d(c.pedido, dir, cuadros, pngs, { log: ctx.log, signal: ctx.signal, avanzar, audio: vozOriginal(c.pedido, dir) });
+      const hecha: Corrida3d = { ...c, estado: "hecha", segundos: Math.round((Date.now() - t0) / 1000), error: undefined, editadaEnBlender: true };
+      await escribirCorrida3d(hecha);
+      return hecha;
+    }
     avanzar("Preparando la luz de estudio", 0.01);
     const hdri = await asegurarHdri(ctx.log);
     await fs.rm(cuadros, { recursive: true, force: true });
@@ -308,6 +323,13 @@ export async function crearEscena3d(ctx: Contexto3d, id: string): Promise<Corrid
  * La voz del personaje: la grabación subida o Kokoro diciendo el diálogo (en el procesador), pasada a WAV
  * mono de 16 kHz, y sus formas de boca con Rhubarb.
  */
+/** La voz con la que se hizo un personaje (para volver a ponerla al redibujarlo), o undefined. */
+function vozOriginal(p: Pedido3d, dir: string): string | undefined {
+  if (p.plantilla !== "personaje") return undefined;
+  const ruta = path.join(dir, "entradas", p.archivo_voz ?? "voz-kokoro.wav");
+  return existsSync(ruta) ? ruta : undefined;
+}
+
 async function prepararVoz3d(p: Pedido3d, dir: string, ctx: { log: Registro; signal?: AbortSignal; avanzar: (etapa: string, avance: number) => void }): Promise<{ wav: string; original: string; boca: FormaBoca[]; segundos: number }> {
   const entradas = path.join(dir, "entradas");
   await fs.mkdir(entradas, { recursive: true });
@@ -388,7 +410,7 @@ export async function usarEscena3d(corrida: string, proyectoId: string, escena: 
     tipo: esImagen ? "imagen" : "video",
     source: "archivo",
     licencia: `Hecho en esta PC con Blender (plantilla de Geeper «${INFO_PLANTILLAS[c.pedido.plantilla].nombre}»); luz de estudio ${HDRI.licencia}. Las fotos o logos que subiste son tuyos.`,
-    regenerar: { escena3d: c.id },
+    regenerar: { escena3d: c.id, blend: `escenas-3d/${c.id}/escena.blend` },
   });
   const { p } = await versionDeProyecto(proyectoId);
   if (!p.escenas[escena]) throw new Error("Esa escena ya no existe en el video.");
