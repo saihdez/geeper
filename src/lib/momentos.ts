@@ -233,7 +233,7 @@ export function dbPorSegundo(archivo: string, maxSegundos?: number): Promise<num
     const args = ["-hide_banner", "-nostdin", "-v", "error", "-i", archivo];
     if (maxSegundos) args.push("-t", String(maxSegundos));
     args.push("-vn", "-ac", "1", "-ar", String(SR), "-f", "s16le", "-");
-    const p = spawn(FFMPEG, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const p = spawn(FFMPEG, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     const out: number[] = [];
     let suma = 0;
     let cuenta = 0;

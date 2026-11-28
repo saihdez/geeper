@@ -42,7 +42,7 @@ export function inicioDe(pid: number, plataforma: NodeJS.Platform = process.plat
   }
   if (plataforma === "win32") return null;
   try {
-    const t = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", timeout: 3000, stdio: ["ignore", "pipe", "ignore"], env: { ...process.env, LC_ALL: "C" } }).trim();
+    const t = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", timeout: 3000, stdio: ["ignore", "pipe", "ignore"], env: { ...process.env, LC_ALL: "C" }, windowsHide: true }).trim();
     return t ? `ps:${t.replace(/\s+/g, " ")}` : null;
   } catch {
     return null;

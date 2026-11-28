@@ -578,3 +578,38 @@ ${videos}
 </html>
 `;
 }
+
+/** Lo que se mide de la página en el navegador antes de grabar. */
+export interface SaludPagina {
+  /** Código HTTP de la página principal en el navegador (null si no hubo respuesta, p. ej. una página local). */
+  estado: number | null;
+  /** Caracteres de texto visible. */
+  texto: number;
+  /** Imágenes, videos, lienzos y dibujos SVG visibles y cargados. */
+  medios: number;
+  /** Imágenes visibles que no cargaron. */
+  rotas: number;
+}
+
+/**
+ * ¿Vale la pena grabar esta página? (Idea de la verificación de sitios de storytold/craft-anything,
+ * `website.rs` `health_notes` y `screenshot.rs` `is_blank`: una página de error o en blanco no se
+ * compara ni se graba.) `probarLink` tolera un error porque muchos sitios rechazan a los robots y el
+ * navegador entra igual; si el navegador también recibe un error, lo que se ve es la página de error y
+ * la demo no sirve. Devuelve el mensaje para la persona si no se puede grabar, y avisos para el registro.
+ */
+export function revisarPagina(s: SaludPagina): { error: string | null; avisos: string[] } {
+  const avisos: string[] = [];
+  if (s.rotas > 0) avisos.push(`Aviso: ${s.rotas === 1 ? "una imagen de la página no cargó" : `${s.rotas} imágenes de la página no cargaron`}; se verán vacías en la demo.`);
+  let error: string | null = null;
+  if (s.estado !== null && s.estado >= 400) {
+    if (s.estado === 404 || s.estado === 410) error = "Esa página no existe: el sitio dice que no la encuentra. Revisa el link.";
+    else if (s.estado === 401 || s.estado === 403 || s.estado === 429)
+      error = "La página no dejó entrar al grabador (algunos sitios bloquean a los programas automáticos). Prueba con otra página de tu sitio.";
+    else if (s.estado >= 500) error = "La página tiene un problema en este momento. Prueba de nuevo en un rato.";
+    else error = "La página respondió con un error y no muestra su contenido. Revisa que abra bien en tu navegador.";
+  } else if (s.texto < 20 && s.medios === 0) {
+    error = "La página abrió en blanco: no hay nada que mostrar en la demo. Revisa que abra bien en tu navegador.";
+  }
+  return { error, avisos };
+}

@@ -94,7 +94,7 @@ export async function preguntarLlama(prompt: string, op: OpcionesLlama): Promise
   let stderr = "";
   let hijo: ChildProcess;
   try {
-    hijo = spawn(LLAMA_SERVER, argsServidor(contexto), { stdio: ["ignore", "ignore", "pipe"] });
+    hijo = spawn(LLAMA_SERVER, argsServidor(contexto), { stdio: ["ignore", "ignore", "pipe"], windowsHide: true });
   } catch (e) {
     op.log?.(`llama.cpp no arrancó (${(e as Error).message}); sigo con Ollama.`);
     return null;

@@ -725,6 +725,27 @@
         "tests/revisar-portada.test.ts",
         "tests/portadas-color.test.ts"
       ]
+    },
+    {
+      "id": "craft-anything",
+      "repo": "storytold/craft-anything",
+      "tipo": "commits",
+      "como": [
+        "codigo"
+      ],
+      "commit": "836dc59",
+      "revisado": "2026-11-27",
+      "que": "Motor de ingeniería inversa de storytold (MIT o Apache-2.0). Se tomaron ideas reescritas: procesos sin ventana de consola en Windows (de sus pitfalls) y no grabar una página de error o en blanco (de su verificación de sitios). Para después: SSIM con máscara de lo que se mueve solo y parecido de estructura.",
+      "archivos": [
+        "src/lib/proceso.ts",
+        "src/lib/demo-web.ts",
+        "src/lib/demo-web-toma.ts"
+      ],
+      "docs": "docs/HEREDADO.md#craft-anything-storytoldcraft-anything-mit-o-apache-20--revisión-2026-11-27-commit-836dc59",
+      "pruebas": [
+        "tests/procesos-sin-ventana.test.ts",
+        "tests/demo-salud.test.ts"
+      ]
     }
   ]
 }

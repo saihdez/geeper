@@ -514,7 +514,7 @@ export async function arrancarComfyui(op: { puerto: number; gpuSolo?: boolean; a
   const args = [path.join(dir, "main.py"), "--listen", "127.0.0.1", "--port", String(op.puerto), "--disable-auto-launch", "--output-directory", path.join(dir, "output"), ...argsAtencionComfyui(elegirAtencion(atencionInstalada(python))), ...(op.nodos ?? ["--disable-all-custom-nodes"])];
   const conGpuSolo = op.gpuSolo ?? existsSync(GPU_SOLO_BIN);
   const c = conGpuSolo ? comandoGpuSolo(python, args) : { cmd: python, args };
-  const hijo = spawn(c.cmd, c.args, { cwd: dir, env: { ...process.env, PYTHONUNBUFFERED: "1", PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" }, detached: process.platform !== "win32" });
+  const hijo = spawn(c.cmd, c.args, { cwd: dir, env: { ...process.env, PYTHONUNBUFFERED: "1", PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" }, detached: process.platform !== "win32", windowsHide: true });
   // «close»: el hijo salió y nadie más (un Python que siguiera vivo) tiene abierta su salida.
   let salio = false;
   hijo.once("close", () => (salio = true));

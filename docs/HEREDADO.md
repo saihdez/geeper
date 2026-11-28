@@ -922,3 +922,48 @@ reescritas. Casi todo es de diseño estático e imprenta; a Geeper le sirve lo q
 - Unsplash, quitar fondos, fuentes de Google en vivo: necesitan red o ya los tenemos (`segmentar.ts`).
 - Las ~130 fichas de reglas: GPL, no se copian; las pocas que aplican a video ya están en nuestras reglas
   (subtítulos, contraste, banda segura).
+
+## Craft Anything (storytold/craft-anything, MIT o Apache-2.0) — revisión 2026-11-27 (commit `836dc59`)
+
+Motor de ingeniería inversa en Rust (~300 herramientas para binarios, .NET, Java, Android, Apple,
+Electron, firmware, juegos, sitios web) con app egui, CLI y servidor MCP. Su flujo «Estudiar → Construir
+→ Verificar → Listo» le pide a Claude Code que rehaga un sitio, una app o un juego y compara el resultado
+con el original. Casi nada es de video. Se tomaron ideas reescritas, no código.
+
+**Integrado**
+
+| Idea de Craft Anything | En Geeper |
+|---|---|
+| `docs/pitfalls.md` «Console windows popping up over the app»: un proceso sin consola que lanza un programa de consola le abre una ventana | `windowsHide: true` en cada proceso que lanza la app (`proceso.ts` `correr` y `matarArbol`, ComfyUI, Wan2GP, llama.cpp, gpu-lock, los ffmpeg de `momentos.ts`, `looks.ts` e invitaciones). En el escritorio de Windows, Electron abre la web y el worker sin consola, y cada ffmpeg, ffprobe o Python abría su propia ventana negra. `tests/procesos-sin-ventana.test.ts` recorre `src/`, `worker/` y `escritorio/` y falla si un proceso nuevo no lleva la opción (AniCraft, que tiene ventana propia, lleva `false` a propósito) |
+| Verificación de sitios (`crates/ai/src/rebuild/kinds/website.rs` `health_notes`, `screenshot.rs` `is_blank`): no se compara una página de error o en blanco | **«Desde una página web»** (`revisarPagina` en `demo-web.ts`, medida en `demo-web-toma.ts`): si el navegador recibe un error (404, bloqueo de robots, caída) o la página queda en blanco, la toma se detiene con un mensaje simple en vez de grabar esa pantalla; las imágenes rotas se avisan en el registro. `probarLink` sigue tolerando el error de la prueba rápida, porque el navegador muchas veces entra igual. Probado con Chrome headless contra una página 404 y una en blanco |
+
+**Revisado y ya cubierto**
+
+- Captura de marca (colores, letras, maquetación medida): ya la hace `marca-web.ts` (OpenDesign).
+- Mensajes largos por la línea de comandos (límite de 32 767 caracteres en Windows, su #402): Geeper ya
+  pasa guiones y textos por la entrada estándar (`correr` con `entrada`) o en archivos.
+- Programas de npm como `.cmd` en Windows: Hyperframes corre con el Node de Electron en el escritorio
+  (`hyperframes.ts`), no con `npx`.
+
+**Para después**
+
+- **Comparación con máscara de lo que se mueve solo** (`crates/engine/src/tools/web_common.rs`
+  `NoiseMask`, `perceptual_similarity_masked`): se fotografía el original dos veces, se marcan los
+  cuadros de 16 px que cambian solos (un carrusel, un video) y se dejan fuera del SSIM. Serviría si
+  algún día comparamos una toma de demo o una portada contra su referencia; hoy el SSIM de `qc.ts` es
+  contra el máster y no lo necesita.
+- **Parecido de estructura** (`website.rs` `structure_likeness`, subsecuencia común de partes de la
+  página): podría usarlo `reverse-any-video` para comparar escenas por sus partes (título, lista,
+  imagen) además de los píxeles.
+- **Clean room**: no copiar logos, fotos ni texto de un original salvo que la persona confirme que son
+  suyos. `marca-web.ts` ya habla de «tu página»; si `reverse-any-video` o `style-sampling` llegan a
+  la interfaz, conviene la misma pregunta.
+
+**Descartado**
+
+- El motor de ingeniería inversa, la app egui, el visor WebAssembly y los plugins WASM: no son de
+  video. Para trabajo de desarrollo ya está el MCP `rea` en esta PC.
+- El adaptador de Claude Code, Codex, Copilot y ACP (`crates/ai/src/cli_agents`): Geeper no maneja
+  agentes de programación; el agente trabaja con la skill `geeper` y el «sí» de la persona.
+- Imágenes y modelos 3D por fal.ai: de pago. Sus letras (Inter, Archivo, Geist Mono, JetBrains Mono) ya
+  están en Google Fonts, que es lo que usa Hyperframes.

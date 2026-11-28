@@ -12,6 +12,7 @@ import {
   gradienteMarca,
   leerRgb,
   planDemo,
+  revisarPagina,
   type Candidato,
   type EstiloDemo,
   type FormatoDemo,
@@ -112,8 +113,9 @@ export async function tomarDemo(url: string, dir: string, op: OpcionesToma): Pro
     // tsx (esbuild con keepNames) envuelve las funciones en __name(); en la página no existe.
     await ctx.addInitScript({ content: "window.__name = (f) => f;" });
     const page = await ctx.newPage();
+    let estado: number | null = null;
     try {
-      await page.goto(url, { waitUntil: "load", timeout: 60_000 });
+      estado = (await page.goto(url, { waitUntil: "load", timeout: 60_000 }))?.status() ?? null;
     } catch (e) {
       // «(page.goto: net::ERR_NAME_NOT_RESOLVED at …)» sólo en el registro, no en el mensaje (UX-17).
       log(`Detalle técnico: ${e instanceof Error ? e.message.split("\n")[0] : e}`);
@@ -131,6 +133,32 @@ export async function tomarDemo(url: string, dir: string, op: OpcionesToma): Pro
       })
       .catch(() => {});
     await dormir(400);
+
+    // Una página de error o en blanco no se graba (ver `revisarPagina`).
+    const medida = await page
+      .evaluate(() => {
+        const visible = (el: Element) => {
+          const r = el.getBoundingClientRect();
+          const s = getComputedStyle(el);
+          return r.width > 8 && r.height > 8 && s.visibility !== "hidden" && s.display !== "none";
+        };
+        const imagenes = [...document.images].filter(visible);
+        const otros = [...document.querySelectorAll("video, canvas, svg")].filter(visible).length;
+        return {
+          texto: (document.body?.innerText ?? "").replace(/\s+/g, " ").trim().length,
+          medios: imagenes.filter((i) => i.complete && i.naturalWidth > 0).length + otros,
+          rotas: imagenes.filter((i) => i.complete && i.naturalWidth === 0 && !!i.currentSrc).length,
+        };
+      })
+      .catch(() => null);
+    if (medida) {
+      const salud = revisarPagina({ estado, ...medida });
+      salud.avisos.forEach((a) => log(a));
+      if (salud.error) {
+        log(`Detalle técnico: estado ${estado ?? "-"}, ${medida.texto} caracteres, ${medida.medios} imágenes o videos, ${medida.rotas} rotas.`);
+        throw new Error(salud.error);
+      }
+    }
 
     // Exploración: titular, candidatos a botón y colores.
     const sc = await page.evaluate(() => {
