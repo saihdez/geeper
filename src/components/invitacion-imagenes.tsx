@@ -6,7 +6,7 @@ import { Aviso, AvisoTarjeta, Barra, LineaFalta, faltanConGuardar, pedir, postJs
 
 interface TrabajoImagen {
   id: string;
-  que: "foto" | "qr";
+  que: "foto" | "fondo" | "qr";
   estado: string;
   etapa: string | null;
   progreso: number;
@@ -14,6 +14,7 @@ interface TrabajoImagen {
 }
 interface DatosImagenes {
   fotos: string[];
+  fondos: string[];
   qrs: { archivo: string; lecturas: number }[];
   trabajos: TrabajoImagen[];
 }
@@ -330,6 +331,91 @@ export function PanelFoto({ inv, alCambiar, inicial = "" }: { inv: Invitacion; a
       )}
       {(datos?.fotos.length ?? 0) > 1 && (
         <button type="button" className="text-xs text-tenue underline" onClick={() => void descartar(`/api/invitaciones/${inv.slug}/imagenes?que=foto`, "¿Descartar todas las fotos propuestas? La que ya usa la invitación no se borra.").then(() => { setAjustando(null); return recargar(); })}>Descartar todas</button>
+      )}
+    </section>
+  );
+}
+
+/** Fondo realista de toda la página (Z-Image, vertical): reemplaza las siluetas dibujadas. */
+export function PanelFondo({ inv, alCambiar }: { inv: Invitacion; alCambiar: (avisos: string[]) => void }) {
+  const { datos, enCurso, recargar } = useImagenes(inv.slug);
+  const [descripcion, setDescripcion] = useState("");
+  const guarde = useGuardeAntes();
+  const faltan = faltanConGuardar(guarde);
+  const [ocupado, setOcupado] = useState(false);
+  const [falla, setFalla] = useState<string | null>(null);
+  const trabajo = enCurso.find((t) => t.que === "fondo");
+  const ultimo = datos?.trabajos.find((t) => t.que === "fondo");
+  const fondos = datos?.fondos ?? [];
+
+  async function crear() {
+    setOcupado(true);
+    setFalla(null);
+    try {
+      await postJson(`/api/invitaciones/${inv.slug}/imagenes`, { que: "fondo", descripcion });
+      await recargar();
+    } catch (e) {
+      setFalla(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function poner(cuerpo: { archivo: string } | { quitar: "fondo" }) {
+    setOcupado(true);
+    setFalla(null);
+    try {
+      const r = await pedir<{ avisos: string[] }>(`/api/invitaciones/${inv.slug}/imagenes`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(cuerpo) });
+      alCambiar(r.avisos);
+    } catch (e) {
+      setFalla(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <section id="fondo-ia" className="tarjeta space-y-3 p-4">
+      <h2 className="font-medium">🌲 Fondo realista con IA</h2>
+      <p className="text-sm text-tenue">
+        Cambia los dibujos del fondo por una imagen como de película (un bosque de verdad, un salón, el mar…). Se mueve despacio con
+        bruma y profundidad al bajar. Geeper dibuja 4 opciones verticales en 1 a 3 minutos.
+      </p>
+      {trabajo ? <Progreso t={trabajo} /> : (
+        <>
+          <textarea aria-label="Describe el fondo" className="campo min-h-20" maxLength={400} value={descripcion} onChange={(e) => setDescripcion(e.target.value)}
+            placeholder={inv.tema?.idea ? `Por ejemplo: ${inv.tema.idea}` : "Por ejemplo: bosque encantado de árboles gigantes con luz entre la niebla"} />
+          <AvisoTarjeta g={guarde}>El fondo con IA usa la tarjeta de video 1 a 3 minutos.</AvisoTarjeta>
+          <button type="button" className="boton boton-primario" disabled={ocupado || faltan.length > 0} aria-describedby={faltan.length ? guarde.idFalta : undefined} onClick={crear}>
+            {fondos.length ? "✨ Crear otros" : "✨ Crear fondo"}
+          </button>
+          <LineaFalta id={guarde.idFalta} faltan={faltan} />
+          <p className="text-xs text-tenue">Si lo dejas vacío, se inspira en la idea de tema de la invitación.</p>
+        </>
+      )}
+      {!trabajo && <Falla t={ultimo} />}
+      {falla && <Aviso tipo="error">{falla}</Aviso>}
+      {inv.fondo && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span>Tu invitación ya usa un fondo realista.</span>
+          <button type="button" className="boton" disabled={ocupado} onClick={() => void poner({ quitar: "fondo" })}>Volver al fondo dibujado</button>
+        </div>
+      )}
+      {fondos.length > 0 && (
+        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {fondos.map((f) => (
+            <li key={f} className="space-y-1.5">
+              <img src={propuesta(inv.slug, f)} alt="Fondo propuesto" className="aspect-[9/16] w-full rounded-lg object-cover" loading="lazy" />
+              <div className="flex gap-1.5">
+                <button type="button" className="boton flex-1" disabled={ocupado} onClick={() => void poner({ archivo: f })}>Usar este</button>
+                <button type="button" className="boton" title="Descartar este fondo" aria-label="Descartar este fondo" onClick={() => void descartar(propuesta(inv.slug, f)).then(() => recargar(), (e: unknown) => setFalla(e instanceof Error ? e.message : String(e)))}>🗑</button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {fondos.length > 1 && (
+        <button type="button" className="text-xs text-tenue underline" onClick={() => void descartar(`/api/invitaciones/${inv.slug}/imagenes?que=fondo`, "¿Descartar todos los fondos propuestos? El que ya usa la invitación no se borra.").then(() => recargar())}>Descartar todos</button>
       )}
     </section>
   );

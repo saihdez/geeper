@@ -56,6 +56,7 @@ export const TIPOS = {
   "blender.rehacer": { motor: "mpt", usaGpu: true, nombre: "Tus cambios de Blender" },
   // Invitaciones: la foto del sobre (Z-Image por Wan2GP) y el QR con dibujo (ComfyUI). Toda la tarjeta.
   "invitacion.foto": { motor: "mpt", usaGpu: true, nombre: "Foto de la invitación" },
+  "invitacion.fondo": { motor: "mpt", usaGpu: true, nombre: "Fondo de la invitación" },
   "invitacion.qr": { motor: "mpt", usaGpu: true, nombre: "QR con dibujo" },
   "render.entregar": { motor: "render", usaGpu: true, nombre: "Render y QC" },
   "publicar.subir": { motor: "red", usaGpu: false, nombre: "Publicar en red" },

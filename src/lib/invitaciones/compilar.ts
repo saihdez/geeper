@@ -16,6 +16,8 @@ export interface Recursos {
   /** `@font-face` con las letras en base64 ("" si no hubo internet: quedan las del sistema). */
   fuentesCss: string;
   fotoB64?: string;
+  /** Fondo realista (WebP) de toda la página: reemplaza las siluetas del escenario. */
+  fondoB64?: string;
   musicaB64?: string;
 }
 
@@ -284,7 +286,7 @@ export interface OpcionesCompilar {
 export function compilar(inv: Invitacion, r: Recursos, ahora = Date.now(), op: OpcionesCompilar = {}): { html: string; ics: string } {
   const e = estiloDe(inv);
   const ed = !!op.editor;
-  const escena = htmlEscenario(e, semillaDe(inv.slug));
+  const escena = htmlEscenario(e, semillaDe(inv.slug), inv.fondo ? r.fondoB64 : undefined);
   const bases = basesDe(inv);
   const { vigentes } = retoquesVigentes(inv);
   /** Texto con su clave: el retoque si sigue valiendo; en el editor, envuelto para poder escribirlo. */

@@ -234,6 +234,7 @@ export async function guardarInvitacion(entrada: unknown, subidas: Subidas, slug
     musica,
     musicaEnlace: musica.tipo === "spotify" || musica.tipo === "youtube" ? musicaEnlace : undefined,
     foto,
+    fondo: previa?.fondo,
     urlPublica: previa?.urlPublica,
     qrArte: previa?.qrArte,
     vistaPrevia: previa?.vistaPrevia,
@@ -301,6 +302,15 @@ export async function ponerUrlPublica(slug: string, url: string | null): Promise
   return { inv, avisos: [...avisos, ...(await construir(inv))] };
 }
 
+/** Vuelve al escenario dibujado (siluetas): quita el fondo realista. */
+export async function quitarFondo(slug: string): Promise<{ inv: Invitacion; avisos: string[] }> {
+  const previa = await leerInvitacion(slug);
+  const inv = Invitacion.parse({ ...previa, fondo: undefined, actualizada: new Date().toISOString() });
+  await escribirAtomico(path.join(dirInvitacion(slug), "invitacion.json"), JSON.stringify(inv, null, 2));
+  await fs.rm(path.join(dirInvitacion(slug), "fondo.webp"), { force: true });
+  return { inv, avisos: await construir(inv) };
+}
+
 /** Imagen del enlace en WhatsApp: la portada o el QR con dibujo. Rehace la página y la imagen. */
 export async function ponerVistaPrevia(slug: string, vistaPrevia: "portada" | "qr"): Promise<{ inv: Invitacion; avisos: string[] }> {
   const previa = await leerInvitacion(slug);
@@ -312,12 +322,12 @@ export async function ponerVistaPrevia(slug: string, vistaPrevia: "portada" | "q
 /** Usa una propuesta de IA: la foto del sobre o el QR con dibujo. */
 export async function usarPropuesta(slug: string, archivo: string): Promise<{ inv: Invitacion; avisos: string[] }> {
   const previa = await leerInvitacion(slug);
-  const que = archivo.startsWith("qr-") ? "qr" : "foto";
+  const que = archivo.startsWith("qr-") ? "qr" : archivo.startsWith("fondo-") ? "fondo" : "foto";
   if (que === "qr" && !previa.urlPublica) throw new Error("Primero guarda la dirección donde quedó publicada.");
   await copiarElegida(dirInvitacion(slug), archivo, que);
   const inv = Invitacion.parse({
     ...previa,
-    ...(que === "foto" ? { foto: "foto.webp" } : { qrArte: { archivo: "qr-arte.png", url: previa.urlPublica! } }),
+    ...(que === "foto" ? { foto: "foto.webp" } : que === "fondo" ? { fondo: "fondo.webp" } : { qrArte: { archivo: "qr-arte.png", url: previa.urlPublica! } }),
     actualizada: new Date().toISOString(),
   });
   await escribirAtomico(path.join(dirInvitacion(slug), "invitacion.json"), JSON.stringify(inv, null, 2));
@@ -358,15 +368,16 @@ async function recursosDe(inv: Invitacion) {
   const dir = dirInvitacion(inv.slug);
   const fuentes = await fuentesDe(estiloDe(inv).letras);
   const fotoB64 = inv.foto ? (await fs.readFile(path.join(dir, inv.foto))).toString("base64") : undefined;
+  const fondoB64 = inv.fondo && existsSync(path.join(dir, inv.fondo)) ? (await fs.readFile(path.join(dir, inv.fondo))).toString("base64") : undefined;
   const musicaB64 = inv.musica.tipo === "archivo" ? (await fs.readFile(path.join(dir, "musica.mp3"))).toString("base64") : undefined;
-  return { fuentes, fotoB64, musicaB64 };
+  return { fuentes, fotoB64, fondoB64, musicaB64 };
 }
 
 /** La página en modo «Corregir a mano» (sin audio: no hace falta para escribir). */
 export async function htmlEditor(slug: string): Promise<string> {
   const inv = await leerInvitacion(slug);
-  const { fuentes, fotoB64 } = await recursosDe(inv);
-  return compilar(inv, { fuentesCss: fuentes.css, fotoB64 }, Date.now(), { editor: true }).html;
+  const { fuentes, fotoB64, fondoB64 } = await recursosDe(inv);
+  return compilar(inv, { fuentesCss: fuentes.css, fotoB64, fondoB64 }, Date.now(), { editor: true }).html;
 }
 
 /** La invitación como diseño de Avnac Studio, con la foto y el QR adentro (avnac.ts). */
@@ -535,9 +546,9 @@ export async function construir(inv: Invitacion, op: { portada?: boolean } = {})
   const pub = path.join(dir, "publicar");
   await fs.mkdir(pub, { recursive: true });
   const avisos: string[] = [];
-  const { fuentes, fotoB64, musicaB64 } = await recursosDe(inv);
+  const { fuentes, fotoB64, fondoB64, musicaB64 } = await recursosDe(inv);
   if (fuentes.aviso) avisos.push(fuentes.aviso);
-  const { html, ics } = compilar(inv, { fuentesCss: fuentes.css, fotoB64, musicaB64 });
+  const { html, ics } = compilar(inv, { fuentesCss: fuentes.css, fotoB64, fondoB64, musicaB64 });
 
   const peso = Buffer.byteLength(html);
   const max = musicaB64 ? PESO_MAX.conAudio : PESO_MAX.sinAudio;

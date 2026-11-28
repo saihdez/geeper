@@ -98,6 +98,8 @@ export const Invitacion = Entrada.omit({ musicaEnlace: true, plantilla: true }).
   /** Enlace a la canción tal como lo pegó la persona (para volver a mostrarlo en el formulario). */
   musicaEnlace: opcional(500),
   foto: z.literal("foto.webp").optional(),
+  /** Fondo realista de toda la página, dibujado con IA (imagenes.ts): reemplaza las siluetas. */
+  fondo: z.literal("fondo.webp").optional(),
   urlPublica: httpsUrl.optional(),
   /** QR con dibujo elegido (imagenes.ts) y la dirección que lleva: si la dirección cambia, ya no sirve. */
   qrArte: z.object({ archivo: z.literal("qr-arte.png"), url: z.string() }).optional(),

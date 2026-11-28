@@ -247,6 +247,20 @@ momento, que me lleve por las ramas o raíces». `escenario.ts`, para todas las 
 - Con «reducir movimiento» (en iPhone: Ajustes → Accesibilidad → Movimiento) sólo se quedan quietos el fondo y las ramas; el sobre, las tarjetas, el camino y las chispas se animan igual porque son cortos y los dispara la persona.
 - Al abrir el sello, la animación del sobre corre completa (~2,3 s) y luego la página baja sola, suave (1,6 s), hasta la primera sección. Si la persona toca o desliza antes, no se mueve.
 
+### Fondo realista y vista previa con el QR (hecho el 2026-11-28)
+
+- **Fondo realista con IA** (panel «🌲 Fondo realista con IA», trabajo `invitacion.fondo`): Z-Image dibuja 4
+  fondos verticales (768×1344) «como de película», sin personas ni texto y con el centro tranquilo. Si la
+  descripción va vacía, usa la idea del tema. Al elegir uno se guarda `fondo.webp` (900 px, ~70-300 KB) y la
+  invitación lleva `fondo: "fondo.webp"`.
+- En la página, la foto reemplaza las siluetas y las ramas: va en la capa lejana (parallax con el scroll) y
+  «respira» (zoom lento). Encima van la bruma que cruza en la capa media, un velo con el color del fondo
+  para que se lea la portada, los rayos (bosque y jardín), las partículas y el camino. Con «reducir
+  movimiento» la foto se queda quieta y la bruma va más lenta. «Volver al fondo dibujado» lo quita.
+- **Imagen del enlace en WhatsApp**: con un QR con dibujo en uso, se elige entre la portada (1200×630) y
+  el QR (800×800, `vistaPrevia: "qr"`). `og:image` lleva `?v=<guardado>` para que WhatsApp no use la
+  imagen vieja. Después hay que volver a subir el .zip.
+
 ### Datos del cliente con Google Forms (hecho el 2026-11-27)
 
 En Invitaciones, «Pedirle los datos al cliente con Google Forms»: Geeper crea el formulario en la cuenta

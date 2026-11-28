@@ -199,15 +199,27 @@ const CAMINO: Record<Escenario, { ancho: number; segundo: number; punteado?: str
   fiesta: { ancho: 2.5, segundo: 0, nombre: "serpentina" },
 };
 
-export function htmlEscenario(e: Estilo, semilla: number): { fondo: string; frente: string; camino: string } {
+/**
+ * Con `fondoB64` (un fondo realista dibujado con IA) la foto reemplaza las siluetas y las ramas: va en la
+ * capa lejana (se mueve con el scroll), con bruma en la capa media y un velo para que se lea el texto.
+ */
+export function htmlEscenario(e: Estilo, semilla: number, fondoB64?: string): { fondo: string; frente: string; camino: string } {
   const esc = escenarioDe(e.adorno);
+  const c = CAMINO[esc];
+  const camino = `<svg class="camino" aria-hidden="true" data-ancho="${c.ancho}" data-segundo="${c.segundo}"${c.punteado ? ` data-punteado="${c.punteado}"` : ""}><path class="camino-dos"/><path class="camino-uno"/><g class="brotes"></g></svg>`;
+  if (fondoB64) {
+    const rayosFoto = esc === "bosque" || esc === "jardin" ? `<div class="rayos"><i></i><i></i><i></i><i></i></div>` : "";
+    return {
+      fondo: `<div class="escena esc-${esc} con-foto" aria-hidden="true"><div class="capa lejos foto"><i style="background-image:url(data:image/webp;base64,${fondoB64})"></i></div>${rayosFoto}<div class="capa medio bruma"><i></i><i></i><i></i></div><div class="velo"></div><div class="linterna"></div></div>`,
+      frente: `<div class="primer-plano con-foto" aria-hidden="true"></div>`,
+      camino,
+    };
+  }
   const { lejos, medio } = capasEscenario(esc, semilla);
   const { lado, rama } = marcoEscenario(esc, semilla, e.adorno);
   const rayos = esc === "bosque" || esc === "jardin" ? `<div class="rayos"><i></i><i></i><i></i><i></i></div>` : "";
   const fondo = `<div class="escena esc-${esc}" aria-hidden="true">${rayos}<div class="capa lejos">${lejos}</div><div class="capa medio">${medio}</div>${lado ? `<div class="lado izq">${lado}</div><div class="lado der">${lado}</div>` : ""}<div class="linterna"></div></div>`;
   const frente = `<div class="primer-plano esc-${esc}" aria-hidden="true"><div class="rama izq">${rama}</div><div class="rama der">${rama}</div></div>`;
-  const c = CAMINO[esc];
-  const camino = `<svg class="camino" aria-hidden="true" data-ancho="${c.ancho}" data-segundo="${c.segundo}"${c.punteado ? ` data-punteado="${c.punteado}"` : ""}><path class="camino-dos"/><path class="camino-uno"/><g class="brotes"></g></svg>`;
   return { fondo, frente, camino };
 }
 
@@ -250,7 +262,16 @@ background:radial-gradient(circle,color-mix(in srgb,var(--acento) 34%,transparen
 .chispa{position:fixed;z-index:5;pointer-events:none;width:22px;height:22px;margin:-11px 0 0 -11px;fill:var(--acento);stroke:var(--acento);stroke-width:1.2;animation:chispa 1.1s ease-out forwards}
 .chispa svg{width:100%;height:100%;overflow:visible}
 @keyframes chispa{0%{transform:translate(0,0) scale(.4);opacity:1}100%{transform:translate(var(--dx),var(--dy)) scale(1) rotate(var(--gr));opacity:0}}
-@media (prefers-reduced-motion:reduce){.escena .capa,.escena .lado,.primer-plano .rama{transform:none!important}}
+/* Fondo realista: la foto respira despacio, la bruma cruza y el velo deja leer los textos de la portada. */
+.escena.con-foto .lejos{opacity:1}.escena.con-foto .medio{opacity:1}
+.escena .foto i{position:absolute;inset:0;background:center/cover no-repeat;animation:respira 40s ease-in-out infinite alternate;will-change:transform}
+@keyframes respira{from{transform:scale(1.03)}to{transform:scale(1.1) translateX(-1.5%)}}
+.escena .bruma i{position:absolute;left:-30%;width:160%;height:38%;border-radius:50%;background:radial-gradient(ellipse at center,color-mix(in srgb,var(--claro) 24%,transparent),transparent 66%);filter:blur(16px);animation:bruma 26s ease-in-out infinite alternate}
+.escena .bruma i:nth-child(1){top:52%}.escena .bruma i:nth-child(2){top:18%;opacity:.6;animation-duration:36s;animation-direction:alternate-reverse}.escena .bruma i:nth-child(3){top:76%;animation-duration:21s}
+@keyframes bruma{from{transform:translateX(-14%)}to{transform:translateX(14%)}}
+.escena .velo{position:absolute;inset:0;background:linear-gradient(180deg,color-mix(in srgb,var(--fondo) 50%,transparent),color-mix(in srgb,var(--fondo) 12%,transparent) 32%,color-mix(in srgb,var(--fondo) 22%,transparent) 70%,color-mix(in srgb,var(--fondo) 62%,transparent)),radial-gradient(ellipse at 50% 45%,transparent 45%,rgba(0,0,0,.38))}
+.con-foto~.pagina .portada .pre,.con-foto~.pagina .portada .nombres,.con-foto~.pagina .pista,.con-foto~.pagina .desliza,.con-foto~.pagina .pie{text-shadow:0 2px 14px rgba(0,0,0,.8),0 0 3px rgba(0,0,0,.6)}
+@media (prefers-reduced-motion:reduce){.escena .capa,.escena .lado,.primer-plano .rama{transform:none!important}.escena .foto i{animation:none}.escena .bruma i{animation-duration:60s}}
 ${esc === "noche" ? ".escena .lejos{opacity:.8}" : ""}`;
 }
 

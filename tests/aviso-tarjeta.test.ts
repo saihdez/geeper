@@ -125,6 +125,7 @@ const QUIEN_LO_LANZA: Record<string, string[]> = {
   "camara3d.generar": ["src/components/panel-camara3d.tsx"],
   "blender.rehacer": ["src/components/editar-en-blender.tsx"],
   "invitacion.foto": ["src/components/invitacion-imagenes.tsx"],
+  "invitacion.fondo": ["src/components/invitacion-imagenes.tsx"],
   "invitacion.qr": ["src/components/invitacion-imagenes.tsx"],
   // Sólo desde la terminal (worker/preparar-efectos.ts): no hay botón en la app.
   "efectos.preparar": [],

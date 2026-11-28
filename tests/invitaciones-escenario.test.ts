@@ -44,4 +44,16 @@ describe("escenario del tema", () => {
     expect(html).not.toContain("animation:none!important");
     expect(html).toContain("function bajarA(el)");
   });
+
+  it("con fondo realista: la foto reemplaza siluetas y ramas, con bruma y velo; sin la imagen, vuelven las siluetas", () => {
+    const html = compilar(inv({ fondo: "fondo.webp" }), { fuentesCss: "", fondoB64: "QUJD" }).html;
+    expect(html).toContain('<div class="escena esc-jardin con-foto"');
+    expect(html).toContain('<div class="capa lejos foto"><i style="background-image:url(data:image/webp;base64,QUJD)"></i></div>');
+    expect(html).toContain('<div class="capa medio bruma">');
+    expect(html).toContain('<div class="primer-plano con-foto" aria-hidden="true"></div>');
+    expect(html).not.toContain('<div class="rama izq">');
+    expect(html).toContain('class="camino"');
+    // El fondo marcado en el json pero sin el archivo: escenario dibujado.
+    expect(compilar(inv({ fondo: "fondo.webp" }), { fuentesCss: "" }).html).not.toContain("con-foto\"");
+  });
 });

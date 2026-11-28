@@ -69,13 +69,16 @@ export function arteDe(inv: Pick<Invitacion, "plantilla" | "tema" | "tipo">): st
 
 // ── Propuestas en disco ──────────────────────────────────────────────────────────────────────────
 
-export const NOMBRE_PROPUESTA = /^(foto-\d{13}-\d|qr-\d+-l[1-4])\.png$/;
+export const NOMBRE_PROPUESTA = /^((?:foto|fondo)-\d{13}-\d|qr-\d+-l[1-4])\.png$/;
+export type ClaseImagen = "foto" | "fondo" | "qr";
 const MAX_PROPUESTAS = 12;
 
 export const dirPropuestas = (dirInvitacion: string) => path.join(dirInvitacion, "propuestas");
 
 export interface Propuestas {
   fotos: string[];
+  /** Fondos realistas para toda la página (verticales). */
+  fondos: string[];
   /** Los QR que escanean, primero los que se leen en más tamaños. */
   qrs: { archivo: string; lecturas: number }[];
 }
@@ -84,13 +87,14 @@ export async function leerPropuestas(dirInvitacion: string): Promise<Propuestas>
   const nombres = (await fs.readdir(dirPropuestas(dirInvitacion)).catch(() => [] as string[])).filter((n) => NOMBRE_PROPUESTA.test(n));
   const fecha = (n: string) => statSync(path.join(dirPropuestas(dirInvitacion), n), { throwIfNoEntry: false })?.mtimeMs ?? 0;
   const fotos = nombres.filter((n) => n.startsWith("foto-")).sort().reverse();
+  const fondos = nombres.filter((n) => n.startsWith("fondo-")).sort().reverse();
   const qrs = nombres.filter((n) => n.startsWith("qr-")).map((archivo) => ({ archivo, lecturas: Number(/-l(\d)\.png$/.exec(archivo)![1]), fecha: fecha(archivo) }))
     .sort((a, b) => b.fecha - a.fecha || b.lecturas - a.lecturas).map(({ archivo, lecturas }) => ({ archivo, lecturas }));
-  return { fotos, qrs };
+  return { fotos, fondos, qrs };
 }
 
 /** Deja sólo las últimas MAX_PROPUESTAS de cada clase. */
-async function podar(dir: string, prefijo: "foto-" | "qr-") {
+async function podar(dir: string, prefijo: `${ClaseImagen}-`) {
   const lista = (await fs.readdir(dir).catch(() => [] as string[])).filter((n) => n.startsWith(prefijo) && NOMBRE_PROPUESTA.test(n))
     .map((n) => ({ n, t: statSync(path.join(dir, n)).mtimeMs })).sort((a, b) => b.t - a.t);
   for (const { n } of lista.slice(MAX_PROPUESTAS)) await fs.rm(path.join(dir, n), { force: true });
@@ -430,22 +434,38 @@ export function ajustesFoto(descripcion: string, estilo: string, semilla = Math.
   };
 }
 
-export async function generarFotos(ctx: ContextoImagen & { alAvanzar?: (a: Avance) => void }, dirInvitacion: string, ajustes: AjustesWan2gp): Promise<string[]> {
-  ctx.log(`Foto del sobre: ${ajustes.model_type}, ${ajustes.batch_size} tomas. Prompt: ${ajustes.prompt}`);
+/**
+ * Ajustes de Wan2GP para el fondo de toda la página: vertical (como el teléfono), fotográfico, como un
+ * cuadro de película, sin personas ni texto y con el centro más tranquilo para que se lean las tarjetas.
+ */
+export function ajustesFondo(descripcion: string, estilo: string, semilla = Math.floor(Math.random() * 2_147_483_647)): AjustesWan2gp {
+  const d = descripcion.trim();
+  return {
+    model_type: "z_image",
+    image_mode: 1,
+    prompt: `${d ? `${d}. ` : ""}Mood: ${estilo}. Cinematic photorealistic wide establishing shot, vertical composition, film still from a fantasy movie, volumetric light, atmospheric depth, mist, rich detail at the edges and a calmer, softer center, no people, no text, no letters, no watermark.`,
+    resolution: "768x1344",
+    batch_size: TOMAS_FOTO,
+    seed: semilla,
+  };
+}
+
+export async function generarFotos(ctx: ContextoImagen & { alAvanzar?: (a: Avance) => void }, dirInvitacion: string, ajustes: AjustesWan2gp, clase: "foto" | "fondo" = "foto"): Promise<string[]> {
+  ctx.log(`${clase === "fondo" ? "Fondo de la página" : "Foto del sobre"}: ${ajustes.model_type}, ${ajustes.batch_size} tomas. Prompt: ${ajustes.prompt}`);
   const corrida = path.join(dirInvitacion, "wan2gp", new Date().toISOString().replace(/[:.]/g, "-"));
   const imagenes = await generarImagenes({ instalacion: instalacionWan2gp(), ajustes, dirCorrida: corrida, signal: ctx.signal, log: ctx.log, alAvanzar: ctx.alAvanzar });
-  if (!imagenes.length) throw new Error("No salió ninguna foto. Prueba con otra descripción.");
+  if (!imagenes.length) throw new Error(`No salió ninguna ${clase === "fondo" ? "imagen de fondo" : "foto"}. Prueba con otra descripción.`);
   const dir = dirPropuestas(dirInvitacion);
   await fs.mkdir(dir, { recursive: true });
   const t = Date.now();
   const nombres: string[] = [];
   for (const [k, img] of imagenes.slice(0, 9).entries()) {
-    const nombre = `foto-${t}-${k + 1}.png`;
+    const nombre = `${clase}-${t}-${k + 1}.png`;
     await correr(FFMPEG, ["-v", "error", "-y", "-i", img, path.join(dir, nombre)]);
     nombres.push(nombre);
   }
   await fs.rm(corrida, { recursive: true, force: true });
-  await podar(dir, "foto-");
+  await podar(dir, `${clase}-`);
   return nombres;
 }
 
@@ -459,7 +479,7 @@ export async function descartarPropuesta(dirInvitacion: string, nombre: string):
 }
 
 /** Borra todas las fotos o todos los QR propuestos. */
-export async function descartarPropuestas(dirInvitacion: string, que: "foto" | "qr"): Promise<number> {
+export async function descartarPropuestas(dirInvitacion: string, que: ClaseImagen): Promise<number> {
   const dir = dirPropuestas(dirInvitacion);
   const nombres = (await fs.readdir(dir).catch(() => [] as string[])).filter((n) => NOMBRE_PROPUESTA.test(n) && n.startsWith(`${que}-`));
   await Promise.all(nombres.map((n) => fs.rm(path.join(dir, n), { force: true })));
@@ -505,13 +525,16 @@ export async function aplicarAjustesFoto(origen: string, destino: string, ajuste
   if (r.codigo !== 0) throw new Error("No se pudo ajustar la foto. Prueba con otros ajustes o elige otra.");
 }
 
-export async function copiarElegida(dirInvitacion: string, archivo: string, que: "foto" | "qr"): Promise<void> {
+export async function copiarElegida(dirInvitacion: string, archivo: string, que: ClaseImagen): Promise<void> {
   if (!NOMBRE_PROPUESTA.test(archivo) || !archivo.startsWith(`${que}-`)) throw new Error("Esa propuesta no existe");
   const origen = path.join(dirPropuestas(dirInvitacion), archivo);
   if (!existsSync(origen)) throw new Error("Esa propuesta ya no está: crea otras.");
   if (que === "foto") {
     await correr(FFMPEG, ["-y", "-v", "error", "-i", origen, "-frames:v", "1", "-vf", "scale='min(1080,iw)':-2", "-c:v", "libwebp", "-quality", "82", path.join(dirInvitacion, "foto.webp")]);
     await fs.copyFile(origen, path.join(dirInvitacion, FOTO_ORIGINAL));
+  } else if (que === "fondo") {
+    // Va dentro de la página: 900 px de ancho y WebP liviano (~150-300 KB) para que abra rápido con datos.
+    await correr(FFMPEG, ["-y", "-v", "error", "-i", origen, "-frames:v", "1", "-vf", "scale='min(900,iw)':-2", "-c:v", "libwebp", "-quality", "74", path.join(dirInvitacion, "fondo.webp")]);
   } else {
     await escribirAtomico(path.join(dirInvitacion, "qr-arte.png"), await fs.readFile(origen));
   }
