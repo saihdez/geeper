@@ -101,6 +101,8 @@ export const Invitacion = Entrada.omit({ musicaEnlace: true, plantilla: true }).
   urlPublica: httpsUrl.optional(),
   /** QR con dibujo elegido (imagenes.ts) y la dirección que lleva: si la dirección cambia, ya no sirve. */
   qrArte: z.object({ archivo: z.literal("qr-arte.png"), url: z.string() }).optional(),
+  /** Imagen del enlace en WhatsApp: la portada (por defecto) o el QR con dibujo. */
+  vistaPrevia: z.enum(["portada", "qr"]).optional(),
   retoques: Retoques.optional(),
   ocultas: z.array(Seccion).optional(),
   /** Pedido de Google Forms del que salió (formularios.ts). */

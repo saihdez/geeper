@@ -53,7 +53,13 @@ export function iniciales(nombres: string): string {
 export function urlOg(inv: Invitacion): string | null {
   if (!inv.urlPublica) return null;
   const base = inv.urlPublica.replace(/[?#].*$/, "").replace(/\/index\.html?$/i, "").replace(/\/?$/, "/");
-  return `${base}portada-og.jpg`;
+  // ?v= cambia con cada guardado: WhatsApp vuelve a bajar la imagen en vez de usar la vieja.
+  return `${base}portada-og.jpg?v=${Date.parse(inv.actualizada) || 0}`;
+}
+
+/** La imagen del enlace es el QR con dibujo (cuadrada) sólo si se pidió y ese QR lleva esta dirección. */
+export function vistaPreviaQr(inv: Invitacion): boolean {
+  return inv.vistaPrevia === "qr" && !!inv.urlPublica && inv.qrArte?.url === inv.urlPublica;
 }
 
 const ICONO = {
@@ -344,7 +350,7 @@ ${inv.confirmarAntes ? `<p class="nota">${t("rsvp-limite")}</p>` : ""}${inv.pase
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>${esc(largo)}</title><meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="${e.colores.fondo}">
 <meta name="description" content="${esc(descripcionOg)}"><meta property="og:type" content="website"><meta property="og:title" content="${esc(largo)}"><meta property="og:description" content="${esc(descripcionOg)}">
-${og ? `<meta property="og:image" content="${esc(og)}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:url" content="${esc(inv.urlPublica!)}"><meta name="twitter:card" content="summary_large_image">` : ""}
+${og ? `<meta property="og:image" content="${esc(og)}"><meta property="og:image:width" content="${vistaPreviaQr(inv) ? 800 : 1200}"><meta property="og:image:height" content="${vistaPreviaQr(inv) ? 800 : 630}"><meta property="og:url" content="${esc(inv.urlPublica!)}"><meta name="twitter:card" content="summary_large_image">` : ""}
 <style>${r.fuentesCss}${css(e)}${cssEscenario(e)}${ed ? CSS_EDITOR : ""}</style><noscript><style>.cerrado .resto{display:block}.aparece{opacity:1;transform:none}.sello,.pista{display:none}</style></noscript></head>
 <body class="cerrado">${escena.fondo}<main class="pagina">
 <section class="portada">${esquinas(e.adorno)}<p class="pre">${t("pre")}</p><h1 class="script nombres">${t("nombres")}</h1>

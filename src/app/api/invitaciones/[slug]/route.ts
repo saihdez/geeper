@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { json, manejar } from "@/lib/http";
-import { borrarInvitacion, guardarInvitacion, leerInvitacion, ponerUrlPublica } from "@/lib/invitaciones/construir";
+import { borrarInvitacion, guardarInvitacion, leerInvitacion, ponerUrlPublica, ponerVistaPrevia } from "@/lib/invitaciones/construir";
 import { leerFormulario } from "@/lib/invitaciones/formulario";
 
 export const dynamic = "force-dynamic";
@@ -20,11 +20,20 @@ export async function PUT(req: Request, ctx: Ctx) {
   });
 }
 
-/** Dirección donde quedó publicada (o `null` para quitarla): rehace el QR y la vista previa. */
+/**
+ * Dirección donde quedó publicada (o `null` para quitarla): rehace el QR y la vista previa.
+ * Con `{ vistaPrevia }`: la imagen del enlace en WhatsApp (portada o QR con dibujo).
+ */
 export async function PATCH(req: Request, ctx: Ctx) {
   return manejar(async () => {
     const { slug } = await ctx.params;
-    const { urlPublica } = z.object({ urlPublica: z.string().trim().nullable() }).parse(await req.json());
+    const cuerpo: unknown = await req.json();
+    const vp = z.object({ vistaPrevia: z.enum(["portada", "qr"]) }).safeParse(cuerpo);
+    if (vp.success) {
+      const { inv, avisos } = await ponerVistaPrevia(slug, vp.data.vistaPrevia);
+      return json({ invitacion: inv, avisos });
+    }
+    const { urlPublica } = z.object({ urlPublica: z.string().trim().nullable() }).parse(cuerpo);
     const { inv, avisos } = await ponerUrlPublica(slug, urlPublica || null);
     return json({ invitacion: inv, avisos });
   });

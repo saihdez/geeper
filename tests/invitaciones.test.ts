@@ -146,8 +146,14 @@ describe("compilar", () => {
   });
   it("con la URL publicada pone og:image absoluta", () => {
     const i = inv({ urlPublica: "https://ana-luis.netlify.app/index.html" });
-    expect(urlOg(i)).toBe("https://ana-luis.netlify.app/portada-og.jpg");
-    expect(compilar(i, { fuentesCss: "" }).html).toContain('og:image" content="https://ana-luis.netlify.app/portada-og.jpg"');
+    expect(urlOg(i)).toMatch(/^https:\/\/ana-luis\.netlify\.app\/portada-og\.jpg\?v=\d+$/);
+    expect(compilar(i, { fuentesCss: "" }).html).toContain('og:image" content="https://ana-luis.netlify.app/portada-og.jpg?v=');
+    expect(compilar(i, { fuentesCss: "" }).html).toContain('og:image:width" content="1200"');
+    // Con el QR con dibujo como imagen del enlace: cuadrada.
+    const conQr = { ...i, vistaPrevia: "qr" as const, qrArte: { archivo: "qr-arte.png" as const, url: i.urlPublica! } };
+    expect(compilar(conQr, { fuentesCss: "" }).html).toContain('og:image:width" content="800"');
+    // Si el QR lleva otra dirección, vuelve a la portada.
+    expect(compilar({ ...conQr, qrArte: { archivo: "qr-arte.png", url: "https://otra.netlify.app/" } }, { fuentesCss: "" }).html).toContain('og:image:width" content="1200"');
   });
   it("compila todas las plantillas con todos los tipos", () => {
     for (const plantilla of PLANTILLAS) for (const tipo of TIPOS) expect(compilar(inv({ plantilla, tipo }), { fuentesCss: "" }).html.length).toBeGreaterThan(5000);

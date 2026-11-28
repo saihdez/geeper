@@ -136,6 +136,20 @@ export function PanelQr({ inv, alCambiar }: { inv: Invitacion; alCambiar: (aviso
   const trabajo = enCurso.find((t) => t.que === "qr");
   const ultimo = datos?.trabajos.find((t) => t.que === "qr");
   const usado = inv.qrArte?.url === url;
+  const [cambiandoVista, setCambiandoVista] = useState(false);
+
+  async function vistaPrevia(v: "portada" | "qr") {
+    setFalla(null);
+    setCambiandoVista(true);
+    try {
+      const r = await pedir<{ avisos: string[] }>(`/api/invitaciones/${inv.slug}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ vistaPrevia: v }) });
+      alCambiar(r.avisos);
+    } catch (e) {
+      setFalla(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCambiandoVista(false);
+    }
+  }
 
   async function pedirQr() {
     setOcupado(true);
@@ -172,6 +186,14 @@ export function PanelQr({ inv, alCambiar }: { inv: Invitacion; alCambiar: (aviso
             <a className="boton" href={archivo(inv.slug, "qr.png", inv.actualizada, true)}>Descargar QR</a>
             <a className="boton" href={`https://wa.me/?text=${encodeURIComponent(url)}`} target="_blank" rel="noopener">Mandar por WhatsApp</a>
           </div>
+          {usado && (
+            <fieldset className="space-y-1" disabled={cambiandoVista}>
+              <legend className="text-xs text-tenue">Imagen que se ve al mandar el enlace por WhatsApp</legend>
+              <label className="flex items-center gap-2"><input type="radio" name={`vista-${inv.slug}`} checked={inv.vistaPrevia !== "qr"} onChange={() => void vistaPrevia("portada")} />La portada (nombre y foto)</label>
+              <label className="flex items-center gap-2"><input type="radio" name={`vista-${inv.slug}`} checked={inv.vistaPrevia === "qr"} onChange={() => void vistaPrevia("qr")} />El QR con dibujo</label>
+              <p className="text-xs text-tenue">{cambiandoVista ? "Rehaciendo la imagen…" : "Después de cambiarla, descarga el .zip y vuelve a subirlo a Netlify."}</p>
+            </fieldset>
+          )}
         </div>
       </div>
 

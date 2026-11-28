@@ -16,7 +16,7 @@ import { CACHE_HF, dirDatos, FFMPEG } from "../rutas";
 import { TIPOS_INFO } from "./catalogo";
 import { estiloDe } from "./estilo";
 import { asegurarContraste, Tema } from "./tema";
-import { basesDe, compilar, esc, iniciales, retoquesVigentes, titulos } from "./compilar";
+import { basesDe, compilar, esc, iniciales, retoquesVigentes, titulos, vistaPreviaQr } from "./compilar";
 import { instanteUTC, textosFecha } from "./calendario";
 import { leerEnlaceMusica, resolverEnlaceMusica } from "./enlaces";
 import { Entrada, fechaPasada, Invitacion, normalizarUrlPublica, Retoques, Seccion, SLUG, type EstiloId } from "./esquema";
@@ -236,6 +236,7 @@ export async function guardarInvitacion(entrada: unknown, subidas: Subidas, slug
     foto,
     urlPublica: previa?.urlPublica,
     qrArte: previa?.qrArte,
+    vistaPrevia: previa?.vistaPrevia,
     retoques: previa?.retoques,
     ocultas: previa?.ocultas,
     formulario: extra.formulario ?? previa?.formulario,
@@ -298,6 +299,14 @@ export async function ponerUrlPublica(slug: string, url: string | null): Promise
   const inv = Invitacion.parse({ ...previa, urlPublica: limpia, qrArte, actualizada: new Date().toISOString() });
   await escribirAtomico(path.join(dirInvitacion(slug), "invitacion.json"), JSON.stringify(inv, null, 2));
   return { inv, avisos: [...avisos, ...(await construir(inv))] };
+}
+
+/** Imagen del enlace en WhatsApp: la portada o el QR con dibujo. Rehace la página y la imagen. */
+export async function ponerVistaPrevia(slug: string, vistaPrevia: "portada" | "qr"): Promise<{ inv: Invitacion; avisos: string[] }> {
+  const previa = await leerInvitacion(slug);
+  const inv = Invitacion.parse({ ...previa, vistaPrevia, actualizada: new Date().toISOString() });
+  await escribirAtomico(path.join(dirInvitacion(slug), "invitacion.json"), JSON.stringify(inv, null, 2));
+  return { inv, avisos: await construir(inv) };
 }
 
 /** Usa una propuesta de IA: la foto del sobre o el QR con dibujo. */
@@ -612,8 +621,13 @@ async function hacerPortada(inv: Invitacion, fuentesCss: string, fotoB64: string
   const pw = await import("playwright-core");
   const nav = await pw.chromium.launch({ executablePath: chrome() });
   try {
-    const page = await nav.newPage({ viewport: { width: 1200, height: 630 } });
-    await page.setContent(htmlPortada(inv, fuentesCss, fotoB64), { waitUntil: "load", timeout: 30_000 });
+    const qr = vistaPreviaQr(inv) ? path.join(dirInvitacion(inv.slug), "qr-arte.png") : null;
+    const conQr = qr && existsSync(qr) ? (await fs.readFile(qr)).toString("base64") : null;
+    const page = await nav.newPage({ viewport: conQr ? { width: 800, height: 800 } : { width: 1200, height: 630 } });
+    const html = conQr
+      ? `<!doctype html><style>html,body{margin:0}img{display:block;width:800px;height:800px}</style><img src="data:image/png;base64,${conQr}">`
+      : htmlPortada(inv, fuentesCss, fotoB64);
+    await page.setContent(html, { waitUntil: "load", timeout: 30_000 });
     await page.evaluate(() => document.fonts.ready);
     const jpg = await page.screenshot({ type: "jpeg", quality: 86 });
     await escribirAtomico(destino, jpg);
