@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { json, manejar } from "@/lib/http";
-import { ajustarFoto, dirInvitacion, quitarFondo, usarPropuesta } from "@/lib/invitaciones/construir";
+import { ajustarFoto, dirInvitacion, quitarFondo, usarEfectoPropio, usarPropuesta } from "@/lib/invitaciones/construir";
+import { Movimiento } from "@/lib/invitaciones/esquema";
 import { descartarPropuestas, leerPropuestas } from "@/lib/invitaciones/imagenes";
 import { pedirImagen, PedidoImagen, trabajosDe } from "@/lib/invitaciones/trabajos";
 
@@ -36,7 +37,16 @@ export async function POST(req: Request, ctx: Ctx) {
 export async function PUT(req: Request, ctx: Ctx) {
   return manejar(async () => {
     const { slug } = await ctx.params;
-    const { archivo, ajustes, quitar } = z.object({ archivo: z.string().optional(), ajustes: z.unknown().optional(), quitar: z.literal("fondo").optional() }).parse(await req.json());
+    const { archivo, ajustes, quitar, efecto } = z.object({
+      archivo: z.string().optional(),
+      ajustes: z.unknown().optional(),
+      quitar: z.literal("fondo").optional(),
+      efecto: z.object({ archivos: z.array(z.string()).min(1).max(6), descripcion: z.string().trim().max(300), movimiento: Movimiento }).optional(),
+    }).parse(await req.json());
+    if (efecto) {
+      const { inv, avisos } = await usarEfectoPropio(slug, efecto);
+      return json({ invitacion: inv, avisos });
+    }
     if (quitar) {
       const { inv, avisos } = await quitarFondo(slug);
       return json({ invitacion: inv, avisos });
@@ -51,11 +61,11 @@ export async function PUT(req: Request, ctx: Ctx) {
   });
 }
 
-/** Descarta todas las fotos (`?que=foto`), los fondos (`?que=fondo`) o los QR (`?que=qr`) propuestos. */
+/** Descarta todas las fotos (`?que=foto`), los fondos (`?que=fondo`), las figuras de efecto (`?que=efecto`) o los QR (`?que=qr`) propuestos. */
 export async function DELETE(req: Request, ctx: Ctx) {
   return manejar(async () => {
     const { slug } = await ctx.params;
-    const que = z.enum(["foto", "fondo", "qr"]).parse(new URL(req.url).searchParams.get("que"));
+    const que = z.enum(["foto", "fondo", "efecto", "qr"]).parse(new URL(req.url).searchParams.get("que"));
     return json({ borradas: await descartarPropuestas(dirInvitacion(slug), que) });
   });
 }

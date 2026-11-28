@@ -19,9 +19,9 @@ import { asegurarContraste, Tema } from "./tema";
 import { basesDe, compilar, esc, iniciales, retoquesVigentes, titulos, vistaPreviaQr } from "./compilar";
 import { instanteUTC, textosFecha } from "./calendario";
 import { leerEnlaceMusica, resolverEnlaceMusica } from "./enlaces";
-import { Entrada, fechaPasada, Invitacion, normalizarUrlPublica, Retoques, Seccion, SLUG, type EstiloId } from "./esquema";
+import { Entrada, fechaPasada, Invitacion, normalizarUrlPublica, Retoques, Seccion, SLUG, type EstiloId, type Movimiento } from "./esquema";
 import { z } from "zod";
-import { AjustesFoto, aplicarAjustesFoto, copiarElegida, dirPropuestas, FONDO_BORROSO, FOTO_ORIGINAL, hacerFondoBorroso, NOMBRE_PROPUESTA, pngQrBase } from "./imagenes";
+import { AjustesFoto, aplicarAjustesFoto, copiarElegida, dirPropuestas, FONDO_BORROSO, FOTO_ORIGINAL, guardarFigurasEfecto, hacerFondoBorroso, NOMBRE_PROPUESTA, pngQrBase } from "./imagenes";
 import { cambiosDesdeAvnac, disenoAvnac, leerDisenoAvnac, nombreArchivoAvnac } from "./avnac";
 import { abrirAvnac } from "../avnac";
 import { SISTEMA } from "../plataforma";
@@ -235,6 +235,7 @@ export async function guardarInvitacion(entrada: unknown, subidas: Subidas, slug
     musicaEnlace: musica.tipo === "spotify" || musica.tipo === "youtube" ? musicaEnlace : undefined,
     foto,
     fondo: previa?.fondo,
+    efectoPropio: previa?.efectoPropio,
     urlPublica: previa?.urlPublica,
     qrArte: previa?.qrArte,
     vistaPrevia: previa?.vistaPrevia,
@@ -300,6 +301,20 @@ export async function ponerUrlPublica(slug: string, url: string | null): Promise
   const inv = Invitacion.parse({ ...previa, urlPublica: limpia, qrArte, actualizada: new Date().toISOString() });
   await escribirAtomico(path.join(dirInvitacion(slug), "invitacion.json"), JSON.stringify(inv, null, 2));
   return { inv, avisos: [...avisos, ...(await construir(inv))] };
+}
+
+/** Usa figuras dibujadas con IA como efecto del sobre (y lo deja elegido). */
+export async function usarEfectoPropio(slug: string, p: { archivos: string[]; descripcion: string; movimiento: Movimiento }): Promise<{ inv: Invitacion; avisos: string[] }> {
+  const previa = await leerInvitacion(slug);
+  const figuras = await guardarFigurasEfecto(dirInvitacion(slug), p.archivos);
+  const inv = Invitacion.parse({
+    ...previa,
+    efectoSobre: "propio",
+    efectoPropio: { descripcion: p.descripcion.slice(0, 300), movimiento: p.movimiento, figuras },
+    actualizada: new Date().toISOString(),
+  });
+  await escribirAtomico(path.join(dirInvitacion(slug), "invitacion.json"), JSON.stringify(inv, null, 2));
+  return { inv, avisos: await construir(inv) };
 }
 
 /** Vuelve al escenario dibujado (siluetas): quita el fondo realista. */
@@ -378,14 +393,18 @@ async function recursosDe(inv: Invitacion) {
     if (existsSync(borroso)) fondoBorrosoB64 = (await fs.readFile(borroso)).toString("base64");
   }
   const musicaB64 = inv.musica.tipo === "archivo" ? (await fs.readFile(path.join(dir, "musica.mp3"))).toString("base64") : undefined;
-  return { fuentes, fotoB64, fondoB64, fondoBorrosoB64, musicaB64 };
+  const figurasB64: string[] = [];
+  for (const f of inv.efectoSobre === "propio" ? (inv.efectoPropio?.figuras ?? []) : []) {
+    if (existsSync(path.join(dir, f))) figurasB64.push((await fs.readFile(path.join(dir, f))).toString("base64"));
+  }
+  return { fuentes, fotoB64, fondoB64, fondoBorrosoB64, figurasB64, musicaB64 };
 }
 
 /** La página en modo «Corregir a mano» (sin audio: no hace falta para escribir). */
 export async function htmlEditor(slug: string): Promise<string> {
   const inv = await leerInvitacion(slug);
-  const { fuentes, fotoB64, fondoB64, fondoBorrosoB64 } = await recursosDe(inv);
-  return compilar(inv, { fuentesCss: fuentes.css, fotoB64, fondoB64, fondoBorrosoB64 }, Date.now(), { editor: true }).html;
+  const { fuentes, fotoB64, fondoB64, fondoBorrosoB64, figurasB64 } = await recursosDe(inv);
+  return compilar(inv, { fuentesCss: fuentes.css, fotoB64, fondoB64, fondoBorrosoB64, figurasB64 }, Date.now(), { editor: true }).html;
 }
 
 /** La invitación como diseño de Avnac Studio, con la foto y el QR adentro (avnac.ts). */
@@ -554,9 +573,9 @@ export async function construir(inv: Invitacion, op: { portada?: boolean } = {})
   const pub = path.join(dir, "publicar");
   await fs.mkdir(pub, { recursive: true });
   const avisos: string[] = [];
-  const { fuentes, fotoB64, fondoB64, fondoBorrosoB64, musicaB64 } = await recursosDe(inv);
+  const { fuentes, fotoB64, fondoB64, fondoBorrosoB64, figurasB64, musicaB64 } = await recursosDe(inv);
   if (fuentes.aviso) avisos.push(fuentes.aviso);
-  const { html, ics } = compilar(inv, { fuentesCss: fuentes.css, fotoB64, fondoB64, fondoBorrosoB64, musicaB64 });
+  const { html, ics } = compilar(inv, { fuentesCss: fuentes.css, fotoB64, fondoB64, fondoBorrosoB64, figurasB64, musicaB64 });
 
   const peso = Buffer.byteLength(html);
   const max = musicaB64 ? PESO_MAX.conAudio : PESO_MAX.sinAudio;

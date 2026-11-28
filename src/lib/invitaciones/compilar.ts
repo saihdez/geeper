@@ -21,6 +21,8 @@ export interface Recursos {
   fondoB64?: string;
   /** Copia diminuta y oscurecida del fondo para los lados en pantallas anchas (ya se ve desenfocada). */
   fondoBorrosoB64?: string;
+  /** Figuras del efecto propio del sobre (WebP con transparencia). */
+  figurasB64?: string[];
   musicaB64?: string;
 }
 
@@ -314,7 +316,7 @@ export function compilar(inv: Invitacion, r: Recursos, ahora = Date.now(), op: O
   const og = urlOg(inv);
   const reproductor = urlReproductor(inv.musica);
   const colores = inv.dressCode.colores.length ? inv.dressCode.colores : [];
-  const datos = { inicio: ev.inicio, fin: ev.fin, zona: inv.zona, whatsapp: inv.whatsapp, evento: largo, acento: e.colores.acento, claro: e.colores.claro, tarjeta: e.colores.tarjeta, efecto: datosEfecto(inv, e) };
+  const datos = { inicio: ev.inicio, fin: ev.fin, zona: inv.zona, whatsapp: inv.whatsapp, evento: largo, acento: e.colores.acento, claro: e.colores.claro, tarjeta: e.colores.tarjeta, efecto: datosEfecto(inv, e, r.figurasB64) };
   const maxPersonas = inv.pases ?? 6;
   const descripcionOg = `${f.fecha} · ${inv.lugar.nombre}`;
 

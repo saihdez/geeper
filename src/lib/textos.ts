@@ -27,6 +27,7 @@ export const TIPOS_TRABAJO: Record<TipoTrabajo, string> = {
   "blender.rehacer": "Dibujando tus cambios de Blender",
   "invitacion.foto": "Dibujando la foto de la invitación",
   "invitacion.fondo": "Dibujando el fondo de la invitación",
+  "invitacion.efecto": "Dibujando el efecto del sobre",
   "invitacion.qr": "Dibujando el QR de la invitación",
   "demo.crear": "Grabando la demo de una página web",
   "voz.regenerar": "Grabando la voz otra vez",

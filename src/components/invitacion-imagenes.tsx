@@ -1,12 +1,13 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- imágenes locales de la invitación, servidas por la API */
 import { useRef, useState } from "react";
-import type { Invitacion } from "@/lib/invitaciones/esquema";
+import { MOVIMIENTOS, type Invitacion, type Movimiento } from "@/lib/invitaciones/esquema";
+import { movimientoDe, NOMBRES_MOVIMIENTO } from "@/lib/invitaciones/efecto-sobre";
 import { Aviso, AvisoTarjeta, Barra, LineaFalta, faltanConGuardar, pedir, postJson, useGuardeAntes, useSondeo } from "./comun";
 
 interface TrabajoImagen {
   id: string;
-  que: "foto" | "fondo" | "qr";
+  que: "foto" | "fondo" | "efecto" | "qr";
   estado: string;
   etapa: string | null;
   progreso: number;
@@ -15,6 +16,7 @@ interface TrabajoImagen {
 interface DatosImagenes {
   fotos: string[];
   fondos: string[];
+  efectos: string[];
   qrs: { archivo: string; lecturas: number }[];
   trabajos: TrabajoImagen[];
 }
@@ -416,6 +418,115 @@ export function PanelFondo({ inv, alCambiar }: { inv: Invitacion; alCambiar: (av
       )}
       {fondos.length > 1 && (
         <button type="button" className="text-xs text-tenue underline" onClick={() => void descartar(`/api/invitaciones/${inv.slug}/imagenes?que=fondo`, "¿Descartar todos los fondos propuestos? El que ya usa la invitación no se borra.").then(() => recargar())}>Descartar todos</button>
+      )}
+    </section>
+  );
+}
+
+/** Efecto propio del sobre: se describe, Geeper dibuja 4 figuras, las recorta y salen volando del sobre. */
+export function PanelEfecto({ inv, alCambiar }: { inv: Invitacion; alCambiar: (avisos: string[]) => void }) {
+  const { datos, enCurso, recargar } = useImagenes(inv.slug);
+  const [descripcion, setDescripcion] = useState(inv.efectoPropio?.descripcion ?? "");
+  const [movimiento, setMovimiento] = useState<Movimiento | "auto">(inv.efectoPropio?.movimiento ?? "auto");
+  const [elegidas, setElegidas] = useState<string[] | null>(null);
+  const guarde = useGuardeAntes();
+  const faltan = faltanConGuardar(guarde);
+  const [ocupado, setOcupado] = useState(false);
+  const [falla, setFalla] = useState<string | null>(null);
+  const trabajo = enCurso.find((t) => t.que === "efecto");
+  const ultimo = datos?.trabajos.find((t) => t.que === "efecto");
+  const figuras = datos?.efectos ?? [];
+  // Por defecto, las 4 más nuevas (una tanda).
+  const marcadas = elegidas ?? figuras.slice(0, 4);
+  const mov: Movimiento = movimiento === "auto" ? movimientoDe(descripcion) : movimiento;
+
+  async function crear() {
+    setOcupado(true);
+    setFalla(null);
+    try {
+      await postJson(`/api/invitaciones/${inv.slug}/imagenes`, { que: "efecto", descripcion, movimiento: movimiento === "auto" ? undefined : movimiento });
+      setElegidas(null);
+      await recargar();
+    } catch (e) {
+      setFalla(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function usar() {
+    setOcupado(true);
+    setFalla(null);
+    try {
+      const r = await pedir<{ avisos: string[] }>(`/api/invitaciones/${inv.slug}/imagenes`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ efecto: { archivos: marcadas.slice(0, 6), descripcion, movimiento: mov } }) });
+      alCambiar(r.avisos);
+    } catch (e) {
+      setFalla(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  const alternar = (f: string) => setElegidas(marcadas.includes(f) ? marcadas.filter((x) => x !== f) : [...marcadas, f]);
+
+  return (
+    <section id="efecto-ia" className="tarjeta space-y-3 p-4">
+      <h2 className="font-medium">🦋 Efecto al abrir el sobre, a tu gusto</h2>
+      <p className="text-sm text-tenue">
+        Describe lo que quieres que salga volando del sobre (mariposas monarca realistas, farolitos de papel, plumas doradas…).
+        Geeper dibuja 4 figuras, les quita el fondo y salen del sobre al tocar el sello. Tarda 1 a 3 minutos.
+      </p>
+      {inv.efectoSobre === "propio" && inv.efectoPropio && (
+        <p className="text-sm">Tu invitación ya usa tu efecto: «{inv.efectoPropio.descripcion}». Para volver a uno de la lista, cámbialo en «Editar → Más detalles».</p>
+      )}
+      {trabajo ? <Progreso t={trabajo} /> : (
+        <>
+          <textarea aria-label="Describe el efecto" className="campo min-h-16" maxLength={300} value={descripcion} onChange={(e) => setDescripcion(e.target.value)}
+            placeholder="Por ejemplo: mariposas monarca realistas" />
+          <label className="block text-sm">
+            <span className="etiqueta">Cómo se mueve</span>
+            <select className="campo" value={movimiento} onChange={(e) => setMovimiento(e.target.value as Movimiento | "auto")}>
+              <option value="auto">Automático{descripcion.trim().length > 1 ? ` (${NOMBRES_MOVIMIENTO[movimientoDe(descripcion)].split(" (")[0]!.toLowerCase()})` : ""}</option>
+              {MOVIMIENTOS.map((m) => <option key={m} value={m}>{NOMBRES_MOVIMIENTO[m]}</option>)}
+            </select>
+          </label>
+          <AvisoTarjeta g={guarde}>El efecto con IA usa la tarjeta de video 1 a 3 minutos.</AvisoTarjeta>
+          <button type="button" className="boton boton-primario" disabled={ocupado || faltan.length > 0 || descripcion.trim().length < 2} aria-describedby={faltan.length ? guarde.idFalta : undefined} onClick={crear}>
+            {figuras.length ? "✨ Crear otras figuras" : "✨ Crear efecto"}
+          </button>
+          <LineaFalta id={guarde.idFalta} faltan={faltan} />
+        </>
+      )}
+      {!trabajo && <Falla t={ultimo} />}
+      {falla && <Aviso tipo="error">{falla}</Aviso>}
+      {figuras.length > 0 && (
+        <>
+          <p className="text-xs text-tenue">Toca las figuras para elegir cuáles salen del sobre (de 1 a 6).</p>
+          <ul className="grid grid-cols-3 gap-3 sm:grid-cols-4">
+            {figuras.map((f) => {
+              const si = marcadas.includes(f);
+              return (
+                <li key={f} className="space-y-1.5">
+                  <button type="button" aria-pressed={si} onClick={() => alternar(f)}
+                    className={`block w-full rounded-lg p-2 ring-2 transition ${si ? "ring-cyan-500" : "opacity-50 ring-transparent"}`}
+                    style={{ background: "repeating-conic-gradient(#2a2f3a 0 25%, #1c2029 0 50%) 0 0/16px 16px" }}>
+                    <img src={propuesta(inv.slug, f)} alt="Figura del efecto" className="mx-auto aspect-square w-full object-contain" loading="lazy" />
+                  </button>
+                  <button type="button" className="boton w-full" title="Descartar esta figura" aria-label="Descartar esta figura" onClick={() => void descartar(propuesta(inv.slug, f)).then(() => { setElegidas(marcadas.filter((x) => x !== f)); return recargar(); }, (e: unknown) => setFalla(e instanceof Error ? e.message : String(e)))}>🗑</button>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="boton boton-primario" disabled={ocupado || marcadas.length < 1 || marcadas.length > 6} onClick={usar}>
+              Usar {marcadas.length === 1 ? "esta figura" : `estas ${marcadas.length} figuras`}
+            </button>
+            {marcadas.length > 6 && <span className="text-xs text-amber-400">Elige 6 como máximo.</span>}
+            {figuras.length > 1 && (
+              <button type="button" className="text-xs text-tenue underline" onClick={() => void descartar(`/api/invitaciones/${inv.slug}/imagenes?que=efecto`, "¿Descartar todas las figuras propuestas? Las que ya usa la invitación no se borran.").then(() => { setElegidas(null); return recargar(); })}>Descartar todas</button>
+            )}
+          </div>
+        </>
       )}
     </section>
   );

@@ -269,6 +269,14 @@ del tema (`efecto-sobre.ts`). Salen del sobre 0,65 s después de tocar el sello,
 todo que se borra solo (~5-8 s). Las mariposas aletean y revolotean más lento; con «reducir movimiento»
 salen la mitad y más despacio.
 
+**Efecto propio con IA** (panel «🦋 Efecto al abrir el sobre, a tu gusto», trabajo `invitacion.efecto`): la
+persona describe el efecto («mariposas monarca realistas») y elige cómo se mueve (aletea, cae girando, flota
+o estalla; «Automático» lo deduce de la descripción). Z-Image dibuja 4 figuras sueltas sobre verde de croma
+(magenta si lo pedido es verde) y `recortarPixeles` les quita el fondo sin GPU (transparencia por distancia
+al color del borde, sin tinte en el contorno, recorte al tamaño de la figura; descarta las que no tienen
+fondo plano). Se eligen de 1 a 6; se guardan como `efecto-N.webp` (≤256 px) y van dentro de la página.
+`efectoSobre: "propio"` + `efectoPropio`; si faltan las figuras, sale el efecto del tema.
+
 ### Datos del cliente con Google Forms (hecho el 2026-11-27)
 
 En Invitaciones, «Pedirle los datos al cliente con Google Forms»: Geeper crea el formulario en la cuenta

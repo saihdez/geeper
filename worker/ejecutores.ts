@@ -23,7 +23,7 @@ import { animarEscenasDelVideo } from "@/lib/animar-escenas";
 import { actuarEscena, leerAvatarDelVideo, PedidoActuar, PedidoStreamer, streamerAvatar } from "@/lib/actuar";
 import { protagonizarVideo } from "@/lib/protagonista";
 import { correrWorkflow, PedidoWorkflow } from "@/lib/workflows";
-import { generarFondosInvitacion, generarFotosInvitacion, generarQrInvitacion } from "@/lib/invitaciones/trabajos";
+import { generarEfectoInvitacion, generarFondosInvitacion, generarFotosInvitacion, generarQrInvitacion } from "@/lib/invitaciones/trabajos";
 import { crearEscena3d, usarEscena3d } from "@/lib/escenas3d";
 import { generarCamara3dEscena, type OpcionesCamara3d } from "@/lib/camara3d";
 import { regenerarVoz, textoADecir } from "@/lib/regenerar";
@@ -494,6 +494,11 @@ async function invitacionFondo(t: Trabajo, h: Herramientas): Promise<Salida> {
   return { resultado: await generarFondosInvitacion(conAvance(h, "Dibujando el fondo"), t.payload) };
 }
 
+async function invitacionEfecto(t: Trabajo, h: Herramientas): Promise<Salida> {
+  await h.etapa("Esperando la GPU (pausa la IA de MPT mientras dibuja)", 0.01);
+  return { resultado: await generarEfectoInvitacion(conAvance(h, "Dibujando las figuras"), t.payload) };
+}
+
 async function invitacionQr(t: Trabajo, h: Herramientas): Promise<Salida> {
   await h.etapa("Preparando el QR con dibujo", 0.01);
   return { resultado: await generarQrInvitacion({ log: h.log, signal: h.signal, avanzar: (e, a) => void h.etapa(e, a) }, t.payload) };
@@ -580,6 +585,7 @@ export const EJECUTORES: Record<TipoTrabajo, (t: Trabajo, h: Herramientas) => Pr
   "blender.rehacer": blenderRehacer,
   "invitacion.foto": invitacionFoto,
   "invitacion.fondo": invitacionFondo,
+  "invitacion.efecto": invitacionEfecto,
   "invitacion.qr": invitacionQr,
   "demo.crear": demoCrear,
   "voz.regenerar": vozRegenerar,

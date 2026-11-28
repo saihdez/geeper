@@ -303,9 +303,9 @@ export function FormInvitacion({ inicial, desde }: { inicial?: Invitacion; desde
           <div>
             <label className="etiqueta" htmlFor="inv-efecto">Efecto al abrir el sobre</label>
             <select id="inv-efecto" className="campo" value={efectoSobre} onChange={(e) => setEfectoSobre(e.target.value as EfectoSobre)}>
-              {EFECTOS_SOBRE.map((k) => <option key={k} value={k}>{NOMBRES_EFECTO[k]}</option>)}
+              {EFECTOS_SOBRE.filter((k) => k !== "propio" || inicial?.efectoPropio).map((k) => <option key={k} value={k}>{NOMBRES_EFECTO[k]}</option>)}
             </select>
-            <p className="mt-1 text-xs text-tenue">Lo que sale volando del sobre cuando el invitado toca el sello.</p>
+            <p className="mt-1 text-xs text-tenue">Lo que sale volando del sobre cuando el invitado toca el sello. ¿Quieres otro (por ejemplo, mariposas realistas)? Después de guardar, créalo en «🦋 Efecto al abrir el sobre, a tu gusto».</p>
           </div>
 
           <div>

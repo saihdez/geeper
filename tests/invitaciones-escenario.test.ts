@@ -71,4 +71,35 @@ describe("escenario del tema", () => {
     expect(html).toContain("if(window.efectoSobre)window.efectoSobre()");
     expect(compilar(inv({ efectoSobre: "ninguno" }), { fuentesCss: "" }).html).toContain('"efecto":null');
   });
+
+  it("efecto propio: movimiento por la descripción, figuras en la página y recorte del fondo de croma", async () => {
+    const { movimientoDe, datosEfecto } = await import("@/lib/invitaciones/efecto-sobre");
+    const { recortarPixeles, colorCroma } = await import("@/lib/invitaciones/imagenes");
+    expect(movimientoDe("mariposas monarca realistas")).toBe("aletea");
+    expect(movimientoDe("pétalos de rosa")).toBe("cae");
+    expect(movimientoDe("farolitos de papel")).toBe("flota");
+    expect(movimientoDe("diamantes")).toBe("estalla");
+    expect(colorCroma("hojas de helecho").nombre).toBe("magenta");
+    const e = estiloDe(inv());
+    const propio = { efectoSobre: "propio" as const, efectoPropio: { descripcion: "mariposas", movimiento: "aletea" as const, figuras: ["efecto-1.webp"] } };
+    expect(datosEfecto(propio, e, ["QUJD"])).toMatchObject({ tipo: "propio", aletea: true, imgs: ["data:image/webp;base64,QUJD"] });
+    // Sin las figuras en disco: el del tema.
+    expect(datosEfecto(propio, e, [])?.tipo).not.toBe("propio");
+    expect(compilar(inv(propio), { fuentesCss: "", figurasB64: ["QUJD"] }).html).toContain('"imgs":["data:image/webp;base64,QUJD"]');
+
+    // Un cuadrado rojo sobre verde de croma: queda sólo el cuadrado, con transparencia alrededor.
+    const lado = 64, px = new Uint8Array(lado * lado * 4);
+    for (let y = 0; y < lado; y++) for (let x = 0; x < lado; x++) {
+      const k = (y * lado + x) * 4, dentro = x >= 20 && x < 40 && y >= 24 && y < 44;
+      px.set(dentro ? [200, 30, 30, 255] : [10, 250, 20, 255], k);
+    }
+    const r = recortarPixeles(px, lado)!;
+    expect(r.ancho).toBe(26);
+    expect(r.alto).toBe(26);
+    expect(r.rgba[3]).toBe(0);
+    const centro = (13 * r.ancho + 13) * 4;
+    expect([...r.rgba.subarray(centro, centro + 4)]).toEqual([200, 30, 30, 255]);
+    // Sin fondo plano de color vivo (gris): no se recorta.
+    expect(recortarPixeles(new Uint8Array(lado * lado * 4).fill(128), lado)).toBeNull();
+  });
 });

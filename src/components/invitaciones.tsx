@@ -7,7 +7,7 @@ import { Aviso, pedir, useSondeo } from "./comun";
 import { FormInvitacion } from "./form-invitacion";
 import { PanelFormularios } from "./invitacion-formularios";
 import { PanelAvnac } from "./invitacion-avnac";
-import { PanelFondo, PanelFoto, PanelQr } from "./invitacion-imagenes";
+import { PanelEfecto, PanelFondo, PanelFoto, PanelQr } from "./invitacion-imagenes";
 
 interface Resumen {
   slug: string;
@@ -165,6 +165,8 @@ export function VistaInvitacion({ slug }: { slug: string }) {
         <PanelFoto inv={inv} inicial={params.get("foto") ?? ""} alCambiar={(a) => { setAvisos(a); void recargar(); }} />
 
         <PanelFondo inv={inv} alCambiar={(a) => { setAvisos(a); void recargar(); }} />
+
+        <PanelEfecto inv={inv} alCambiar={(a) => { setAvisos(a); void recargar(); }} />
 
         <section className="text-sm text-tenue">
           <p>Quien tenga el enlace verá el lugar y el WhatsApp de confirmación. La página no aparece en buscadores.</p>

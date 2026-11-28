@@ -58,9 +58,13 @@ export const Musica = z.discriminatedUnion("tipo", [
 export type Musica = z.infer<typeof Musica>;
 
 /** Lo que sale volando del sobre al abrirlo (efecto-sobre.ts). «auto»: el que va con el tema. */
-export const EFECTOS_SOBRE = ["auto", "mariposas", "luciernagas", "petalos", "corazones", "estrellas", "brillos", "hojas", "copos", "burbujas", "confeti", "ninguno"] as const;
+export const EFECTOS_SOBRE = ["auto", "propio", "mariposas", "luciernagas", "petalos", "corazones", "estrellas", "brillos", "hojas", "copos", "burbujas", "confeti", "ninguno"] as const;
 export const EfectoSobre = z.enum(EFECTOS_SOBRE);
 export type EfectoSobre = z.infer<typeof EfectoSobre>;
+/** Cómo se mueve un efecto propio (dibujado con IA). */
+export const MOVIMIENTOS = ["aletea", "cae", "flota", "estalla"] as const;
+export const Movimiento = z.enum(MOVIMIENTOS);
+export type Movimiento = z.infer<typeof Movimiento>;
 
 /** Lo que manda el formulario (la música llega como enlace y el servidor la convierte en `Musica`). */
 export const Entrada = z.object({
@@ -109,6 +113,12 @@ export const Invitacion = Entrada.omit({ musicaEnlace: true, plantilla: true }).
   urlPublica: httpsUrl.optional(),
   /** QR con dibujo elegido (imagenes.ts) y la dirección que lleva: si la dirección cambia, ya no sirve. */
   qrArte: z.object({ archivo: z.literal("qr-arte.png"), url: z.string() }).optional(),
+  /** Efecto propio para el sobre: figuras recortadas (efecto-N.webp) dibujadas con IA desde una descripción. */
+  efectoPropio: z.object({
+    descripcion: z.string().max(300),
+    movimiento: Movimiento,
+    figuras: z.array(z.string().regex(/^efecto-\d\.webp$/)).min(1).max(6),
+  }).optional(),
   /** Imagen del enlace en WhatsApp: la portada (por defecto) o el QR con dibujo. */
   vistaPrevia: z.enum(["portada", "qr"]).optional(),
   retoques: Retoques.optional(),

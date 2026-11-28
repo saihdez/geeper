@@ -69,8 +69,8 @@ export function arteDe(inv: Pick<Invitacion, "plantilla" | "tema" | "tipo">): st
 
 // ── Propuestas en disco ──────────────────────────────────────────────────────────────────────────
 
-export const NOMBRE_PROPUESTA = /^((?:foto|fondo)-\d{13}-\d|qr-\d+-l[1-4])\.png$/;
-export type ClaseImagen = "foto" | "fondo" | "qr";
+export const NOMBRE_PROPUESTA = /^((?:foto|fondo|efecto)-\d{13}-\d|qr-\d+-l[1-4])\.png$/;
+export type ClaseImagen = "foto" | "fondo" | "efecto" | "qr";
 const MAX_PROPUESTAS = 12;
 
 export const dirPropuestas = (dirInvitacion: string) => path.join(dirInvitacion, "propuestas");
@@ -79,6 +79,8 @@ export interface Propuestas {
   fotos: string[];
   /** Fondos realistas para toda la página (verticales). */
   fondos: string[];
+  /** Figuras recortadas (PNG con transparencia) para un efecto propio del sobre. */
+  efectos: string[];
   /** Los QR que escanean, primero los que se leen en más tamaños. */
   qrs: { archivo: string; lecturas: number }[];
 }
@@ -88,9 +90,10 @@ export async function leerPropuestas(dirInvitacion: string): Promise<Propuestas>
   const fecha = (n: string) => statSync(path.join(dirPropuestas(dirInvitacion), n), { throwIfNoEntry: false })?.mtimeMs ?? 0;
   const fotos = nombres.filter((n) => n.startsWith("foto-")).sort().reverse();
   const fondos = nombres.filter((n) => n.startsWith("fondo-")).sort().reverse();
+  const efectos = nombres.filter((n) => n.startsWith("efecto-")).sort().reverse();
   const qrs = nombres.filter((n) => n.startsWith("qr-")).map((archivo) => ({ archivo, lecturas: Number(/-l(\d)\.png$/.exec(archivo)![1]), fecha: fecha(archivo) }))
     .sort((a, b) => b.fecha - a.fecha || b.lecturas - a.lecturas).map(({ archivo, lecturas }) => ({ archivo, lecturas }));
-  return { fotos, fondos, qrs };
+  return { fotos, fondos, efectos, qrs };
 }
 
 /** Deja sólo las últimas MAX_PROPUESTAS de cada clase. */
@@ -448,6 +451,126 @@ export function ajustesFondo(descripcion: string, estilo: string, semilla = Math
     batch_size: TOMAS_FOTO,
     seed: semilla,
   };
+}
+
+// ── Efecto propio del sobre: figuras sobre fondo de color plano, recortadas sin GPU ───────────────
+
+/** Verde de croma, salvo que lo pedido sea verde (hojas, ranas…): ahí, magenta. */
+export function colorCroma(descripcion: string): { nombre: string; hex: string } {
+  return /verde|green|hoja|leaf|leaves|planta|plant|rana|frog|esmeralda|emerald|helecho|fern|trebol|clover/i.test(descripcion)
+    ? { nombre: "magenta", hex: "#FF00FF" }
+    : { nombre: "chroma key green", hex: "#00FF00" };
+}
+
+/** 4 figuras sueltas, cada una sola y entera, sobre color plano para recortarlas. */
+export function ajustesEfecto(descripcion: string, movimiento: "aletea" | "cae" | "flota" | "estalla", semilla = Math.floor(Math.random() * 2_147_483_647)): AjustesWan2gp {
+  const croma = colorCroma(descripcion);
+  const vista = movimiento === "aletea" ? "seen from directly above, wings fully spread open, perfectly symmetrical, " : "";
+  return {
+    model_type: "z_image",
+    image_mode: 1,
+    prompt: `${descripcion.trim()}. Exactly one single isolated subject, centered, fully visible with wide empty margin around it, ${vista}highly detailed, sharp focus, on a solid flat pure ${croma.nombre} background (${croma.hex}), evenly lit, no shadow, no reflections, no other objects, no text, no frame.`,
+    resolution: "1024x1024",
+    batch_size: TOMAS_FOTO,
+    seed: semilla,
+  };
+}
+
+const LADO_RECORTE = 512;
+
+/**
+ * Recorta la figura: estima el color del fondo en el borde, saca la transparencia por distancia a ese
+ * color (suave en el contorno), le quita el tinte del fondo al borde y recorta al tamaño de la figura.
+ * `null` si no queda una figura clara (el fondo no era plano o la figura llena todo el cuadro).
+ */
+export function recortarPixeles(rgba: Uint8Array, lado: number): { rgba: Uint8Array; ancho: number; alto: number } | null {
+  let r = 0, g = 0, b = 0, n = 0;
+  for (let i = 0; i < lado; i++) for (const [x, y] of [[i, 0], [i, lado - 1], [0, i], [lado - 1, i]] as const) {
+    const k = (y * lado + x) * 4;
+    r += rgba[k]!; g += rgba[k + 1]!; b += rgba[k + 2]!; n++;
+  }
+  const fondo = [r / n, g / n, b / n] as const;
+  // El fondo tiene que ser un color vivo (verde o magenta de croma) y parejo en todo el borde.
+  if (Math.max(...fondo) - Math.min(...fondo) < 100) return null;
+  let desvio = 0;
+  for (let i = 0; i < lado; i += 4) {
+    const k = i * 4;
+    desvio += Math.hypot(rgba[k]! - fondo[0], rgba[k + 1]! - fondo[1], rgba[k + 2]! - fondo[2]);
+  }
+  if (desvio / (lado / 4) > 60) return null;
+  const T0 = 42, T1 = 110;
+  const salida = new Uint8Array(rgba.length);
+  let x0 = lado, y0 = lado, x1 = -1, y1 = -1, opacos = 0;
+  for (let y = 0; y < lado; y++) for (let x = 0; x < lado; x++) {
+    const k = (y * lado + x) * 4;
+    const d = Math.hypot(rgba[k]! - fondo[0], rgba[k + 1]! - fondo[1], rgba[k + 2]! - fondo[2]);
+    const a = Math.max(0, Math.min(1, (d - T0) / (T1 - T0)));
+    if (a <= 0) continue;
+    // Quita el tinte del fondo del borde semitransparente: c = (c - (1 - a)·fondo) / a.
+    for (let c = 0; c < 3; c++) salida[k + c] = Math.max(0, Math.min(255, Math.round((rgba[k + c]! - (1 - a) * fondo[c]!) / a)));
+    salida[k + 3] = Math.round(a * 255);
+    if (a > 0.5) {
+      opacos++;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+    }
+  }
+  const total = lado * lado;
+  if (x1 < 0 || opacos < total * 0.01 || opacos > total * 0.8) return null;
+  const m = 3;
+  x0 = Math.max(0, x0 - m); y0 = Math.max(0, y0 - m); x1 = Math.min(lado - 1, x1 + m); y1 = Math.min(lado - 1, y1 + m);
+  const ancho = x1 - x0 + 1, alto = y1 - y0 + 1;
+  const recorte = new Uint8Array(ancho * alto * 4);
+  for (let y = 0; y < alto; y++) recorte.set(salida.subarray(((y + y0) * lado + x0) * 4, ((y + y0) * lado + x0 + ancho) * 4), y * ancho * 4);
+  return { rgba: recorte, ancho, alto };
+}
+
+/** Recorta una imagen generada a PNG con transparencia. `false` si no se pudo. */
+export async function recortarFigura(origen: string, destino: string): Promise<boolean> {
+  const { stdout } = await ejecutar(FFMPEG, ["-v", "error", "-i", origen, "-vf", `scale=${LADO_RECORTE}:${LADO_RECORTE}:flags=area`, "-f", "rawvideo", "-pix_fmt", "rgba", "-"], { encoding: "buffer", maxBuffer: 1 << 26, windowsHide: true });
+  const r = recortarPixeles(new Uint8Array(stdout), LADO_RECORTE);
+  if (!r) return false;
+  const crudo = `${destino}.rgba`;
+  await fs.writeFile(crudo, r.rgba);
+  try {
+    await correr(FFMPEG, ["-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${r.ancho}x${r.alto}`, "-i", crudo, "-frames:v", "1", destino]);
+  } finally {
+    await fs.rm(crudo, { force: true });
+  }
+  return existsSync(destino);
+}
+
+export async function generarEfecto(ctx: ContextoImagen & { alAvanzar?: (a: Avance) => void }, dirInvitacion: string, ajustes: AjustesWan2gp): Promise<string[]> {
+  ctx.log(`Efecto del sobre: ${ajustes.model_type}, ${ajustes.batch_size} figuras. Prompt: ${ajustes.prompt}`);
+  const corrida = path.join(dirInvitacion, "wan2gp", new Date().toISOString().replace(/[:.]/g, "-"));
+  const imagenes = await generarImagenes({ instalacion: instalacionWan2gp(), ajustes, dirCorrida: corrida, signal: ctx.signal, log: ctx.log, alAvanzar: ctx.alAvanzar });
+  if (!imagenes.length) throw new Error("No salió ninguna figura. Prueba con otra descripción.");
+  const dir = dirPropuestas(dirInvitacion);
+  await fs.mkdir(dir, { recursive: true });
+  const t = Date.now();
+  const nombres: string[] = [];
+  for (const [k, img] of imagenes.slice(0, 9).entries()) {
+    const nombre = `efecto-${t}-${k + 1}.png`;
+    if (await recortarFigura(img, path.join(dir, nombre)).catch(() => false)) nombres.push(nombre);
+    else ctx.log(`Figura ${k + 1}: el fondo no se pudo quitar, la descarto.`);
+  }
+  await fs.rm(corrida, { recursive: true, force: true });
+  await podar(dir, "efecto-");
+  if (!nombres.length) throw new Error("Se dibujaron las figuras pero no se pudieron recortar. Prueba describiéndola más simple (una sola figura).");
+  return nombres;
+}
+
+/** Guarda las figuras elegidas como las usa la invitación: efecto-1.webp, efecto-2.webp… (hasta 256 px). */
+export async function guardarFigurasEfecto(dirInvitacion: string, archivos: string[]): Promise<string[]> {
+  if (!archivos.length || archivos.length > 6) throw new Error("Elige de 1 a 6 figuras.");
+  for (const a of archivos) if (!NOMBRE_PROPUESTA.test(a) || !a.startsWith("efecto-") || !existsSync(path.join(dirPropuestas(dirInvitacion), a))) throw new Error("Esa figura ya no está: crea otras.");
+  for (const viejo of (await fs.readdir(dirInvitacion)).filter((n) => /^efecto-\d\.webp$/.test(n))) await fs.rm(path.join(dirInvitacion, viejo), { force: true });
+  const figuras: string[] = [];
+  for (const [k, a] of archivos.entries()) {
+    const nombre = `efecto-${k + 1}.webp`;
+    await correr(FFMPEG, ["-y", "-v", "error", "-i", path.join(dirPropuestas(dirInvitacion), a), "-frames:v", "1", "-vf", "scale='if(gt(iw,ih),min(256,iw),-2)':'if(gt(iw,ih),-2,min(256,ih))'", "-c:v", "libwebp", "-quality", "86", path.join(dirInvitacion, nombre)]);
+    figuras.push(nombre);
+  }
+  return figuras;
 }
 
 export async function generarFotos(ctx: ContextoImagen & { alAvanzar?: (a: Avance) => void }, dirInvitacion: string, ajustes: AjustesWan2gp, clase: "foto" | "fondo" = "foto"): Promise<string[]> {
