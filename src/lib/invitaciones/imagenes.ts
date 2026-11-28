@@ -114,6 +114,101 @@ export async function lecturasQr(ruta: string, url: string): Promise<number> {
   return ok;
 }
 
+// ── Reparar un QR con dibujo ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Qué tan fuerte se repara: el centro de cada módulo que se toca (fracción del módulo) y hasta qué luz
+ * tiene que llegar (0–255). Los ojos de las esquinas siempre se rehacen enteros.
+ */
+export const NIVELES_REPARACION = [
+  { centro: 0.4, oscuro: 95, claro: 165 },
+  { centro: 0.62, oscuro: 70, claro: 190 },
+  { centro: 0.8, oscuro: 70, claro: 190 },
+  { centro: 1, oscuro: 60, claro: 200 },
+] as const;
+
+const luz = (r: number, g: number, b: number) => 0.299 * r + 0.587 * g + 0.114 * b;
+
+/**
+ * Repara un QR con dibujo para que se pueda escanear, tocando lo menos posible: cada módulo que no es tan
+ * oscuro o tan claro como debe se corrige sólo en su centro, conservando el color del dibujo (se oscurece
+ * o se aclara, no se pinta encima). Los tres ojos de las esquinas (lo que busca la cámara para encontrar el
+ * QR) y el margen alrededor se rehacen enteros. Es la técnica de las herramientas de «QR art repair».
+ * `rgba` es la imagen de `lado`×`lado`; el QR es el de `pngQrBase` (corrección H, `borde` módulos).
+ */
+export function repararPixeles(rgba: Uint8Array, lado: number, url: string, nivel: (typeof NIVELES_REPARACION)[number], borde = 4): void {
+  const { data } = encode(url, { ecc: "H", border: borde });
+  const n = data.length;
+  const caja = lado / n;
+  const nucleo = n - 2 * borde;
+  // Ojos: 7×7 en tres esquinas, más su separador claro de 1 módulo.
+  const enOjo = (i: number, j: number) => {
+    const a = i - borde;
+    const b = j - borde;
+    const cerca = (x: number, lim: number) => x >= -1 && x <= lim;
+    return (cerca(a, 7) && cerca(b, 7)) || (cerca(a, 7) && b >= nucleo - 8 && b <= nucleo) || (a >= nucleo - 8 && a <= nucleo && cerca(b, 7));
+  };
+  const enMargen = (i: number, j: number) => i < borde || j < borde || i >= n - borde || j >= n - borde;
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      const oscuro = data[i]![j]!;
+      const entero = enOjo(i, j);
+      // El margen sólo cerca del QR (2 módulos): basta para separarlo del dibujo de alrededor.
+      const margen = enMargen(i, j);
+      if (margen && Math.min(i, j, n - 1 - i, n - 1 - j) < borde - 2) continue;
+      const frac = entero || margen ? 1 : nivel.centro;
+      const meta = oscuro ? (entero ? 45 : nivel.oscuro) : entero || margen ? Math.max(nivel.claro, 200) : nivel.claro;
+      const x0 = Math.round((j + (1 - frac) / 2) * caja);
+      const y0 = Math.round((i + (1 - frac) / 2) * caja);
+      const x1 = Math.round((j + (1 + frac) / 2) * caja);
+      const y1 = Math.round((i + (1 + frac) / 2) * caja);
+      let suma = 0;
+      let cuenta = 0;
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+        const k = (y * lado + x) * 4;
+        suma += luz(rgba[k]!, rgba[k + 1]!, rgba[k + 2]!);
+        cuenta++;
+      }
+      if (!cuenta) continue;
+      const media = suma / cuenta;
+      if (oscuro ? media <= meta : media >= meta) continue;
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+        const k = (y * lado + x) * 4;
+        for (let c = 0; c < 3; c++) {
+          const v = rgba[k + c]!;
+          // Oscurecer: se escala el color (mismo tono, menos luz). Aclarar: se acerca al blanco lo justo.
+          rgba[k + c] = oscuro ? Math.round(v * (meta / media)) : Math.round(v + (255 - v) * ((meta - media) / (255 - media)));
+        }
+      }
+    }
+  }
+}
+
+/** Lee el PNG, lo repara con ese nivel y lo guarda (ffmpeg en CPU, sin la tarjeta). */
+export async function repararQr(origen: string, destino: string, url: string, nivel: (typeof NIVELES_REPARACION)[number], lado = 768): Promise<void> {
+  const { stdout } = await ejecutar(FFMPEG, ["-v", "error", "-i", origen, "-vf", `scale=${lado}:${lado}:flags=lanczos`, "-f", "rawvideo", "-pix_fmt", "rgba", "-"], { encoding: "buffer", maxBuffer: 1 << 26, windowsHide: true });
+  const rgba = new Uint8Array(stdout.buffer, stdout.byteOffset, stdout.length);
+  repararPixeles(rgba, lado, url, nivel);
+  const crudo = `${destino}.rgba`;
+  await fs.writeFile(crudo, rgba);
+  try {
+    await correr(FFMPEG, ["-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${lado}x${lado}`, "-i", crudo, "-pix_fmt", "rgb24", destino]);
+  } finally {
+    await fs.rm(crudo, { force: true });
+  }
+}
+
+/** Reparar con el nivel más suave que deje el QR legible en al menos `minimo` tamaños. Null si ninguno basta. */
+export async function repararHastaQueSeLea(origen: string, destino: string, url: string, minimo = 2): Promise<{ nivel: number; lecturas: number } | null> {
+  for (const [k, nivel] of NIVELES_REPARACION.entries()) {
+    await repararQr(origen, destino, url, nivel);
+    const lecturas = await lecturasQr(destino, url);
+    if (lecturas >= minimo) return { nivel: k + 1, lecturas };
+  }
+  await fs.rm(destino, { force: true });
+  return null;
+}
+
 /** QR base: corrección H, negro sobre blanco, `borde` módulos de margen, cuadrado de `lado` px (PNG). */
 export async function pngQrBase(url: string, destino: string, lado = 768, borde = 4): Promise<void> {
   const { data } = encode(url, { ecc: "H", border: borde });
@@ -234,7 +329,7 @@ export async function generarQrArte(ctx: ContextoImagen, dirInvitacion: string, 
       const historial = await correrGrafo(srv, ctx, id, grafoQrArte({ imagen: path.basename(base), prompt, semilla: semillaRonda, cantidad, fuerza: ronda.fuerza, ruido: ronda.ruido, prefijo: `${id}-r${n}` }));
 
       // Se leen todos y se guardan sólo los que escanean.
-      ctx.avanzar("Probando que cada QR se pueda escanear", 0.95);
+      ctx.avanzar("Probando que cada QR se pueda escanear (y reparando los que no)", 0.95);
       const salidas = salidasDeHistorial(historial);
       if (!salidas.length) throw new Error("ComfyUI terminó pero no dejó imágenes.");
       const descartados: string[] = [];
@@ -243,12 +338,25 @@ export async function generarQrArte(ctx: ContextoImagen, dirInvitacion: string, 
         if (!existsSync(origen)) continue;
         hechos++;
         const lecturas = await lecturasQr(origen, p.url);
-        ctx.log(`Versión ${k + 1}: ${lecturas ? `se lee en ${lecturas} de 4 tamaños` : "no se lee (descartada)"}`);
         if (lecturas) {
+          ctx.log(`Versión ${k + 1}: se lee en ${lecturas} de 4 tamaños`);
           await fs.copyFile(origen, path.join(dir, `qr-${semillaRonda + k}-l${lecturas}.png`));
           sirven++;
           await fs.rm(origen, { force: true });
-        } else descartados.push(origen);
+          continue;
+        }
+        // Casi siempre el dibujo sigue bien al QR y lo que falla son los ojos de las esquinas: se reparan.
+        const reparado = path.join(dir, `.reparando-${k}.png`);
+        const r = await repararHastaQueSeLea(origen, reparado, p.url);
+        if (r) {
+          ctx.log(`Versión ${k + 1}: no se leía; reparada (nivel ${r.nivel}) se lee en ${r.lecturas} de 4 tamaños`);
+          await fs.rename(reparado, path.join(dir, `qr-${semillaRonda + k}-l${r.lecturas}.png`));
+          sirven++;
+          await fs.rm(origen, { force: true });
+        } else {
+          ctx.log(`Versión ${k + 1}: no se lee ni reparada (descartada)`);
+          descartados.push(origen);
+        }
       }
       await guardarDescartados(dirInvitacion, descartados);
       if (sirven) break;

@@ -12,7 +12,7 @@ import { leerMensajes } from "@/lib/invitaciones/mensaje";
 import { estiloDe } from "@/lib/invitaciones/estilo";
 import { ADORNOS, asegurarContraste, contraste, normalizarTema, PARTICULAS, promptTema, TemaIa, temaPorPalabras } from "@/lib/invitaciones/tema";
 import { esquemaParaOllama } from "@/lib/llm-local";
-import { ajustesFoto, arteDe, grafoQrArte, lecturasQr, leerPropuestas, NOMBRE_PROPUESTA, pngQrBase, rondasQr } from "@/lib/invitaciones/imagenes";
+import { ajustesFoto, arteDe, grafoQrArte, lecturasQr, leerPropuestas, NOMBRE_PROPUESTA, pngQrBase, repararHastaQueSeLea, rondasQr } from "@/lib/invitaciones/imagenes";
 import { normalizarUrlPublica } from "@/lib/invitaciones/esquema";
 import { usarPropuesta } from "@/lib/invitaciones/construir";
 import { FFMPEG } from "@/lib/rutas";
@@ -338,6 +338,22 @@ describe("imágenes con IA (sin la tarjeta)", () => {
     expect(NOMBRE_PROPUESTA.test("foto-1764260000000-2.png")).toBe(true);
     expect(NOMBRE_PROPUESTA.test("../invitacion.json")).toBe(false);
     expect(NOMBRE_PROPUESTA.test("qr-1-l9.png")).toBe(false);
+  });
+
+  it.skipIf(!existsSync(FFMPEG))("repara un QR con dibujo al que el dibujo le borró los ojos de las esquinas", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "geeper-qr-rep-"));
+    try {
+      const url = "https://inspiring-malasada-39aaf3.netlify.app";
+      await pngQrBase(url, path.join(dir, "qr.png"), 768);
+      // Como el dibujo: manchas de color sobre los tres ojos (ahí ya no hay cuadros que la cámara reconozca).
+      const manchas = ["0:0", "iw-260:0", "0:ih-260"].map((p) => `drawbox=x=${p.split(":")[0]}+30:y=${p.split(":")[1]}+30:w=200:h=200:color=0x2e7d4f@0.85:t=fill,drawgrid=x=${p.split(":")[0]}+30:y=${p.split(":")[1]}+30:w=25:h=25:t=9:color=0xf0d060@0.9`).join(",");
+      correrFfmpeg(["-i", path.join(dir, "qr.png"), "-vf", `format=rgb24,${manchas}`, path.join(dir, "arte.png")]);
+      expect(await lecturasQr(path.join(dir, "arte.png"), url)).toBe(0);
+      const r = await repararHastaQueSeLea(path.join(dir, "arte.png"), path.join(dir, "reparado.png"), url);
+      expect(r?.lecturas).toBeGreaterThanOrEqual(2);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("si ninguna versión se escanea, hasta dos rondas más con el QR más marcado", () => {

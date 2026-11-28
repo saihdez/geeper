@@ -80,7 +80,7 @@ canvas.particulas{position:fixed;inset:0;width:100%;height:100%;pointer-events:n
 .nombres{font-size:clamp(2.3rem,11vw,3.7rem);max-width:100%}
 .sobre{position:relative;width:min(84vw,340px);aspect-ratio:3/2;margin:46px 0 10px;perspective:1000px;transition:margin-top .6s ease .3s}
 .sobre-fondo{position:absolute;inset:0;background:color-mix(in srgb,var(--sobre) 80%,#000);border-radius:8px;box-shadow:0 22px 44px rgba(0,0,0,.38)}
-.carta{position:absolute;left:6%;right:6%;top:6%;bottom:6%;z-index:1;background:var(--tarjeta);color:var(--tinta);border-radius:6px;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:transform .9s cubic-bezier(.2,.8,.2,1) .5s}
+.carta{position:absolute;left:6%;right:6%;top:6%;bottom:6%;z-index:1;background:var(--tarjeta);color:var(--tinta);border-radius:6px;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;transform-origin:50% 100%}
 .carta img{width:100%;height:100%;object-fit:cover}
 .carta .script{font-size:2.1rem}
 .frente{position:absolute;inset:0;z-index:2;background:var(--sobre);clip-path:polygon(0 0,50% 55%,100% 0,100% 100%,0 100%);border-radius:8px}
@@ -91,9 +91,13 @@ background:radial-gradient(circle at 35% 30%,color-mix(in srgb,var(--sello) 55%,
 .pista{font-size:.85rem;letter-spacing:.08em;opacity:.85;margin:0}
 .abierto .solapa{transform:rotateX(180deg);z-index:0}
 .abierto .sello{opacity:0;transform:scale(.5);pointer-events:none}
-.abierto .carta{transform:translateY(-62%)}
+.abierto .carta{z-index:5;transform:translateY(-34%) scale(1.08);box-shadow:0 18px 40px rgba(0,0,0,.45);animation:sale-carta 1.7s cubic-bezier(.22,.8,.24,1) .55s both}
+@keyframes sale-carta{0%{z-index:1;transform:translateY(0) scale(1);box-shadow:none}52%{z-index:1;transform:translateY(-86%) scale(1);box-shadow:0 8px 18px rgba(0,0,0,.25)}53%{z-index:5}100%{z-index:5;transform:translateY(-34%) scale(1.08);box-shadow:0 18px 40px rgba(0,0,0,.45)}}
+.desliza{font-size:.85rem;letter-spacing:.08em;margin:6px 0 0;opacity:0;transition:opacity .6s ease 2.4s}
+.abierto .desliza{opacity:.85}.abierto .desliza span{display:inline-block;animation:baja 1.6s ease-in-out 3s infinite}
+@keyframes baja{0%,100%{transform:translateY(0)}50%{transform:translateY(6px)}}
 .abierto .pista{visibility:hidden}
-.abierto .sobre{margin-top:min(44vw,190px)}
+.abierto .sobre{margin-top:min(40vw,170px)}
 .cerrado .resto{display:none}
 .tarjeta{background:var(--tarjeta);color:var(--tinta);border-radius:22px;padding:30px 22px;margin:26px 0;text-align:center;box-shadow:0 14px 34px rgba(0,0,0,.22)}
 .arco{border-radius:min(190px,46vw) min(190px,46vw) 22px 22px;padding-top:clamp(58px,17vw,78px)}
@@ -166,7 +170,7 @@ function ajustar(){document.querySelectorAll('.tarjeta h2,.nombres,.pie .script,
 ajustar();if(document.fonts&&document.fonts.ready)document.fonts.ready.then(ajustar);var rt;addEventListener('resize',function(){clearTimeout(rt);rt=setTimeout(ajustar,150)});
 function abrir(){if(b.classList.contains('abierto'))return;b.classList.add('abierto');b.classList.remove('cerrado');ajustar();
  if(audio){audio.play().then(function(){btnM.hidden=false;btnM.setAttribute('aria-pressed','true')}).catch(function(){btnM.hidden=false;btnM.setAttribute('aria-pressed','false')});}
- setTimeout(function(){var s=document.getElementById('mensaje');if(s)s.scrollIntoView({behavior:reducido?'auto':'smooth'})},reducido?50:1600);}
+ }
 document.getElementById('sello').addEventListener('click',abrir);
 if(btnM&&audio)btnM.addEventListener('click',function(){if(audio.paused){audio.play();btnM.setAttribute('aria-pressed','true')}else{audio.pause();btnM.setAttribute('aria-pressed','false')}});
 var els=document.querySelectorAll('.aparece');
@@ -338,7 +342,7 @@ ${og ? `<meta property="og:image" content="${esc(og)}"><meta property="og:image:
 <section class="portada">${esquinas(e.adorno)}<p class="pre">${t("pre")}</p><h1 class="script nombres">${t("nombres")}</h1>
 <div class="sobre"><div class="sobre-fondo"></div><div class="carta">${carta}</div><div class="frente"></div><div class="solapa"></div>
 <button id="sello" class="sello" type="button" aria-label="Abrir la invitación">${esc(iniciales(inv.nombres))}</button></div>
-<p class="pista">${t("pista")}</p></section>
+<p class="pista">${t("pista")}</p><p class="desliza" aria-hidden="true">Desliza para ver más <span>↓</span></p></section>
 <div class="resto">${secciones.join("\n")}
 <footer class="pie aparece"><p class="script">${t("pie-nombres")}</p><p class="mayus">${t("pie-fecha")}</p></footer></div>
 </main>${audio}
