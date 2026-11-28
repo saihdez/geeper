@@ -49,20 +49,18 @@ jobs:
       # Las de la carcasa y del empaquetado (escritorio/, scripts/escritorio/), también en los dos sistemas.
       - run: pnpm exec vitest run tests/escritorio-carcasa.test.ts tests/escritorio-armado.test.ts tests/escritorio-vigia.test.ts tests/escritorio-probar-app.test.ts tests/ci-escritorio.test.ts
       - run: pnpm escritorio:empaquetar
-      # Ramas de integración: el instalador de Windows va a la release fija «integracion» (se reemplaza en
-      # cada build). Las releases no cuentan en el espacio de artefactos (500 MB en la cuenta gratis, se
-      # llenaba con dos instaladores). Así lo baja la instalación de la PC del dueño.
+      # Ramas de integración: el instalador pasa al job «integracion» (abajo), que es el que escribe la release.
+      # Este job corre pnpm install y el empaquetado con el token sólo de lectura.
       - if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
-        uses: softprops/action-gh-release@v2
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: integracion
-          name: Integración (último build)
-          prerelease: true
-          make_latest: false
-          body: "Commit ${{ github.sha }} de ${{ github.ref_name }}. Se reemplaza en cada build."
-          files: |
+          name: integracion-${{ github.run_id }}
+          path: |
             dist-escritorio/*.exe
             dist-escritorio/latest*.yml
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
       - if: "!(github.event_name == 'push' && startsWith(github.ref, 'refs/heads/'))"
         uses: actions/upload-artifact@v4
         with:
@@ -77,6 +75,41 @@ jobs:
           # en la release (abajo). Ya vienen comprimidos (.exe, .dmg).
           retention-days: 2
           compression-level: 0
+
+  # Ramas de integración: el instalador de Windows va a la release fija «integracion» (se reemplaza en
+  # cada build). Las releases no cuentan en el espacio de artefactos (500 MB en la cuenta gratis, se
+  # llenaba con dos instaladores): el artefacto de paso se borra apenas se publica. Así lo baja la
+  # instalación de la PC del dueño.
+  integracion:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
+    needs: instalador
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: integracion-${{ github.run_id }}
+          path: dist-escritorio
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: integracion
+          name: Integración (último build)
+          prerelease: true
+          make_latest: false
+          body: "Commit ${{ github.sha }} de ${{ github.ref_name }}. Se reemplaza en cada build."
+          files: |
+            dist-escritorio/*.exe
+            dist-escritorio/latest*.yml
+      - name: Borrar el artefacto de paso
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for id in $(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" --jq '.artifacts[].id'); do
+            gh api -X DELETE "repos/${{ github.repository }}/actions/artifacts/$id"
+          done
 
   # Sólo con una etiqueta v*: la release es el único paso que necesita escribir en el repo.
   release:

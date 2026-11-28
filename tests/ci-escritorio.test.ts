@@ -14,9 +14,13 @@ describe("CI de los instaladores (ESC-08)", () => {
     expect(flujo).toMatch(/concurrency:\s*\n\s+group: escritorio-\$\{\{ github\.ref \}\}\s*\n(\s*#[^\n]*\n)?\s+cancel-in-progress: \$\{\{ !startsWith\(github\.ref, 'refs\/tags\/'\) \}\}/);
     expect(flujo).toMatch(/retention-days: 2/);
   });
-  it("sólo el paso de la release puede escribir en el repo", () => {
-    expect(flujo.match(/contents: write/g)).toHaveLength(1);
+  it("sólo los jobs que publican pueden escribir en el repo; el que compila, no", () => {
+    expect(flujo.match(/contents: write/g)).toHaveLength(2);
     expect(flujo).toMatch(/permissions:\s*\n\s+contents: read/);
+    const compila = flujo.slice(flujo.indexOf("  instalador:"), flujo.indexOf("  integracion:"));
+    expect(compila).not.toMatch(/contents: write|permissions:/);
+    // El artefacto de paso hacia la release «integracion» se borra al publicar (cuota de 500 MB).
+    expect(flujo).toMatch(/gh api -X DELETE "repos\/\$\{\{ github\.repository \}\}\/actions\/artifacts\/\$id"/);
   });
 });
 
