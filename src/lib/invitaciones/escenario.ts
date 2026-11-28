@@ -250,7 +250,7 @@ background:radial-gradient(circle,color-mix(in srgb,var(--acento) 34%,transparen
 .chispa{position:fixed;z-index:5;pointer-events:none;width:22px;height:22px;margin:-11px 0 0 -11px;fill:var(--acento);stroke:var(--acento);stroke-width:1.2;animation:chispa 1.1s ease-out forwards}
 .chispa svg{width:100%;height:100%;overflow:visible}
 @keyframes chispa{0%{transform:translate(0,0) scale(.4);opacity:1}100%{transform:translate(var(--dx),var(--dy)) scale(1) rotate(var(--gr));opacity:0}}
-@media (prefers-reduced-motion:reduce){.escena .capa,.escena .lado,.primer-plano .rama{transform:none!important}.camino .brote{transform:scale(1)!important;opacity:0;transition:opacity .6s!important}.camino .brote.sale{opacity:1}.tarjeta.aparece{transform:none!important}.chispa{display:none}}
+@media (prefers-reduced-motion:reduce){.escena .capa,.escena .lado,.primer-plano .rama{transform:none!important}}
 ${esc === "noche" ? ".escena .lejos{opacity:.8}" : ""}`;
 }
 
@@ -298,7 +298,7 @@ if(document.fonts&&document.fonts.ready)document.fonts.ready.then(function(){set
 function luzEn(x,y){esc.classList.add('tocada');lint.style.transform='translate('+x+'px,'+y+'px)'}
 addEventListener('pointermove',function(ev){luzEn(ev.clientX,ev.clientY)},{passive:true});
 // Tocar suelta chispas del tema (no en botones, campos ni enlaces).
-addEventListener('pointerdown',function(ev){luzEn(ev.clientX,ev.clientY);if(quieto||ev.target.closest('a,button,input,select,textarea,label,iframe'))return;
+addEventListener('pointerdown',function(ev){luzEn(ev.clientX,ev.clientY);if(ev.target.closest('a,button,input,select,textarea,label,iframe'))return;
  for(var i=0;i<7;i++){var s=document.createElement('span'),a=Math.random()*6.3,dist=40+Math.random()*70;s.className='chispa';s.innerHTML=SIM;
   s.style.left=ev.clientX+'px';s.style.top=ev.clientY+'px';s.style.setProperty('--dx',Math.cos(a)*dist+'px');s.style.setProperty('--dy',Math.sin(a)*dist-30+'px');s.style.setProperty('--gr',(Math.random()*240-120)+'deg');
   document.body.appendChild(s);setTimeout(function(n){return function(){n.remove()}}(s),1200)}},{passive:true});

@@ -109,7 +109,7 @@ r.addColorStop(0,col);r.addColorStop(.18,col);r.addColorStop(.45,col+'55');r.add
 w=innerWidth;h=innerHeight;var adelante=w<700?.4:.2;
 for(var i=0;i<C.n;i++)ps.push({x:Math.random()*w,y:Math.random()*h,r:al(C.r),vy:al(C.vy),vx:(Math.random()-.5)*.4,f:Math.random()*6.3,g:.01+Math.random()*.03,c:C.colores[i%C.colores.length],fr:Math.random()<adelante});
 function dibujar(k){xa.clearRect(0,0,w,h);xf.clearRect(0,0,w,h);for(var i=0;i<ps.length;i++){var p=ps[i],x=p.fr?xf:xa,r=p.r*esc;
-if(k){p.f+=p.g*k;if(!quieto){p.y+=p.vy*k;p.x+=(p.vx+Math.sin(p.f)*.3)*k}}
+if(k){p.f+=p.g*k;var v=quieto?.4:1;p.y+=p.vy*k*v;p.x+=(p.vx+Math.sin(p.f)*.3)*k*v}
 if(p.y>h+12)p.y=-12;if(p.y<-12)p.y=h+12;if(p.x>w+12)p.x=-12;if(p.x<-12)p.x=w+12;
 var a=C.forma==='luz'||C.forma==='titila'||C.forma==='brillo'?.3+.7*Math.abs(Math.sin(p.f*1.7)):.85;x.globalAlpha=a*(p.fr?.55:1);x.fillStyle=p.c;x.strokeStyle=p.c;
 if(C.forma==='luz'){var s=r*8;x.drawImage(luz(p.c),p.x-s/2,p.y-s/2,s,s)}

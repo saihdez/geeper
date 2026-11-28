@@ -174,7 +174,7 @@ las palabras de la idea (13 temas: bosque, mar, estrellas, princesas, invierno, 
 halloween, rancho, safari, fiesta infantil, romántico) y se avisa. La persona puede ajustar 5 colores y
 pedir **Otra versión**. **Ver cómo queda** muestra la invitación sin guardarla (`/api/invitaciones/vista-previa`).
 Código: `tema.ts` (esquema, listas, contraste, respaldo), `estilo.ts` (estilo resuelto, adornos,
-texturas, partículas). La animación se apaga con «reducir movimiento» y se pausa con la pestaña oculta.
+texturas, partículas). Con «reducir movimiento» las partículas van más lentas; con la pestaña oculta se pausan.
 
 ### QR con dibujo y foto del sobre con IA (hecho el 2026-11-27)
 
@@ -244,7 +244,8 @@ momento, que me lleve por las ramas o raíces». `escenario.ts`, para todas las 
 - Interacción: el dedo o el ratón es una linterna; tocar suelta adornos del tema.
 - Capas: escenario 0, partículas 1, página 2, partículas de adelante 3, ramas 4; todo sin recibir toques y
   sin tapar el texto. SVG generado con semilla fija (el slug). 62 cuadros/s en un teléfono de 390 px.
-- Con «reducir movimiento»: escenario quieto, camino ya dibujado, sin chispas.
+- Con «reducir movimiento» (en iPhone: Ajustes → Accesibilidad → Movimiento) sólo se quedan quietos el fondo y las ramas; el sobre, las tarjetas, el camino y las chispas se animan igual porque son cortos y los dispara la persona.
+- Al abrir el sello, la animación del sobre corre completa (~2,3 s) y luego la página baja sola, suave (1,6 s), hasta la primera sección. Si la persona toca o desliza antes, no se mueve.
 
 ### Datos del cliente con Google Forms (hecho el 2026-11-27)
 

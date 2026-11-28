@@ -143,9 +143,7 @@ form .boton{width:100%;margin-top:18px}
 .aparece{opacity:0;transform:translateY(26px);transition:opacity .6s ease-out,transform .6s ease-out}.aparece.visible{opacity:1;transform:none}
 canvas.confeti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:20}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition-property:opacity!important}.aparece{transform:none!important;transition:opacity .9s ease!important}
-.abierto .carta{animation:asoma-carta .9s ease .15s both!important}.abierto .desliza{opacity:.85}}
-@keyframes asoma-carta{from{opacity:0}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){.abierto .desliza span{animation:none}}
 `;
 }
 
@@ -171,7 +169,13 @@ var b=document.body,audio=document.getElementById('audio'),btnM=document.getElem
 function ajustar(){document.querySelectorAll('.tarjeta h2,.nombres,.pie .script,.carta .script,.mes caption,.pre').forEach(function(e){if(!e.clientWidth)return;e.style.fontSize='';
  var t=0,base=parseFloat(getComputedStyle(e).fontSize);while(e.scrollWidth>e.clientWidth+1&&t++<14){e.style.fontSize=(base*Math.pow(.95,t))+'px'}})}
 ajustar();if(document.fonts&&document.fonts.ready)document.fonts.ready.then(ajustar);var rt;addEventListener('resize',function(){clearTimeout(rt);rt=setTimeout(ajustar,150)});
+// Al abrir: la animación del sobre completa (2,3 s) y luego baja sola, suave, hasta la primera sección.
+// Si la persona toca o desliza antes, se respeta lo que hizo.
+function bajarA(el){var mano=false,fin=function(){mano=true};['touchstart','wheel','keydown'].forEach(function(n){addEventListener(n,fin,{once:true,passive:true})});
+ setTimeout(function(){if(mano||!el)return;var y0=scrollY,y1=el.getBoundingClientRect().top+scrollY-Math.max(16,innerHeight*.08),dur=1600,t0=null;if(y1<=y0+4)return;
+ (function paso(t){if(mano)return;if(t0===null)t0=t;var k=Math.min(1,(t-t0)/dur),e=k<.5?4*k*k*k:1-Math.pow(-2*k+2,3)/2;scrollTo(0,y0+(y1-y0)*e);if(k<1)requestAnimationFrame(paso)})(performance.now())},2500)}
 function abrir(){if(b.classList.contains('abierto'))return;b.classList.add('abierto');b.classList.remove('cerrado');ajustar();
+ if(!b.classList.contains('editor'))bajarA(document.querySelector('.resto>.tarjeta,.resto>section,.resto>footer'));
  if(audio){audio.play().then(function(){btnM.hidden=false;btnM.setAttribute('aria-pressed','true')}).catch(function(){btnM.hidden=false;btnM.setAttribute('aria-pressed','false')});}
  }
 document.getElementById('sello').addEventListener('click',abrir);

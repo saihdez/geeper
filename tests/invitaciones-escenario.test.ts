@@ -38,9 +38,10 @@ describe("escenario del tema", () => {
     expect(html).toContain(".pagina{position:relative;z-index:2;");
     expect(html).toContain(".primer-plano{position:fixed;inset:0;z-index:4;pointer-events:none}");
     expect(html).toContain(".escena{position:fixed;inset:0;z-index:0;pointer-events:none;");
-    // Con «reducir movimiento»: quieto y el camino ya dibujado.
+    // Con «reducir movimiento» sólo se quedan quietos el fondo y las ramas; el sobre, las tarjetas y el camino se animan igual.
     expect(html).toMatch(/@media \(prefers-reduced-motion:reduce\)\{\.escena \.capa,\.escena \.lado,\.primer-plano \.rama\{transform:none!important\}/);
     expect(html).toContain("hecho=Math.max(");
-    expect(html).toContain(".camino .brote.sale{opacity:1}");
+    expect(html).not.toContain("animation:none!important");
+    expect(html).toContain("function bajarA(el)");
   });
 });
