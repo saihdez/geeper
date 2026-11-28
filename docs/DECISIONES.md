@@ -460,6 +460,13 @@ cierre 3D con la marca.
   GPU en milisegundos y son repetibles. Cada recomendación con ediciones se prueba antes con
   `aplicarPasos`: si no aplica, no se ofrece, y lo que ahorra se mide aplicándola (no se estima). Lo que
   pide criterio (qué texto poner, qué escena quitar) lleva a su lugar de la página; nunca se aplica solo.
-- **Descartado por ahora:** un chat con el modelo local dentro de la app. Cargar Gemma usa la GPU en cada
-  pregunta y esta PC se cuelga con carga pesada; queda como segunda fase, por la cola y sólo a pedido,
-  proponiendo ediciones que pasen por el mismo `aplicarPasos` y se muestren como diferencias.
+- **Chat (2026-11-27, pedido del dueño):** un ícono abajo a la izquierda en todas las páginas abre el
+  asistente como chat (`src/components/chat-asistente.tsx`, `src/lib/chat-asistente.ts`). Ejecuta las
+  mismas acciones que los botones: las que cada página registra en el buscador Ctrl+K (`paleta.tsx`), las
+  secciones (`destinos.ts`) y las recomendaciones del proyecto abierto. **Entiende sin IA** (frases
+  comunes y búsqueda por palabras); la IA local sólo cuando la persona pulsa «Preguntarle a la IA» (decisión
+  del dueño: carga la tarjeta en cada respuesta), toma la GPU sin esperar y **sólo puede devolver ids de
+  acciones que la página mandó**: muestra botones, nunca ejecuta. Nada se hace sin un clic; lo que pide
+  confirmación la pide igual que en el buscador, y lo que cambia el proyecto ofrece «Deshacer».
+  Descartado: que la IA responda cada mensaje (GPU en cada uno, y no responde mientras se renderiza) y
+  una biblioteca de búsqueda difusa (dependencia nueva para lo que resuelven unas reglas).

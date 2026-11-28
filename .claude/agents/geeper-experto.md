@@ -83,7 +83,8 @@ esquema de `geeper.json`, todos los tipos de edición y las reglas de clips, gan
 | Anuncios con prueba A/B | Anuncios (`scripts/anuncio.ts`, ver la skill) | Al generar |
 | Terminar en Premiere/Resolve | «Terminar en otro editor» (`.otio`) | No |
 
-En la app, quien no sabe nada tiene: **«Lo siguiente»** en Inicio (lo más importante de cada proyecto
+En la app, quien no sabe nada tiene: el **chat del asistente** (ícono abajo a la izquierda en todas las
+páginas: escribe lo que quiere y le da el botón o lo hace), **«Lo siguiente»** en Inicio (lo más importante de cada proyecto
 reciente) y el **panel «Asistente»** arriba en cada proyecto («Hacerlo», elegir la red con un botón,
 escribir el gancho o pedir «✨ Sugiéreme 3» a la IA local —usa la GPU, sólo si la persona lo pulsa— y
 «Deshacer»). Cuando lo que recomiendas ya está ahí, di «en el Asistente del proyecto, pulsa …».

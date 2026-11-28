@@ -99,6 +99,9 @@ pnpm run dev:up       # web en http://localhost:3300 + worker, en una terminal. 
 - **Asistente** (arriba en cada proyecto): lo que mejoraría el video, de lo que bloquea la descarga a las
   ideas, con «Hacerlo» cuando es una edición (queda como versión nueva) o «Ir ahí» cuando hay que decidir.
   En Claude Code, el agente `geeper-experto` hace la revisión completa (`.claude/agents/geeper-experto.md`).
+- **Chat del asistente** (ícono abajo a la izquierda, en todas las páginas): escribe lo que quieres hacer
+  («quita los silencios», «quiero un avatar», «¿qué le falta?») y te muestra el botón o lo hace con un clic.
+  Entiende sin IA; si no entiende, ofrece «Preguntarle a la IA» (usa la tarjeta gráfica sólo entonces).
 - **Trabajos** (`/trabajos`): avance en vivo, log, relanzar o cancelar.
 - **Anuncios** (`/anuncios`): campañas con brief, conceptos (cada uno genera su video con el guion
   exacto), revisión pass/fail/sin saber por ubicación, diseño de prueba A/B y exportación. Geeper no

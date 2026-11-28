@@ -61,6 +61,11 @@ export function useAccionesPaleta(clave: string, acciones: AccionPaleta[]) {
   }, [clave]);
 }
 
+/** Las acciones que las páginas registraron ahora mismo (el chat del asistente las ofrece y las ejecuta). */
+export function useAccionesRegistradas(): AccionPaleta[] {
+  return useSyncExternalStore(suscribir, () => instantanea, () => VACIO);
+}
+
 const normalizar = (t: string) => t.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
 
 /** Todas las palabras buscadas tienen que aparecer (en cualquier orden); el título pesa más. */
