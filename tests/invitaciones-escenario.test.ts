@@ -40,6 +40,7 @@ describe("escenario del tema", () => {
     expect(html).toContain(".escena{position:fixed;inset:0;z-index:0;pointer-events:none;");
     // Con «reducir movimiento»: quieto y el camino ya dibujado.
     expect(html).toMatch(/@media \(prefers-reduced-motion:reduce\)\{\.escena \.capa,\.escena \.lado,\.primer-plano \.rama\{transform:none!important\}/);
-    expect(html).toContain("hecho=quieto?largo:");
+    expect(html).toContain("hecho=Math.max(");
+    expect(html).toContain(".camino .brote.sale{opacity:1}");
   });
 });

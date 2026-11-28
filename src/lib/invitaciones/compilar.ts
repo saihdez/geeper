@@ -143,7 +143,7 @@ form .boton{width:100%;margin-top:18px}
 .aparece{opacity:0;transform:translateY(26px);transition:opacity .6s ease-out,transform .6s ease-out}.aparece.visible{opacity:1;transform:none}
 canvas.confeti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:20}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-@media (prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:0s!important;transition-delay:0s!important;animation:none!important}.aparece{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition-property:opacity!important}.aparece{transform:none!important;transition:opacity .9s ease!important}
 .abierto .carta{animation:asoma-carta .9s ease .15s both!important}.abierto .desliza{opacity:.85}}
 @keyframes asoma-carta{from{opacity:0}to{opacity:1}}
 `;
@@ -177,7 +177,7 @@ function abrir(){if(b.classList.contains('abierto'))return;b.classList.add('abie
 document.getElementById('sello').addEventListener('click',abrir);
 if(btnM&&audio)btnM.addEventListener('click',function(){if(audio.paused){audio.play();btnM.setAttribute('aria-pressed','true')}else{audio.pause();btnM.setAttribute('aria-pressed','false')}});
 var els=document.querySelectorAll('.aparece');
-if('IntersectionObserver' in window&&!reducido){var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('visible');io.unobserve(e.target)}})},{threshold:.15});els.forEach(function(e){io.observe(e)})}else els.forEach(function(e){e.classList.add('visible')});
+if('IntersectionObserver' in window){var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('visible');io.unobserve(e.target)}})},{threshold:.15});els.forEach(function(e){io.observe(e)})}else els.forEach(function(e){e.classList.add('visible')});
 try{var zl=Intl.DateTimeFormat().resolvedOptions().timeZone;if(zl&&zl!==D.zona){document.querySelectorAll('.nota-zona').forEach(function(e){e.hidden=false})}}catch(e){}
 var nums={dias:document.getElementById('c-dias'),horas:document.getElementById('c-horas'),minutos:document.getElementById('c-min'),segundos:document.getElementById('c-seg')};
 var estado=document.getElementById('c-estado'),antes=null;

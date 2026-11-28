@@ -96,7 +96,7 @@ export function scriptParticulas(e: Estilo): string {
   const colores = e.particulas === "copos" || e.particulas === "estrellas" ? [e.colores.claro, e.colores.acento] : [e.colores.acento, e.colores.sello, e.colores.claro];
   // Dos capas: detrás del contenido y, más tenue, delante (en el teléfono las tarjetas tapan casi todo el
   // fondo y las de atrás casi no se ven). La luz de las luciérnagas va pre-dibujada (shadowBlur es caro en
-  // el teléfono). La velocidad va por tiempo (igual a 60 o 120 Hz). Con «reducir movimiento», quietas.
+  // el teléfono). La velocidad va por tiempo (igual a 60 o 120 Hz). Con «reducir movimiento», titilan en su lugar (sin desplazarse).
   return `(function(){var quieto=matchMedia('(prefers-reduced-motion: reduce)').matches;
 var C=${JSON.stringify({ ...cfg, colores })};
 function lienzo(clase){var c=document.createElement('canvas');c.className=clase;c.setAttribute('aria-hidden','true');document.body.prepend(c);return c}
@@ -109,7 +109,7 @@ r.addColorStop(0,col);r.addColorStop(.18,col);r.addColorStop(.45,col+'55');r.add
 w=innerWidth;h=innerHeight;var adelante=w<700?.4:.2;
 for(var i=0;i<C.n;i++)ps.push({x:Math.random()*w,y:Math.random()*h,r:al(C.r),vy:al(C.vy),vx:(Math.random()-.5)*.4,f:Math.random()*6.3,g:.01+Math.random()*.03,c:C.colores[i%C.colores.length],fr:Math.random()<adelante});
 function dibujar(k){xa.clearRect(0,0,w,h);xf.clearRect(0,0,w,h);for(var i=0;i<ps.length;i++){var p=ps[i],x=p.fr?xf:xa,r=p.r*esc;
-if(k){p.f+=p.g*k;p.y+=p.vy*k;p.x+=(p.vx+Math.sin(p.f)*.3)*k}
+if(k){p.f+=p.g*k;if(!quieto){p.y+=p.vy*k;p.x+=(p.vx+Math.sin(p.f)*.3)*k}}
 if(p.y>h+12)p.y=-12;if(p.y<-12)p.y=h+12;if(p.x>w+12)p.x=-12;if(p.x<-12)p.x=w+12;
 var a=C.forma==='luz'||C.forma==='titila'||C.forma==='brillo'?.3+.7*Math.abs(Math.sin(p.f*1.7)):.85;x.globalAlpha=a*(p.fr?.55:1);x.fillStyle=p.c;x.strokeStyle=p.c;
 if(C.forma==='luz'){var s=r*8;x.drawImage(luz(p.c),p.x-s/2,p.y-s/2,s,s)}
@@ -119,7 +119,7 @@ else if(C.forma==='brillo'){x.lineWidth=1.4;x.beginPath();x.moveTo(p.x-r,p.y);x.
 else if(C.forma==='papel'){x.save();x.translate(p.x,p.y);x.rotate(p.f);x.fillRect(-r/2,-r/4,r,r/2);x.restore()}
 else{x.beginPath();x.arc(p.x,p.y,r,0,6.3);x.fill()}}
 xa.globalAlpha=1;xf.globalAlpha=1}
-tam();addEventListener('resize',tam);if(quieto)return;
+tam();addEventListener('resize',tam);
 document.addEventListener('visibilitychange',function(){vivo=!document.hidden;if(vivo){antes=0;requestAnimationFrame(paso)}});
 function paso(t){if(!vivo)return;var k=antes?Math.min(3,(t-antes)/16.7):1;antes=t;dibujar(k);requestAnimationFrame(paso)}requestAnimationFrame(paso)})();`;
 }

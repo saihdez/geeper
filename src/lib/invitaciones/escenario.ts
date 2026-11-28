@@ -11,7 +11,9 @@
  *
  * Todo es SVG en línea, generado con una semilla fija (igual siempre para la misma invitación), y sólo se
  * animan `transform` y `opacity`. La lectura manda: las tarjetas siguen opacas y nada va encima del texto.
- * Con «reducir movimiento»: escenario quieto y el camino ya dibujado.
+ * Con «reducir movimiento» (lo pide el teléfono con el ahorro de batería o «quitar animaciones»): se apaga
+ * lo que se mueve solo y marea (parallax, ramas, chispas que vuelan); siguen el camino que avanza con el
+ * scroll, los brotes y las tarjetas con fundido, y la linterna (sigue al dedo).
  */
 import type { Estilo } from "./estilo";
 import { SIMBOLOS } from "./estilo";
@@ -248,7 +250,7 @@ background:radial-gradient(circle,color-mix(in srgb,var(--acento) 34%,transparen
 .chispa{position:fixed;z-index:5;pointer-events:none;width:22px;height:22px;margin:-11px 0 0 -11px;fill:var(--acento);stroke:var(--acento);stroke-width:1.2;animation:chispa 1.1s ease-out forwards}
 .chispa svg{width:100%;height:100%;overflow:visible}
 @keyframes chispa{0%{transform:translate(0,0) scale(.4);opacity:1}100%{transform:translate(var(--dx),var(--dy)) scale(1) rotate(var(--gr));opacity:0}}
-@media (prefers-reduced-motion:reduce){.escena .capa,.escena .lado,.primer-plano .rama{transform:none!important}.camino .brote{transform:scale(1)}.tarjeta.aparece{transform:none}.chispa{display:none}}
+@media (prefers-reduced-motion:reduce){.escena .capa,.escena .lado,.primer-plano .rama{transform:none!important}.camino .brote{transform:scale(1)!important;opacity:0;transition:opacity .6s!important}.camino .brote.sale{opacity:1}.tarjeta.aparece{transform:none!important}.chispa{display:none}}
 ${esc === "noche" ? ".escena .lejos{opacity:.8}" : ""}`;
 }
 
@@ -283,7 +285,7 @@ function pintar(){pendiente=false;var y=scrollY,vh=innerHeight;
   for(var i=0;i<lados.length;i++)lados[i].style.transform=(i?'scaleX(-1) ':'')+'translateY('+(-(y*.22)%(vh*.5))+'px)';
   viento=viento*.9+(y-ultimoY)*.05;for(var j=0;j<ramas.length;j++)ramas[j].style.transform=(j?'scaleX(-1) ':'')+'rotate('+Math.max(-6,Math.min(6,viento))+'deg)'}
  ultimoY=y;if(!largo||!resto)return;
- var r=resto.getBoundingClientRect(),hecho=quieto?largo:Math.max(0,Math.min(largo,(vh*.78-r.top)/Math.max(1,r.height)*largo*1.08));
+ var r=resto.getBoundingClientRect(),hecho=Math.max(0,Math.min(largo,(vh*.78-r.top)/Math.max(1,r.height)*largo*1.08));
  if(!cam.dataset.punteado){uno.style.strokeDashoffset=largo-hecho;dos.style.strokeDashoffset=largo-hecho}
  for(var k=0;k<lista.length;k++)lista[k].g.classList.toggle('sale',lista[k].en<=hecho);
  if(Math.abs(viento)>.05&&!quieto)pedir()}
@@ -293,7 +295,7 @@ addEventListener('scroll',pedir,{passive:true});addEventListener('resize',functi
 new MutationObserver(function(){setTimeout(trazar,60)}).observe(document.body,{attributes:true,attributeFilter:['class']});
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(function(){setTimeout(trazar,60)});trazar();
 // Linterna: sigue al dedo o al ratón.
-function luzEn(x,y){if(quieto)return;esc.classList.add('tocada');lint.style.transform='translate('+x+'px,'+y+'px)'}
+function luzEn(x,y){esc.classList.add('tocada');lint.style.transform='translate('+x+'px,'+y+'px)'}
 addEventListener('pointermove',function(ev){luzEn(ev.clientX,ev.clientY)},{passive:true});
 // Tocar suelta chispas del tema (no en botones, campos ni enlaces).
 addEventListener('pointerdown',function(ev){luzEn(ev.clientX,ev.clientY);if(quieto||ev.target.closest('a,button,input,select,textarea,label,iframe'))return;
