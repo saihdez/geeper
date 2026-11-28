@@ -250,8 +250,8 @@ momento, que me lleve por las ramas o raíces». `escenario.ts`, para todas las 
 ### Fondo realista y vista previa con el QR (hecho el 2026-11-28)
 
 - **Fondo realista con IA** (panel «🌲 Fondo realista con IA», trabajo `invitacion.fondo`): Z-Image dibuja 4
-  fondos verticales (768×1344) «como de película», sin personas ni texto y con el centro tranquilo. Si la
-  descripción va vacía, usa la idea del tema. Al elegir uno se guarda `fondo.webp` (900 px, ~70-300 KB) y la
+  fondos verticales (960×1680) «como de película», sin personas ni texto y con el centro tranquilo. Si la
+  descripción va vacía, usa la idea del tema. Al elegir uno se guarda `fondo.webp` (hasta 1080 px, WebP calidad 84, ~250-500 KB; en pantallas anchas va nítido al centro con los lados desenfocados) y la
   invitación lleva `fondo: "fondo.webp"`.
 - En la página, la foto reemplaza las siluetas y las ramas: va en la capa lejana (parallax con el scroll) y
   «respira» (zoom lento). Encima van la bruma que cruza en la capa media, un velo con el color del fondo

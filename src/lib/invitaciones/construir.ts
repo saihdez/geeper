@@ -21,7 +21,7 @@ import { instanteUTC, textosFecha } from "./calendario";
 import { leerEnlaceMusica, resolverEnlaceMusica } from "./enlaces";
 import { Entrada, fechaPasada, Invitacion, normalizarUrlPublica, Retoques, Seccion, SLUG, type EstiloId } from "./esquema";
 import { z } from "zod";
-import { AjustesFoto, aplicarAjustesFoto, copiarElegida, dirPropuestas, FOTO_ORIGINAL, NOMBRE_PROPUESTA, pngQrBase } from "./imagenes";
+import { AjustesFoto, aplicarAjustesFoto, copiarElegida, dirPropuestas, FONDO_BORROSO, FOTO_ORIGINAL, hacerFondoBorroso, NOMBRE_PROPUESTA, pngQrBase } from "./imagenes";
 import { cambiosDesdeAvnac, disenoAvnac, leerDisenoAvnac, nombreArchivoAvnac } from "./avnac";
 import { abrirAvnac } from "../avnac";
 import { SISTEMA } from "../plataforma";
@@ -308,6 +308,7 @@ export async function quitarFondo(slug: string): Promise<{ inv: Invitacion; avis
   const inv = Invitacion.parse({ ...previa, fondo: undefined, actualizada: new Date().toISOString() });
   await escribirAtomico(path.join(dirInvitacion(slug), "invitacion.json"), JSON.stringify(inv, null, 2));
   await fs.rm(path.join(dirInvitacion(slug), "fondo.webp"), { force: true });
+  await fs.rm(path.join(dirInvitacion(slug), FONDO_BORROSO), { force: true });
   return { inv, avisos: await construir(inv) };
 }
 
@@ -369,15 +370,22 @@ async function recursosDe(inv: Invitacion) {
   const fuentes = await fuentesDe(estiloDe(inv).letras);
   const fotoB64 = inv.foto ? (await fs.readFile(path.join(dir, inv.foto))).toString("base64") : undefined;
   const fondoB64 = inv.fondo && existsSync(path.join(dir, inv.fondo)) ? (await fs.readFile(path.join(dir, inv.fondo))).toString("base64") : undefined;
+  let fondoBorrosoB64: string | undefined;
+  if (fondoB64) {
+    // Los fondos elegidos antes de que existiera la copia borrosa: se hace ahora (sin GPU, ffmpeg).
+    const borroso = path.join(dir, FONDO_BORROSO);
+    if (!existsSync(borroso)) await hacerFondoBorroso(path.join(dir, inv.fondo!), borroso).catch(() => {});
+    if (existsSync(borroso)) fondoBorrosoB64 = (await fs.readFile(borroso)).toString("base64");
+  }
   const musicaB64 = inv.musica.tipo === "archivo" ? (await fs.readFile(path.join(dir, "musica.mp3"))).toString("base64") : undefined;
-  return { fuentes, fotoB64, fondoB64, musicaB64 };
+  return { fuentes, fotoB64, fondoB64, fondoBorrosoB64, musicaB64 };
 }
 
 /** La página en modo «Corregir a mano» (sin audio: no hace falta para escribir). */
 export async function htmlEditor(slug: string): Promise<string> {
   const inv = await leerInvitacion(slug);
-  const { fuentes, fotoB64, fondoB64 } = await recursosDe(inv);
-  return compilar(inv, { fuentesCss: fuentes.css, fotoB64, fondoB64 }, Date.now(), { editor: true }).html;
+  const { fuentes, fotoB64, fondoB64, fondoBorrosoB64 } = await recursosDe(inv);
+  return compilar(inv, { fuentesCss: fuentes.css, fotoB64, fondoB64, fondoBorrosoB64 }, Date.now(), { editor: true }).html;
 }
 
 /** La invitación como diseño de Avnac Studio, con la foto y el QR adentro (avnac.ts). */
@@ -546,9 +554,9 @@ export async function construir(inv: Invitacion, op: { portada?: boolean } = {})
   const pub = path.join(dir, "publicar");
   await fs.mkdir(pub, { recursive: true });
   const avisos: string[] = [];
-  const { fuentes, fotoB64, fondoB64, musicaB64 } = await recursosDe(inv);
+  const { fuentes, fotoB64, fondoB64, fondoBorrosoB64, musicaB64 } = await recursosDe(inv);
   if (fuentes.aviso) avisos.push(fuentes.aviso);
-  const { html, ics } = compilar(inv, { fuentesCss: fuentes.css, fotoB64, fondoB64, musicaB64 });
+  const { html, ics } = compilar(inv, { fuentesCss: fuentes.css, fotoB64, fondoB64, fondoBorrosoB64, musicaB64 });
 
   const peso = Buffer.byteLength(html);
   const max = musicaB64 ? PESO_MAX.conAudio : PESO_MAX.sinAudio;

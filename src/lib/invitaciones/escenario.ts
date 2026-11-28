@@ -203,14 +203,14 @@ const CAMINO: Record<Escenario, { ancho: number; segundo: number; punteado?: str
  * Con `fondoB64` (un fondo realista dibujado con IA) la foto reemplaza las siluetas y las ramas: va en la
  * capa lejana (se mueve con el scroll), con bruma en la capa media y un velo para que se lea el texto.
  */
-export function htmlEscenario(e: Estilo, semilla: number, fondoB64?: string): { fondo: string; frente: string; camino: string } {
+export function htmlEscenario(e: Estilo, semilla: number, fondoB64?: string, borrosoB64?: string): { fondo: string; frente: string; camino: string } {
   const esc = escenarioDe(e.adorno);
   const c = CAMINO[esc];
   const camino = `<svg class="camino" aria-hidden="true" data-ancho="${c.ancho}" data-segundo="${c.segundo}"${c.punteado ? ` data-punteado="${c.punteado}"` : ""}><path class="camino-dos"/><path class="camino-uno"/><g class="brotes"></g></svg>`;
   if (fondoB64) {
     const rayosFoto = esc === "bosque" || esc === "jardin" ? `<div class="rayos"><i></i><i></i><i></i><i></i></div>` : "";
     return {
-      fondo: `<div class="escena esc-${esc} con-foto" aria-hidden="true"><div class="capa lejos foto"><i style="background-image:url(data:image/webp;base64,${fondoB64})"></i></div>${rayosFoto}<div class="capa medio bruma"><i></i><i></i><i></i></div><div class="velo"></div><div class="linterna"></div></div>`,
+      fondo: `<div class="escena esc-${esc} con-foto" aria-hidden="true"><div class="capa lejos foto" style="--fondo-img:url(data:image/webp;base64,${fondoB64})${borrosoB64 ? `;--fondo-borroso:url(data:image/webp;base64,${borrosoB64})` : ""}"><b></b><i></i></div>${rayosFoto}<div class="capa medio bruma"><i></i><i></i><i></i></div><div class="velo"></div><div class="linterna"></div></div>`,
       frente: `<div class="primer-plano con-foto" aria-hidden="true"></div>`,
       camino,
     };
@@ -264,7 +264,14 @@ background:radial-gradient(circle,color-mix(in srgb,var(--acento) 34%,transparen
 @keyframes chispa{0%{transform:translate(0,0) scale(.4);opacity:1}100%{transform:translate(var(--dx),var(--dy)) scale(1) rotate(var(--gr));opacity:0}}
 /* Fondo realista: la foto respira despacio, la bruma cruza y el velo deja leer los textos de la portada. */
 .escena.con-foto .lejos{opacity:1}.escena.con-foto .medio{opacity:1}
-.escena .foto i{position:absolute;inset:0;background:center/cover no-repeat;animation:respira 40s ease-in-out infinite alternate;will-change:transform}
+.escena .foto i,.escena .foto b{position:absolute;inset:0;background:var(--fondo-img) center/cover no-repeat}
+.escena .foto b{background-image:var(--fondo-borroso,var(--fondo-img))}
+.escena .foto i{animation:respira 40s ease-in-out infinite alternate;will-change:transform}.escena .foto b{display:none}
+/* Pantalla ancha (PC, tablet acostada): la foto vertical no se estira; va nítida al centro y los lados
+   se llenan con la misma foto desenfocada, como en el cine. El desenfoque viene hecho (una copia
+   diminuta que el navegador agranda): un filter:blur en pantalla completa baja a la mitad los cuadros/s. */
+@media (min-aspect-ratio:4/5){.escena .foto b{display:block;inset:-60px;}
+.escena .foto i{left:0;right:0;margin:0 auto;width:min(100%,calc(118vh * 9 / 16));-webkit-mask-image:linear-gradient(90deg,transparent,#000 14%,#000 86%,transparent);mask-image:linear-gradient(90deg,transparent,#000 14%,#000 86%,transparent)}}
 @keyframes respira{from{transform:scale(1.03)}to{transform:scale(1.1) translateX(-1.5%)}}
 .escena .bruma i{position:absolute;left:-30%;width:160%;height:38%;border-radius:50%;background:radial-gradient(ellipse at center,color-mix(in srgb,var(--claro) 24%,transparent),transparent 66%);filter:blur(16px);animation:bruma 26s ease-in-out infinite alternate}
 .escena .bruma i:nth-child(1){top:52%}.escena .bruma i:nth-child(2){top:18%;opacity:.6;animation-duration:36s;animation-direction:alternate-reverse}.escena .bruma i:nth-child(3){top:76%;animation-duration:21s}

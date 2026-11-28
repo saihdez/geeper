@@ -444,7 +444,7 @@ export function ajustesFondo(descripcion: string, estilo: string, semilla = Math
     model_type: "z_image",
     image_mode: 1,
     prompt: `${d ? `${d}. ` : ""}Mood: ${estilo}. Cinematic photorealistic wide establishing shot, vertical composition, film still from a fantasy movie, volumetric light, atmospheric depth, mist, rich detail at the edges and a calmer, softer center, no people, no text, no letters, no watermark.`,
-    resolution: "768x1344",
+    resolution: "960x1680",
     batch_size: TOMAS_FOTO,
     seed: semilla,
   };
@@ -525,6 +525,13 @@ export async function aplicarAjustesFoto(origen: string, destino: string, ajuste
   if (r.codigo !== 0) throw new Error("No se pudo ajustar la foto. Prueba con otros ajustes o elige otra.");
 }
 
+export const FONDO_BORROSO = "fondo-borroso.webp";
+
+/** Copia de 36 px de ancho, oscurecida: el navegador la agranda y queda como un desenfoque fuerte (~1-2 KB). */
+export async function hacerFondoBorroso(origen: string, destino: string): Promise<void> {
+  await correr(FFMPEG, ["-y", "-v", "error", "-i", origen, "-frames:v", "1", "-vf", "scale=36:-2:flags=area,gblur=sigma=1.2,eq=brightness=-0.13:saturation=1.15", "-c:v", "libwebp", "-quality", "80", destino]);
+}
+
 export async function copiarElegida(dirInvitacion: string, archivo: string, que: ClaseImagen): Promise<void> {
   if (!NOMBRE_PROPUESTA.test(archivo) || !archivo.startsWith(`${que}-`)) throw new Error("Esa propuesta no existe");
   const origen = path.join(dirPropuestas(dirInvitacion), archivo);
@@ -533,8 +540,10 @@ export async function copiarElegida(dirInvitacion: string, archivo: string, que:
     await correr(FFMPEG, ["-y", "-v", "error", "-i", origen, "-frames:v", "1", "-vf", "scale='min(1080,iw)':-2", "-c:v", "libwebp", "-quality", "82", path.join(dirInvitacion, "foto.webp")]);
     await fs.copyFile(origen, path.join(dirInvitacion, FOTO_ORIGINAL));
   } else if (que === "fondo") {
-    // Va dentro de la página: 900 px de ancho y WebP liviano (~150-300 KB) para que abra rápido con datos.
-    await correr(FFMPEG, ["-y", "-v", "error", "-i", origen, "-frames:v", "1", "-vf", "scale='min(900,iw)':-2", "-c:v", "libwebp", "-quality", "74", path.join(dirInvitacion, "fondo.webp")]);
+    // Va dentro de la página: tamaño completo (hasta 1080 px de ancho) en WebP (~250-500 KB): se ve nítido en
+    // teléfonos de alta resolución y en el centro de la pantalla del PC.
+    await correr(FFMPEG, ["-y", "-v", "error", "-i", origen, "-frames:v", "1", "-vf", "scale='min(1080,iw)':-2", "-c:v", "libwebp", "-quality", "84", "-compression_level", "6", path.join(dirInvitacion, "fondo.webp")]);
+    await hacerFondoBorroso(path.join(dirInvitacion, "fondo.webp"), path.join(dirInvitacion, FONDO_BORROSO));
   } else {
     await escribirAtomico(path.join(dirInvitacion, "qr-arte.png"), await fs.readFile(origen));
   }
