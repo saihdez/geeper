@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { textoIntentos, type IntentoPrevio } from "@/lib/intentos";
 import { etapaSimple, explicarError, nombreTipo } from "@/lib/textos";
 import { Aviso, Barra, BotonReintentar, Estado, haceCuanto, MotorApagado, postJson, segundos, useSondeo } from "./comun";
+import { ofreceGrabacion } from "@/lib/demo-web";
 import { CambiarLink, ofreceCambiarLink } from "./cambiar-link";
 
 interface Trabajo {
@@ -133,6 +134,8 @@ export function ListaTrabajos({ proyectoId }: { proyectoId?: string }) {
             )}
             {/* UX-17: si el link de la página web no abría, se corrige sin escribir todo otra vez. */}
             {ofreceCambiarLink(t) && <CambiarLink trabajoId={t.id} />}
+            {/* Si la página bloquea al grabador o le sale en blanco, la persona puede subir su propia grabación. */}
+            {ofreceCambiarLink(t) && ofreceGrabacion(t.error) && <CambiarLink trabajoId={t.id} grabacion />}
             {vivo && <button type="button" className="boton boton-peligro" onClick={() => void accion(t.id, "cancelar")}>Cancelar</button>}
             {/* Un «interrumpido» (lo cortó un reinicio) se cierra sin relanzarlo: queda cancelado. */}
             {t.estado === "interrumpido" && <button type="button" className="boton" title="No lo vuelve a intentar: queda cerrado" onClick={() => void accion(t.id, "cancelar")}>Cerrar</button>}

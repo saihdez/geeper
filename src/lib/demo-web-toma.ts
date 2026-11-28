@@ -12,6 +12,7 @@ import {
   gradienteMarca,
   leerRgb,
   planDemo,
+  registroDeGrabacion,
   revisarPagina,
   type Candidato,
   type EstiloDemo,
@@ -330,6 +331,7 @@ export async function tomarDemo(url: string, dir: string, op: OpcionesToma): Pro
       duracion: info.duracion,
       ancho: info.ancho ?? Math.round(vista.width * escala),
       alto: info.alto ?? Math.round(vista.height * escala),
+      imagenesRotas: medida?.rotas ?? 0,
     };
     await fsp.writeFile(path.join(dir, "toma.json"), JSON.stringify(r, null, 1));
     return r;
@@ -337,6 +339,32 @@ export async function tomarDemo(url: string, dir: string, op: OpcionesToma): Pro
     signal?.removeEventListener("abort", cerrar);
     await nav.close().catch(() => {});
   }
+}
+
+/**
+ * Una grabación de pantalla subida por la persona → `<dir>/toma.mp4` con la misma forma que la toma
+ * automática (30 fps, lados pares, hasta 1920 px de ancho o 1920 de alto, sin sonido: la voz es la
+ * del texto), y su registro para el montaje (ver `registroDeGrabacion`).
+ */
+export async function prepararGrabacion(
+  src: string,
+  dir: string,
+  o: { formato: FormatoDemo; objetivo: number; log?: Registro },
+): Promise<RegistroDemo> {
+  const log = o.log ?? (() => {});
+  const antes = await probar(src).catch(() => null);
+  if (!antes?.ancho || !antes.alto) throw new Error("No pude leer la grabación: súbela otra vez como video (MP4 o MOV).");
+  const video = path.join(dir, "toma.mp4");
+  await ffmpeg([
+    "-i", src, "-an",
+    "-vf", "fps=30,scale=w='min(1920,iw)':h='min(1920,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p",
+    "-c:v", "libx264", "-preset", "medium", "-crf", "16", "-g", "30", "-movflags", "+faststart", video,
+  ], log);
+  const info = await probar(video);
+  log(`Grabación: ${antes.ancho}×${antes.alto}, ${info.duracion.toFixed(1)} s → toma ${info.ancho}×${info.alto} a 30 fps`);
+  const r = registroDeGrabacion({ duracion: info.duracion, ancho: info.ancho ?? antes.ancho, alto: info.alto ?? antes.alto }, { formato: o.formato, objetivo: o.objetivo });
+  await fsp.writeFile(path.join(dir, "toma.json"), JSON.stringify(r, null, 1));
+  return r;
 }
 
 export interface OpcionesRender {

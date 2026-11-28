@@ -158,6 +158,14 @@ export function recomendar(e: EntradaRecomendar): Recomendacion[] {
     }
   }
 
+  // --- Demo de una página con imágenes que no cargaron al grabarla --------------------------------
+  const rotas = Object.values(p.assets).reduce((n, a) => n + (a.regenerar.origen === "demo-web" ? Number(a.regenerar.imagenesRotas) || 0 : 0), 0);
+  if (rotas > 0) {
+    out.push({ id: "demo-imagenes-rotas", prioridad: "mejora", area: "imagen",
+      titulo: rotas === 1 ? "Una imagen de tu página no cargó" : `${rotas} imágenes de tu página no cargaron`,
+      porque: `Cuando Geeper grabó la página, ${rotas === 1 ? "esa imagen no apareció y se ve un hueco" : "esas imágenes no aparecieron y se ven huecos"} en la demo. Arréglala${rotas === 1 ? "" : "s"} en tu página y vuelve a crear el video, o sube una grabación de tu pantalla.` });
+  }
+
   // --- Subtítulos que no se pueden leer (sin esperar al render) ----------------------------------
   const grupos = todosLosGrupos(p);
   const subs = revisarSubtitulos(p.formato, grupos, ENTRADA + duracion, p.plataformas);

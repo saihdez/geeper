@@ -63,6 +63,7 @@ describe("matcher del proxy: las subidas no pasan por la copia de 10 MB", () => 
     "/api/proyectos/p1/clip",
     "/api/workflows/w1",
     "/api/escenas-3d",
+    "/api/demos/grabacion",
   ];
 
   it("el matcher general deja fuera las subidas y cubre lo demás", () => {

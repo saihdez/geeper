@@ -157,20 +157,30 @@ export interface NuevaDemo {
   nombre?: string;
   /** El sitio es de quien crea el proyecto (o tiene permiso). */
   propio?: boolean;
+  /** Grabación de pantalla ya subida a `_subidos/` (ruta absoluta): con ella el link es opcional. */
+  grabacion?: string;
 }
 
 /** Demo de una página web: voz → demo a su medida → proyecto → render y QC. */
 export async function crearDemo(d: NuevaDemo) {
-  let host: string;
+  let host: string | null = null;
   try {
     const u = new URL(d.url);
     if (!/^https?:$/.test(u.protocol)) throw new Error();
     host = u.host.replace(/^www\./, "");
   } catch {
-    throw new Error("El link no es válido: cópialo completo desde tu navegador (empieza con https://).");
+    if (!d.grabacion) throw new Error("El link no es válido: cópialo completo desde tu navegador (empieza con https://).");
   }
-  const p = await crearFila({ tema: `Demo de ${host}`, nombre: d.nombre?.trim() || `Demo de ${host}`, formato: d.formato, plantilla: d.plantilla });
-  await encolar(p.id, "demo.crear", { url: d.url, estilo: d.estilo, texto: d.texto, propio: d.propio === true, cadena: ["render.entregar"] });
+  const tema = host ? `Demo de ${host}` : "Demo de tu grabación";
+  const p = await crearFila({ tema, nombre: d.nombre?.trim() || tema, formato: d.formato, plantilla: d.plantilla });
+  await encolar(p.id, "demo.crear", {
+    url: host ? d.url : "",
+    estilo: d.estilo,
+    texto: d.texto,
+    propio: d.propio === true,
+    ...(d.grabacion ? { grabacion: d.grabacion } : {}),
+    cadena: ["render.entregar"],
+  });
   return p;
 }
 

@@ -10,11 +10,12 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(req: Request) {
   return manejar(async () => {
-    const id = new URL(req.url).searchParams.get("trabajo") ?? "";
+    const q = new URL(req.url).searchParams;
+    const id = q.get("trabajo") ?? "";
     const t = id
       ? await db.trabajo.findUnique({ where: { id }, select: { tipo: true, payload: true, proyecto: { select: { formato: true, plantilla: true } } } })
       : null;
     if (!t || t.tipo !== "demo.crear") return json({ error: "No encontré ese video de página web. Vuelve a Nuevo y escribe el link otra vez." }, 404);
-    return json({ enlace: enlaceDeTrabajoDemo(t.payload, t.proyecto) });
+    return json({ enlace: enlaceDeTrabajoDemo(t.payload, t.proyecto, q.get("fuente") === "grabacion" ? "grabacion" : undefined) });
   });
 }

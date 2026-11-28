@@ -14,6 +14,8 @@
  * apilan zooms); 12 s como máximo; se apunta al contenido, no al contenedor.
  */
 
+import { leerColor } from "./colores-marca";
+
 /** Lo que se puede decir en una demo: hasta ~45 s de voz (unas 110 palabras). */
 export const MAX_CARACTERES_DEMO = 700;
 /** Caracteres por segundo de Kokoro a velocidad 0,85 (medido 2026-11-20: 126 caracteres → ~11 s). */
@@ -27,6 +29,8 @@ export interface BorradorDemo {
   estilo: "3d" | "plano";
   plantilla: string;
   propio: boolean;
+  /** Cómo se muestra la página: Geeper la graba sola (link) o la persona sube su grabación. */
+  fuente: "link" | "grabacion";
 }
 
 /**
@@ -41,6 +45,7 @@ export function enlaceCambiarLink(b: Partial<BorradorDemo>): string {
   if (b.estilo) q.set("estilo", b.estilo);
   if (b.plantilla) q.set("plantilla", b.plantilla);
   if (b.propio) q.set("propio", "1");
+  if (b.fuente === "grabacion") q.set("fuente", "grabacion");
   return `/nuevo?${q.toString()}`;
 }
 
@@ -49,7 +54,7 @@ export function enlaceCambiarLink(b: Partial<BorradorDemo>): string {
  * estilo y «es mío» salen del payload; la forma y el estilo del canal, del proyecto. Lo que no sea
  * válido se descarta (pasa por leerBorradorDemo).
  */
-export function enlaceDeTrabajoDemo(payload: unknown, proyecto: { formato: string; plantilla: string } | null): string {
+export function enlaceDeTrabajoDemo(payload: unknown, proyecto: { formato: string; plantilla: string } | null, fuente?: "grabacion"): string {
   const p = (payload && typeof payload === "object" ? payload : {}) as Record<string, unknown>;
   const q = new URLSearchParams();
   if (typeof p.url === "string") q.set("url", p.url);
@@ -60,6 +65,7 @@ export function enlaceDeTrabajoDemo(payload: unknown, proyecto: { formato: strin
     q.set("formato", proyecto.formato);
     q.set("plantilla", proyecto.plantilla);
   }
+  if (fuente === "grabacion" || typeof p.grabacion === "string") q.set("fuente", "grabacion");
   return enlaceCambiarLink(leerBorradorDemo(q));
 }
 
@@ -77,6 +83,7 @@ export function leerBorradorDemo(q: Pick<URLSearchParams, "get">): Partial<Borra
   const plantilla = q.get("plantilla");
   if (plantilla && /^[\w-]{1,80}$/.test(plantilla)) b.plantilla = plantilla;
   if (q.get("propio") === "1") b.propio = true;
+  if (q.get("fuente") === "grabacion") b.fuente = "grabacion";
   return b;
 }
 
@@ -136,6 +143,8 @@ export interface RegistroDemo {
   duracion: number;
   ancho: number;
   alto: number;
+  /** Imágenes visibles de la página que no cargaron al grabar (no se ven en la demo). */
+  imagenesRotas?: number;
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -579,6 +588,16 @@ ${videos}
 `;
 }
 
+/** La página rechaza a los programas automáticos: la salida es que la persona suba su grabación. */
+export const ERROR_BLOQUEO =
+  "La página no dejó entrar al grabador (algunos sitios bloquean a los programas automáticos). Prueba con otra página de tu sitio o sube una grabación de tu pantalla.";
+/** La página no muestra nada al grabador (suele pasar con apps que piden iniciar sesión). */
+export const ERROR_EN_BLANCO =
+  "La página abrió en blanco para el grabador: no hay nada que mostrar. Si en tu navegador sí se ve, sube una grabación de tu pantalla.";
+
+/** ¿Este error de un video de página web se arregla subiendo una grabación propia? */
+export const ofreceGrabacion = (error: string | null | undefined) => !!error && (error.includes(ERROR_BLOQUEO) || error.includes(ERROR_EN_BLANCO));
+
 /** Lo que se mide de la página en el navegador antes de grabar. */
 export interface SaludPagina {
   /** Código HTTP de la página principal en el navegador (null si no hubo respuesta, p. ej. una página local). */
@@ -604,12 +623,48 @@ export function revisarPagina(s: SaludPagina): { error: string | null; avisos: s
   let error: string | null = null;
   if (s.estado !== null && s.estado >= 400) {
     if (s.estado === 404 || s.estado === 410) error = "Esa página no existe: el sitio dice que no la encuentra. Revisa el link.";
-    else if (s.estado === 401 || s.estado === 403 || s.estado === 429)
-      error = "La página no dejó entrar al grabador (algunos sitios bloquean a los programas automáticos). Prueba con otra página de tu sitio.";
+    else if (s.estado === 401 || s.estado === 403 || s.estado === 429) error = ERROR_BLOQUEO;
     else if (s.estado >= 500) error = "La página tiene un problema en este momento. Prueba de nuevo en un rato.";
     else error = "La página respondió con un error y no muestra su contenido. Revisa que abra bien en tu navegador.";
   } else if (s.texto < 20 && s.medios === 0) {
-    error = "La página abrió en blanco: no hay nada que mostrar en la demo. Revisa que abra bien en tu navegador.";
+    error = ERROR_EN_BLANCO;
   }
   return { error, avisos };
+}
+
+/** Lo que se lee de una grabación de pantalla subida (ya pasada a la toma: 30 fps, sin sonido). */
+export interface Grabacion {
+  duracion: number;
+  ancho: number;
+  alto: number;
+}
+
+/**
+ * El registro de una grabación propia, para el mismo montaje de la toma automática. No hay recorrido
+ * medido: sin cursor ni clics (la tarjeta no dibuja cursor) y con el corte entre las dos tomas a la mitad
+ * del largo que hace falta, así el video sigue la grabación desde el principio y en orden.
+ */
+export function registroDeGrabacion(g: Grabacion, o: { formato: FormatoDemo; objetivo: number; titulo?: string }): RegistroDemo {
+  const mitad = Math.max(1, Math.min(g.duracion * 0.45, o.objetivo * 0.45));
+  return {
+    url: "",
+    titulo: o.titulo ?? "",
+    historia: "scroll",
+    formato: o.formato,
+    cta: null,
+    acento: null,
+    fondoPagina: null,
+    eventos: [{ nombre: "scroll1", t: mitad }, { nombre: "scroll2", t: mitad + 1.5 }],
+    cursor: [],
+    clics: [],
+    duracion: g.duracion,
+    ancho: g.ancho,
+    alto: g.alto,
+  };
+}
+
+/** El fondo de una demo sin colores de página (una grabación propia): el acento de la plantilla. */
+export function fondoDePlantilla(datos: { colores: { acento1: string } }): { desde: string; hasta: string } {
+  const c = leerColor(datos.colores.acento1);
+  return gradienteMarca(c ? [c.r, c.g, c.b] : null, null);
 }

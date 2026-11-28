@@ -33,7 +33,7 @@ import type { Avance } from "@/lib/wan2gp";
 import { reencuadrarEscena } from "@/lib/reencuadre";
 import { renderEntregar, versionDeProyecto } from "@/lib/render";
 import { publicarSubir } from "@/lib/redes/publicar";
-import { dirProyecto } from "@/lib/rutas";
+import { dirDatos, dirProyecto } from "@/lib/rutas";
 
 export interface Trabajo {
   id: string;
@@ -217,6 +217,14 @@ async function clipImportar(t: Trabajo, h: Herramientas): Promise<Salida> {
   return { resultado: r, siguiente: siguienteDe(t.payload, { version: r.version }) };
 }
 
+/** La grabación de una demo, sólo si está en `_subidos/` (donde la deja /api/demos/grabacion). */
+function grabacionSubida(v: unknown): string | undefined {
+  if (typeof v !== "string" || !v) return undefined;
+  const base = path.resolve(dirDatos(), "_subidos");
+  const ruta = path.resolve(v);
+  return ruta.startsWith(base + path.sep) ? ruta : undefined;
+}
+
 async function demoCrear(t: Trabajo, h: Herramientas): Promise<Salida> {
   const proyecto = await db.proyecto.findUniqueOrThrow({ where: { id: t.proyectoId! } });
   const pl = t.payload;
@@ -233,6 +241,7 @@ async function demoCrear(t: Trabajo, h: Herramientas): Promise<Salida> {
     texto: String(pl.texto ?? ""),
     historia: pl.historia === "clic" || pl.historia === "scroll" ? pl.historia : undefined,
     propio: pl.propio === true,
+    grabacion: grabacionSubida(pl.grabacion),
   });
   await db.proyecto.update({ where: { id: proyecto.id }, data: { estado: "ensamblado" } });
   return { resultado: r, siguiente: siguienteDe(t.payload, { version: r.version }) };
