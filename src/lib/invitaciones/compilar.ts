@@ -10,6 +10,7 @@ import { instanteUTC, partesCuentaAtras, semanasDelMes, textosFecha } from "./ca
 import { ics, mensajeConfirmacion, urlGoogleCalendar, urlMaps, urlReproductor, urlWaze, type Evento } from "./enlaces";
 import type { Invitacion, Retoques } from "./esquema";
 import { divisor, esquinas, estiloDe, pilaLetra, scriptParticulas, texturaFondo, type Estilo } from "./estilo";
+import { cssEscenario, htmlEscenario, scriptEscenario, semillaDe } from "./escenario";
 
 export interface Recursos {
   /** `@font-face` con las letras en base64 ("" si no hubo internet: quedan las del sistema). */
@@ -70,8 +71,8 @@ function css(e: Estilo): string {
 --f-titulos:${pilaLetra(e.letras.titulos)};--f-texto:${pilaLetra(e.letras.texto)}}
 *{box-sizing:border-box}html{-webkit-text-size-adjust:100%;background:var(--fondo)}
 body{margin:0;min-height:100vh;background:${texturaFondo(e.fondo)}radial-gradient(120% 900px at 50% 0%,var(--fondo2),var(--fondo)) no-repeat var(--fondo);color:var(--claro);font-family:var(--f-texto);font-size:18px;line-height:1.55}
-.pagina{position:relative;z-index:1;max-width:480px;margin:0 auto;padding:0 18px 96px;overflow-x:hidden}
-canvas.particulas{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}canvas.particulas.delante{z-index:3}
+.pagina{position:relative;z-index:2;max-width:480px;margin:0 auto;padding:0 18px 96px;overflow-x:hidden}
+canvas.particulas{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:1}canvas.particulas.delante{z-index:3}
 .portada{position:relative}.esquina{position:absolute;width:118px;height:118px;pointer-events:none;opacity:.55}.esquina svg{width:100%;height:100%;fill:color-mix(in srgb,var(--acento) 30%,transparent);stroke:var(--acento);stroke-width:1.2;stroke-linecap:round;stroke-linejoin:round}
 .e1{top:14px;left:-10px}.e2{bottom:14px;right:-10px;transform:rotate(180deg)}
 .portada{min-height:100svh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:40px 0}
@@ -273,6 +274,7 @@ export interface OpcionesCompilar {
 export function compilar(inv: Invitacion, r: Recursos, ahora = Date.now(), op: OpcionesCompilar = {}): { html: string; ics: string } {
   const e = estiloDe(inv);
   const ed = !!op.editor;
+  const escena = htmlEscenario(e, semillaDe(inv.slug));
   const bases = basesDe(inv);
   const { vigentes } = retoquesVigentes(inv);
   /** Texto con su clave: el retoque si sigue valiendo; en el editor, envuelto para poder escribirlo. */
@@ -339,17 +341,17 @@ ${inv.confirmarAntes ? `<p class="nota">${t("rsvp-limite")}</p>` : ""}${inv.pase
 <title>${esc(largo)}</title><meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="${e.colores.fondo}">
 <meta name="description" content="${esc(descripcionOg)}"><meta property="og:type" content="website"><meta property="og:title" content="${esc(largo)}"><meta property="og:description" content="${esc(descripcionOg)}">
 ${og ? `<meta property="og:image" content="${esc(og)}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:url" content="${esc(inv.urlPublica!)}"><meta name="twitter:card" content="summary_large_image">` : ""}
-<style>${r.fuentesCss}${css(e)}${ed ? CSS_EDITOR : ""}</style><noscript><style>.cerrado .resto{display:block}.aparece{opacity:1;transform:none}.sello,.pista{display:none}</style></noscript></head>
-<body class="cerrado"><main class="pagina">
+<style>${r.fuentesCss}${css(e)}${cssEscenario(e)}${ed ? CSS_EDITOR : ""}</style><noscript><style>.cerrado .resto{display:block}.aparece{opacity:1;transform:none}.sello,.pista{display:none}</style></noscript></head>
+<body class="cerrado">${escena.fondo}<main class="pagina">
 <section class="portada">${esquinas(e.adorno)}<p class="pre">${t("pre")}</p><h1 class="script nombres">${t("nombres")}</h1>
 <div class="sobre"><div class="sobre-fondo"></div><div class="carta">${carta}</div><div class="frente"></div><div class="solapa"></div>
 <button id="sello" class="sello" type="button" aria-label="Abrir la invitación">${esc(iniciales(inv.nombres))}</button></div>
 <p class="pista">${t("pista")}</p><p class="desliza" aria-hidden="true">Desliza para ver más <span>↓</span></p></section>
-<div class="resto">${secciones.join("\n")}
+<div class="resto">${escena.camino}${secciones.join("\n")}
 <footer class="pie aparece"><p class="script">${t("pie-nombres")}</p><p class="mayus">${t("pie-fecha")}</p></footer></div>
-</main>${audio}
+</main>${escena.frente}${audio}
 <script type="application/json" id="datos">${JSON.stringify(datos).replace(/</g, "\\u003c")}</script>
-<script>${script()}${scriptParticulas(e)}${ed ? scriptEditor() : ""}</script></body></html>`;
+<script>${script()}${scriptParticulas(e)}${scriptEscenario(e)}${ed ? scriptEditor() : ""}</script></body></html>`;
 
   return { html, ics: ics(ev, ahora) };
 }

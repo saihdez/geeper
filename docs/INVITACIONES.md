@@ -229,6 +229,23 @@ Avnac Studio» (el diseño para imprimir o compartir como imagen).
 - Los títulos se achican para que la palabra más larga quepa (Cinzel y otras letras anchas se miden más
   anchas). No se pudo correr el importador de Avnac aquí: la prueba revisa las mismas condiciones que su código.
 
+### Modo inmersivo: el tema en toda la página (hecho el 2026-11-28)
+
+Pedido del dueño: «si es bosque encantado, que esté leyendo todo a través del bosque, interactivo en todo
+momento, que me lleve por las ramas o raíces». `escenario.ts`, para todas las invitaciones:
+
+- Escenario por adorno: bosque (hojas, hongos, mariposas), jardín (flores, corazones), noche (estrellas,
+  lunas), mar (ondas), invierno (copos), fiesta (globos), elegante (coronas, geométrico, clásico).
+- Profundidad: dos capas fijas con parallax (acotado al largo de la página), troncos o columnas en los
+  lados, ramas en las esquinas que se mecen con el scroll rápido; rayos de luz en bosque y jardín.
+- Un camino (raíz, enredadera, constelación, corriente, huellas, filigrana, serpentina) que se dibuja con el
+  scroll y cruza de un lado al otro entre las tarjetas; brotan los adornos del tema y cada tarjeta sale del
+  lado por donde llega el camino.
+- Interacción: el dedo o el ratón es una linterna; tocar suelta adornos del tema.
+- Capas: escenario 0, partículas 1, página 2, partículas de adelante 3, ramas 4; todo sin recibir toques y
+  sin tapar el texto. SVG generado con semilla fija (el slug). 62 cuadros/s en un teléfono de 390 px.
+- Con «reducir movimiento»: escenario quieto, camino ya dibujado, sin chispas.
+
 ### Datos del cliente con Google Forms (hecho el 2026-11-27)
 
 En Invitaciones, «Pedirle los datos al cliente con Google Forms»: Geeper crea el formulario en la cuenta
