@@ -196,3 +196,58 @@ describe("Google Forms", () => {
     });
   });
 });
+
+describe("ajustar y descartar las imágenes", () => {
+  it("el filtro recorta 3:2 alrededor del punto elegido y sólo agrega luz/contraste/color si cambiaron", async () => {
+    const { AjustesFoto, filtroAjustes } = await import("@/lib/invitaciones/imagenes");
+    expect(filtroAjustes(AjustesFoto.parse({}))).toBe("crop=w='min(iw\\,ih*1.5)/1':h='min(iw\\,ih*1.5)/1/1.5':x='(iw-ow)*0.5':y='(ih-oh)*0.5',scale=1080:720:flags=lanczos");
+    const f = filtroAjustes(AjustesFoto.parse({ zoom: 2, x: 0, y: 100, brillo: 0.2, contraste: 1.3, color: 0 }));
+    expect(f).toContain("/2':");
+    expect(f).toContain("x='(iw-ow)*0'");
+    expect(f).toContain("y='(ih-oh)*1'");
+    expect(f).toContain("clipval*1.2");
+    expect(f).toContain("eq=contrast=1.3:saturation=0");
+    expect(() => AjustesFoto.parse({ zoom: 9 })).toThrow();
+  });
+
+  it("ajustar la foto actual parte siempre del original (no se acumulan) y descartar borra la propuesta", async () => {
+    const { existsSync } = await import("node:fs");
+    const { FFMPEG } = await import("@/lib/rutas");
+    if (!existsSync(FFMPEG)) return;
+    const { execFileSync } = await import("node:child_process");
+    const { ajustarFoto, guardarInvitacion, leerInvitacion } = await import("@/lib/invitaciones/construir");
+    const { descartarPropuesta, descartarPropuestas, FOTO_ORIGINAL, leerPropuestas } = await import("@/lib/invitaciones/imagenes");
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "geeper-ajuste-"));
+    const antes = process.env.GEEPER_DATA;
+    process.env.GEEPER_DATA = tmp;
+    try {
+      const { inv: i } = await guardarInvitacion(base, {});
+      const dir = path.join(tmp, "invitaciones", i.slug);
+      await fs.mkdir(path.join(dir, "propuestas"), { recursive: true });
+      // Una «foto» de 1200×800: mitad izquierda roja, derecha azul.
+      for (const n of ["foto-1764260000000-1.png", "foto-1764260000000-2.png"]) {
+        execFileSync(FFMPEG, ["-v", "error", "-y", "-f", "lavfi", "-i", "color=red:s=600x800", "-f", "lavfi", "-i", "color=blue:s=600x800", "-filter_complex", "hstack", "-frames:v", "1", path.join(dir, "propuestas", n)]);
+      }
+      // Acercar al doble sobre la izquierda: queda toda roja.
+      await ajustarFoto(i.slug, { archivo: "foto-1764260000000-1.png", ajustes: { zoom: 2, x: 0, y: 50 } });
+      expect((await leerInvitacion(i.slug)).foto).toBe("foto.webp");
+      expect(existsSync(path.join(dir, FOTO_ORIGINAL))).toBe(true);
+      const color = () => execFileSync(FFMPEG, ["-v", "error", "-i", path.join(dir, "foto.webp"), "-vf", "scale=1:1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
+      expect(color()[0]).toBeGreaterThan(200);
+      expect(color()[2]).toBeLessThan(60);
+      // Reajustar la actual hacia la derecha: sale del original (azul), no de la foto ya recortada (roja).
+      await ajustarFoto(i.slug, { ajustes: { zoom: 2, x: 100, y: 50 } });
+      expect(color()[2]).toBeGreaterThan(200);
+
+      await descartarPropuesta(dir, "foto-1764260000000-1.png");
+      expect((await leerPropuestas(dir)).fotos).toEqual(["foto-1764260000000-2.png"]);
+      await expect(descartarPropuesta(dir, "../invitacion.json")).rejects.toThrow();
+      expect(await descartarPropuestas(dir, "foto")).toBe(1);
+      expect(existsSync(path.join(dir, "foto.webp"))).toBe(true); // la que usa la invitación no se borra
+    } finally {
+      if (antes === undefined) delete process.env.GEEPER_DATA;
+      else process.env.GEEPER_DATA = antes;
+      await fs.rm(tmp, { recursive: true, force: true });
+    }
+  });
+});

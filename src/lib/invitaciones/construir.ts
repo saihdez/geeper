@@ -21,7 +21,7 @@ import { instanteUTC, textosFecha } from "./calendario";
 import { leerEnlaceMusica, resolverEnlaceMusica } from "./enlaces";
 import { Entrada, fechaPasada, Invitacion, normalizarUrlPublica, Retoques, Seccion, SLUG, type EstiloId } from "./esquema";
 import { z } from "zod";
-import { copiarElegida, pngQrBase } from "./imagenes";
+import { AjustesFoto, aplicarAjustesFoto, copiarElegida, dirPropuestas, FOTO_ORIGINAL, NOMBRE_PROPUESTA, pngQrBase } from "./imagenes";
 import { cambiosDesdeAvnac, disenoAvnac, leerDisenoAvnac, nombreArchivoAvnac } from "./avnac";
 import { abrirAvnac } from "../avnac";
 import { SISTEMA } from "../plataforma";
@@ -212,9 +212,13 @@ export async function guardarInvitacion(entrada: unknown, subidas: Subidas, slug
   let foto = previa?.foto && !subidas.quitarFoto ? previa.foto : undefined;
   if (subidas.foto) {
     await procesarFoto(subidas.foto, path.join(dir, "foto.webp"));
+    await fs.copyFile(path.join(dir, "foto.webp"), path.join(dir, FOTO_ORIGINAL));
     foto = "foto.webp";
   }
-  if (!foto) await fs.rm(path.join(dir, "foto.webp"), { force: true });
+  if (!foto) {
+    await fs.rm(path.join(dir, "foto.webp"), { force: true });
+    await fs.rm(path.join(dir, FOTO_ORIGINAL), { force: true });
+  }
 
   const ahora = new Date().toISOString();
   const { plantilla, musicaEnlace, tema, ...resto } = e;
@@ -453,6 +457,7 @@ export async function traerDeAvnac(slug: string, raw?: unknown): Promise<Resulta
   if (c.foto) {
     const [, tipo, datos] = /^data:image\/([a-z]+);base64,(.*)$/s.exec(c.foto)!;
     await procesarFoto(new File([Buffer.from(datos!, "base64")], `avnac.${tipo === "jpeg" ? "jpg" : tipo}`), path.join(dir, "foto.webp"));
+    await fs.copyFile(path.join(dir, "foto.webp"), path.join(dir, FOTO_ORIGINAL));
     inv = Invitacion.parse({ ...inv, foto: "foto.webp" });
     cambios.push("la foto del sobre");
   }
@@ -478,6 +483,41 @@ function mostrarEnCarpeta(ruta: string) {
   } catch {
     /* sin explorador (servidor sin escritorio): queda el archivo */
   }
+}
+
+/**
+ * Ajusta la foto del sobre (encuadre, luz, contraste, color): de una propuesta (`archivo`) o de la que ya
+ * tiene la invitación (desde su original, para que los ajustes no se acumulen).
+ */
+export async function ajustarFoto(slug: string, pedido: { archivo?: string; ajustes: unknown }): Promise<{ inv: Invitacion; avisos: string[] }> {
+  const ajustes = AjustesFoto.parse(pedido.ajustes);
+  const previa = await leerInvitacion(slug);
+  const dir = dirInvitacion(slug);
+  const original = path.join(dir, FOTO_ORIGINAL);
+  let origen: string;
+  if (pedido.archivo) {
+    if (!NOMBRE_PROPUESTA.test(pedido.archivo) || !pedido.archivo.startsWith("foto-")) throw new Error("Esa foto no existe");
+    origen = path.join(dirPropuestas(dir), pedido.archivo);
+    if (!existsSync(origen)) throw new Error("Esa foto ya no está: crea otras.");
+  } else {
+    if (!previa.foto) throw new Error("La invitación no tiene foto para ajustar.");
+    // Invitaciones de antes: la foto actual pasa a ser el original la primera vez.
+    if (!existsSync(original)) await fs.copyFile(path.join(dir, previa.foto), original);
+    origen = original;
+  }
+  await aplicarAjustesFoto(origen, path.join(dir, "foto.webp"), ajustes);
+  if (pedido.archivo) await fs.copyFile(origen, original);
+  const inv = Invitacion.parse({ ...previa, foto: "foto.webp", actualizada: new Date().toISOString() });
+  await escribirAtomico(path.join(dir, "invitacion.json"), JSON.stringify(inv, null, 2));
+  return { inv, avisos: await construir(inv) };
+}
+
+/** La foto sin ajustes de la invitación (para el editor de ajustes). */
+export async function rutaFotoOriginal(slug: string): Promise<string | null> {
+  const inv = await leerInvitacion(slug);
+  if (!inv.foto) return null;
+  const dir = dirInvitacion(slug);
+  return existsSync(path.join(dir, FOTO_ORIGINAL)) ? path.join(dir, FOTO_ORIGINAL) : path.join(dir, inv.foto);
 }
 
 /** Rehace `publicar/` desde el json. Devuelve avisos para la persona (nunca falla por la portada o las letras). */

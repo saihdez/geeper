@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { dirInvitacion } from "@/lib/invitaciones/construir";
-import { dirPropuestas, NOMBRE_PROPUESTA } from "@/lib/invitaciones/imagenes";
+import { descartarPropuesta, dirPropuestas, NOMBRE_PROPUESTA } from "@/lib/invitaciones/imagenes";
+import { json, manejar } from "@/lib/http";
 
 export const dynamic = "force-dynamic";
 
@@ -15,4 +16,13 @@ export async function GET(_req: Request, ctx: { params: Promise<{ slug: string; 
   } catch {
     return new Response("No encontrado", { status: 404 });
   }
+}
+
+/** Descarta esa propuesta. */
+export async function DELETE(_req: Request, ctx: { params: Promise<{ slug: string; nombre: string }> }) {
+  return manejar(async () => {
+    const { slug, nombre } = await ctx.params;
+    await descartarPropuesta(dirInvitacion(slug), nombre);
+    return json({ ok: true });
+  });
 }

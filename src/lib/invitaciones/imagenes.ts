@@ -17,6 +17,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import jsQR from "jsqr";
+import { z } from "zod";
 import { encode } from "uqr";
 import { escribirAtomico } from "../archivos";
 import { arrancarComfyui, COMFYUI_DIR, faltaComfyui, PUERTO_TRABAJOS, salidasDeHistorial } from "../comfyui";
@@ -449,12 +450,68 @@ export async function generarFotos(ctx: ContextoImagen & { alAvanzar?: (a: Avanc
 }
 
 /** Guarda la elección como lo usa la invitación (foto.webp o qr.png). */
+// ── Descartar y ajustar ──────────────────────────────────────────────────────────────────────────
+
+/** Borra una propuesta (sólo nombres conocidos de `propuestas/`). */
+export async function descartarPropuesta(dirInvitacion: string, nombre: string): Promise<void> {
+  if (!NOMBRE_PROPUESTA.test(nombre)) throw new Error("Esa imagen no existe");
+  await fs.rm(path.join(dirPropuestas(dirInvitacion), nombre), { force: true });
+}
+
+/** Borra todas las fotos o todos los QR propuestos. */
+export async function descartarPropuestas(dirInvitacion: string, que: "foto" | "qr"): Promise<number> {
+  const dir = dirPropuestas(dirInvitacion);
+  const nombres = (await fs.readdir(dir).catch(() => [] as string[])).filter((n) => NOMBRE_PROPUESTA.test(n) && n.startsWith(`${que}-`));
+  await Promise.all(nombres.map((n) => fs.rm(path.join(dir, n), { force: true })));
+  return nombres.length;
+}
+
+/** La foto elegida tal como vino (sin ajustes): los ajustes siempre se hacen desde aquí y no se acumulan. */
+export const FOTO_ORIGINAL = "foto-original";
+
+/**
+ * Ajustes de la foto del sobre: encuadre en la forma de la carta (3:2) con acercar y mover, y luz, contraste
+ * y color. Son los mismos que muestra la vista previa en el navegador con CSS (object-position + scale con
+ * el mismo origen, y brightness/contrast/saturate), así lo que se ve es lo que queda.
+ */
+export const AjustesFoto = z.object({
+  zoom: z.number().min(1).max(3).default(1),
+  x: z.number().min(0).max(100).default(50),
+  y: z.number().min(0).max(100).default(50),
+  brillo: z.number().min(-0.5).max(0.5).default(0),
+  contraste: z.number().min(0.5).max(1.6).default(1),
+  color: z.number().min(0).max(2).default(1),
+});
+export type AjustesFoto = z.infer<typeof AjustesFoto>;
+
+/** El filtro de ffmpeg para esos ajustes (función pura). Recorte 3:2 que «cubre», acercado alrededor de x/y. */
+export function filtroAjustes(a: AjustesFoto): string {
+  const f = (n: number) => Number(n.toFixed(4));
+  const X = f(a.x / 100);
+  const Y = f(a.y / 100);
+  const ancho = `min(iw\\,ih*1.5)/${f(a.zoom)}`;
+  const partes = [
+    `crop=w='${ancho}':h='${ancho}/1.5':x='(iw-ow)*${X}':y='(ih-oh)*${Y}'`,
+    "scale=1080:720:flags=lanczos",
+  ];
+  if (a.brillo) partes.push(`lutrgb=r='clipval*${f(1 + a.brillo)}':g='clipval*${f(1 + a.brillo)}':b='clipval*${f(1 + a.brillo)}'`);
+  if (a.contraste !== 1 || a.color !== 1) partes.push(`eq=contrast=${f(a.contraste)}:saturation=${f(a.color)}`);
+  return partes.join(",");
+}
+
+/** Aplica los ajustes a `origen` y deja la foto del sobre (`destino`, webp). */
+export async function aplicarAjustesFoto(origen: string, destino: string, ajustes: AjustesFoto): Promise<void> {
+  const r = await correr(FFMPEG, ["-y", "-v", "error", "-i", origen, "-frames:v", "1", "-vf", filtroAjustes(ajustes), "-c:v", "libwebp", "-quality", "82", destino], { timeout: 60_000, permitirFallo: true });
+  if (r.codigo !== 0) throw new Error("No se pudo ajustar la foto. Prueba con otros ajustes o elige otra.");
+}
+
 export async function copiarElegida(dirInvitacion: string, archivo: string, que: "foto" | "qr"): Promise<void> {
   if (!NOMBRE_PROPUESTA.test(archivo) || !archivo.startsWith(`${que}-`)) throw new Error("Esa propuesta no existe");
   const origen = path.join(dirPropuestas(dirInvitacion), archivo);
   if (!existsSync(origen)) throw new Error("Esa propuesta ya no está: crea otras.");
   if (que === "foto") {
     await correr(FFMPEG, ["-y", "-v", "error", "-i", origen, "-frames:v", "1", "-vf", "scale='min(1080,iw)':-2", "-c:v", "libwebp", "-quality", "82", path.join(dirInvitacion, "foto.webp")]);
+    await fs.copyFile(origen, path.join(dirInvitacion, FOTO_ORIGINAL));
   } else {
     await escribirAtomico(path.join(dirInvitacion, "qr-arte.png"), await fs.readFile(origen));
   }

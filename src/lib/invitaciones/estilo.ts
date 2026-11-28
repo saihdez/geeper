@@ -94,21 +94,32 @@ export function scriptParticulas(e: Estilo): string {
   if (e.particulas === "ninguna") return "";
   const cfg = PARTICULAS_CFG[e.particulas];
   const colores = e.particulas === "copos" || e.particulas === "estrellas" ? [e.colores.claro, e.colores.acento] : [e.colores.acento, e.colores.sello, e.colores.claro];
-  return `(function(){if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;
-var C=${JSON.stringify({ ...cfg, colores })};var c=document.createElement('canvas');c.className='particulas';c.setAttribute('aria-hidden','true');document.body.prepend(c);
-var x=c.getContext('2d'),w,h,d=Math.min(2,window.devicePixelRatio||1),ps=[],vivo=true;
-function tam(){w=innerWidth;h=innerHeight;c.width=w*d;c.height=h*d;x.setTransform(d,0,0,d,0,0)}tam();addEventListener('resize',tam);
+  // Dos capas: detrás del contenido y, más tenue, delante (en el teléfono las tarjetas tapan casi todo el
+  // fondo y las de atrás casi no se ven). La luz de las luciérnagas va pre-dibujada (shadowBlur es caro en
+  // el teléfono). La velocidad va por tiempo (igual a 60 o 120 Hz). Con «reducir movimiento», quietas.
+  return `(function(){var quieto=matchMedia('(prefers-reduced-motion: reduce)').matches;
+var C=${JSON.stringify({ ...cfg, colores })};
+function lienzo(clase){var c=document.createElement('canvas');c.className=clase;c.setAttribute('aria-hidden','true');document.body.prepend(c);return c}
+var atras=lienzo('particulas'),frente=lienzo('particulas delante'),xa=atras.getContext('2d'),xf=frente.getContext('2d');
+var w,h,d=Math.min(2,window.devicePixelRatio||1),ps=[],vivo=true,antes=0,esc=1;
+function tam(){w=innerWidth;h=innerHeight;esc=w<700?1.35:1;[atras,frente].forEach(function(c){c.width=w*d;c.height=h*d;c.getContext('2d').setTransform(d,0,0,d,0,0)});if(quieto)dibujar(0)}
 function al(a){return a[0]+Math.random()*(a[1]-a[0])}
-for(var i=0;i<C.n;i++)ps.push({x:Math.random()*w,y:Math.random()*h,r:al(C.r),vy:al(C.vy),vx:(Math.random()-.5)*.4,f:Math.random()*6.3,g:.01+Math.random()*.03,c:C.colores[i%C.colores.length]});
-document.addEventListener('visibilitychange',function(){vivo=!document.hidden;if(vivo)requestAnimationFrame(paso)});
-function paso(){if(!vivo)return;x.clearRect(0,0,w,h);for(var i=0;i<ps.length;i++){var p=ps[i];p.f+=p.g;p.y+=p.vy;p.x+=p.vx+Math.sin(p.f)*.3;
+var luces={};function luz(col){if(luces[col])return luces[col];var s=document.createElement('canvas'),t=64;s.width=s.height=t;var g=s.getContext('2d'),r=g.createRadialGradient(t/2,t/2,0,t/2,t/2,t/2);
+r.addColorStop(0,col);r.addColorStop(.18,col);r.addColorStop(.45,col+'55');r.addColorStop(1,col+'00');g.fillStyle=r;g.fillRect(0,0,t,t);return luces[col]=s}
+w=innerWidth;h=innerHeight;var adelante=w<700?.4:.2;
+for(var i=0;i<C.n;i++)ps.push({x:Math.random()*w,y:Math.random()*h,r:al(C.r),vy:al(C.vy),vx:(Math.random()-.5)*.4,f:Math.random()*6.3,g:.01+Math.random()*.03,c:C.colores[i%C.colores.length],fr:Math.random()<adelante});
+function dibujar(k){xa.clearRect(0,0,w,h);xf.clearRect(0,0,w,h);for(var i=0;i<ps.length;i++){var p=ps[i],x=p.fr?xf:xa,r=p.r*esc;
+if(k){p.f+=p.g*k;p.y+=p.vy*k;p.x+=(p.vx+Math.sin(p.f)*.3)*k}
 if(p.y>h+12)p.y=-12;if(p.y<-12)p.y=h+12;if(p.x>w+12)p.x=-12;if(p.x<-12)p.x=w+12;
-var a=C.forma==='luz'||C.forma==='titila'||C.forma==='brillo'?.25+.75*Math.abs(Math.sin(p.f*1.7)):.8;x.globalAlpha=a;x.fillStyle=p.c;x.strokeStyle=p.c;
-if(C.forma==='luz'){x.shadowBlur=p.r*6;x.shadowColor=p.c;x.beginPath();x.arc(p.x,p.y,p.r,0,6.3);x.fill();x.shadowBlur=0}
-else if(C.forma==='petalo'){x.save();x.translate(p.x,p.y);x.rotate(p.f);x.beginPath();x.ellipse(0,0,p.r,p.r*.5,0,0,6.3);x.fill();x.restore()}
-else if(C.forma==='burbuja'){x.lineWidth=1.2;x.beginPath();x.arc(p.x,p.y,p.r,0,6.3);x.stroke()}
-else if(C.forma==='brillo'){x.lineWidth=1.2;x.beginPath();x.moveTo(p.x-p.r,p.y);x.lineTo(p.x+p.r,p.y);x.moveTo(p.x,p.y-p.r);x.lineTo(p.x,p.y+p.r);x.stroke()}
-else if(C.forma==='papel'){x.save();x.translate(p.x,p.y);x.rotate(p.f);x.fillRect(-p.r/2,-p.r/4,p.r,p.r/2);x.restore()}
-else{x.beginPath();x.arc(p.x,p.y,p.r,0,6.3);x.fill()}}
-x.globalAlpha=1;requestAnimationFrame(paso)}requestAnimationFrame(paso)})();`;
+var a=C.forma==='luz'||C.forma==='titila'||C.forma==='brillo'?.3+.7*Math.abs(Math.sin(p.f*1.7)):.85;x.globalAlpha=a*(p.fr?.55:1);x.fillStyle=p.c;x.strokeStyle=p.c;
+if(C.forma==='luz'){var s=r*8;x.drawImage(luz(p.c),p.x-s/2,p.y-s/2,s,s)}
+else if(C.forma==='petalo'){x.save();x.translate(p.x,p.y);x.rotate(p.f);x.beginPath();x.ellipse(0,0,r,r*.5,0,0,6.3);x.fill();x.restore()}
+else if(C.forma==='burbuja'){x.lineWidth=1.3;x.beginPath();x.arc(p.x,p.y,r,0,6.3);x.stroke()}
+else if(C.forma==='brillo'){x.lineWidth=1.4;x.beginPath();x.moveTo(p.x-r,p.y);x.lineTo(p.x+r,p.y);x.moveTo(p.x,p.y-r);x.lineTo(p.x,p.y+r);x.stroke()}
+else if(C.forma==='papel'){x.save();x.translate(p.x,p.y);x.rotate(p.f);x.fillRect(-r/2,-r/4,r,r/2);x.restore()}
+else{x.beginPath();x.arc(p.x,p.y,r,0,6.3);x.fill()}}
+xa.globalAlpha=1;xf.globalAlpha=1}
+tam();addEventListener('resize',tam);if(quieto)return;
+document.addEventListener('visibilitychange',function(){vivo=!document.hidden;if(vivo){antes=0;requestAnimationFrame(paso)}});
+function paso(t){if(!vivo)return;var k=antes?Math.min(3,(t-antes)/16.7):1;antes=t;dibujar(k);requestAnimationFrame(paso)}requestAnimationFrame(paso)})();`;
 }

@@ -71,7 +71,7 @@ function css(e: Estilo): string {
 *{box-sizing:border-box}html{-webkit-text-size-adjust:100%;background:var(--fondo)}
 body{margin:0;min-height:100vh;background:${texturaFondo(e.fondo)}radial-gradient(120% 900px at 50% 0%,var(--fondo2),var(--fondo)) no-repeat var(--fondo);color:var(--claro);font-family:var(--f-texto);font-size:18px;line-height:1.55}
 .pagina{position:relative;z-index:1;max-width:480px;margin:0 auto;padding:0 18px 96px;overflow-x:hidden}
-canvas.particulas{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}
+canvas.particulas{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}canvas.particulas.delante{z-index:3}
 .portada{position:relative}.esquina{position:absolute;width:118px;height:118px;pointer-events:none;opacity:.55}.esquina svg{width:100%;height:100%;fill:color-mix(in srgb,var(--acento) 30%,transparent);stroke:var(--acento);stroke-width:1.2;stroke-linecap:round;stroke-linejoin:round}
 .e1{top:14px;left:-10px}.e2{bottom:14px;right:-10px;transform:rotate(180deg)}
 .portada{min-height:100svh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:40px 0}
@@ -142,7 +142,9 @@ form .boton{width:100%;margin-top:18px}
 .aparece{opacity:0;transform:translateY(26px);transition:opacity .6s ease-out,transform .6s ease-out}.aparece.visible{opacity:1;transform:none}
 canvas.confeti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:20}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-@media (prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:0s!important;transition-delay:0s!important;animation:none!important}.aparece{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:0s!important;transition-delay:0s!important;animation:none!important}.aparece{opacity:1;transform:none}
+.abierto .carta{animation:asoma-carta .9s ease .15s both!important}.abierto .desliza{opacity:.85}}
+@keyframes asoma-carta{from{opacity:0}to{opacity:1}}
 `;
 }
 
