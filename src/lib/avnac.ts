@@ -157,7 +157,9 @@ export async function abrirAvnac(): Promise<void> {
   const e = await estadoAvnac();
   if (!e.instalada) throw new Error(`${AVNAC.nombre} no está instalada.`);
   if (e.falta) throw new Error(`Para abrirla falta un paso en esta computadora. Corre esto en una terminal y vuelve a intentar: ${e.falta}`);
-  const hijo = spawn(programaAvnac(), [], { cwd: dirDatos(), detached: true, stdio: "ignore", windowsHide: false });
+  // WebKitGTK con NVIDIA (y en WSL) a veces deja la ventana en blanco con su renderizado DMA-BUF.
+  const env = SISTEMA === "linux" ? { ...process.env, WEBKIT_DISABLE_DMABUF_RENDERER: "1" } : process.env;
+  const hijo = spawn(programaAvnac(), [], { cwd: dirDatos(), env, detached: true, stdio: "ignore", windowsHide: false });
   hijo.on("error", () => {});
   hijo.unref();
 }
