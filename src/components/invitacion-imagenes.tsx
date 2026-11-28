@@ -102,12 +102,12 @@ export function PanelQr({ inv, alCambiar }: { inv: Invitacion; alCambiar: (aviso
 
       <div className="tarjeta space-y-3 p-3">
         <h3 className="font-medium">✨ QR con dibujo del tema</h3>
-        <p className="text-xs text-tenue">El QR se convierte en un dibujo con los colores y la idea de tu invitación. Se hacen 6 versiones y sólo se guardan las que se pueden escanear. La primera vez baja el dibujante (2,8 GB); luego tarda 1 a 2 minutos.</p>
+        <p className="text-xs text-tenue">El QR se convierte en un dibujo con los colores y la idea de tu invitación. Se hacen 6 versiones y sólo se guardan las que se pueden escanear; si ninguna se lee, Geeper prueba solo con el QR más marcado. La primera vez baja el dibujante (2,8 GB); luego tarda 1 a 3 minutos.</p>
         {trabajo ? <Progreso t={trabajo} /> : (
           <>
             <input aria-label="Algo más para el dibujo (opcional)" className="campo" maxLength={300} value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="Algo más para el dibujo (opcional): mariposas, un castillo…" />
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={legible} onChange={(e) => setLegible(e.target.checked)} />Que se lea mejor (dibujo más suave)</label>
-            <AvisoTarjeta g={guardeQr}>El QR con dibujo usa la tarjeta de video 1 a 2 minutos.</AvisoTarjeta>
+            <AvisoTarjeta g={guardeQr}>El QR con dibujo usa la tarjeta de video 1 a 3 minutos.</AvisoTarjeta>
             <button type="button" className="boton boton-primario" disabled={ocupado || faltanQr.length > 0} aria-describedby={faltanQr.length ? guardeQr.idFalta : undefined} onClick={pedirQr}>
               {datos?.qrs.length ? "✨ Hacer otras versiones" : "✨ Hacer QR con dibujo"}
             </button>

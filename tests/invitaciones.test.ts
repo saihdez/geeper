@@ -12,10 +12,13 @@ import { leerMensajes } from "@/lib/invitaciones/mensaje";
 import { estiloDe } from "@/lib/invitaciones/estilo";
 import { ADORNOS, asegurarContraste, contraste, normalizarTema, PARTICULAS, promptTema, TemaIa, temaPorPalabras } from "@/lib/invitaciones/tema";
 import { esquemaParaOllama } from "@/lib/llm-local";
-import { ajustesFoto, arteDe, grafoQrArte, lecturasQr, leerPropuestas, NOMBRE_PROPUESTA, pngQrBase } from "@/lib/invitaciones/imagenes";
+import { ajustesFoto, arteDe, grafoQrArte, lecturasQr, leerPropuestas, NOMBRE_PROPUESTA, pngQrBase, rondasQr } from "@/lib/invitaciones/imagenes";
 import { normalizarUrlPublica } from "@/lib/invitaciones/esquema";
 import { usarPropuesta } from "@/lib/invitaciones/construir";
 import { FFMPEG } from "@/lib/rutas";
+import { execFileSync } from "node:child_process";
+
+const correrFfmpeg = (args: string[]) => execFileSync(FFMPEG, ["-v", "error", "-y", ...args]);
 import { existsSync } from "node:fs";
 
 const base = {
@@ -335,6 +338,24 @@ describe("imágenes con IA (sin la tarjeta)", () => {
     expect(NOMBRE_PROPUESTA.test("foto-1764260000000-2.png")).toBe(true);
     expect(NOMBRE_PROPUESTA.test("../invitacion.json")).toBe(false);
     expect(NOMBRE_PROPUESTA.test("qr-1-l9.png")).toBe(false);
+  });
+
+  it("si ninguna versión se escanea, hasta dos rondas más con el QR más marcado", () => {
+    expect(rondasQr(1.35, 0.9)).toEqual([{ fuerza: 1.35, ruido: 0.9 }, { fuerza: 1.55, ruido: 0.85 }, { fuerza: 1.75, ruido: 0.8 }]);
+    expect(rondasQr(1.5, 0.85)).toEqual([{ fuerza: 1.5, ruido: 0.85 }, { fuerza: 1.75, ruido: 0.8 }]);
+  });
+
+  it.skipIf(!existsSync(FFMPEG))("un QR oscuro y con poco contraste (como un bosque de noche) se sigue leyendo", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "geeper-qr-osc-"));
+    try {
+      const url = "https://ana-luis.netlify.app/";
+      await pngQrBase(url, path.join(dir, "qr.png"), 512);
+      // Negro → verde muy oscuro y blanco → verde oscuro (como un bosque de noche).
+      await correrFfmpeg(["-i", path.join(dir, "qr.png"), "-vf", "format=rgb24,lutrgb=r=val*0.12+8:g=val*0.18+22:b=val*0.1+10", path.join(dir, "oscuro.png")]);
+      expect(await lecturasQr(path.join(dir, "oscuro.png"), url)).toBeGreaterThan(0);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
   });
 
   it.skipIf(!existsSync(FFMPEG))("el QR base se lee a todos los tamaños; una imagen sin QR, a ninguno", async () => {

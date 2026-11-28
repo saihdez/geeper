@@ -103,10 +103,13 @@ const LADOS_LECTURA = [768, 512, 384, 256] as const;
 /** En cuántos de los 4 tamaños el QR de `ruta` devuelve exactamente `url` (0 = no sirve). */
 export async function lecturasQr(ruta: string, url: string): Promise<number> {
   let ok = 0;
+  const lee = async (lado: number, filtro: string) => {
+    const { stdout } = await ejecutar(FFMPEG, ["-v", "error", "-i", ruta, "-vf", `scale=${lado}:${lado}:flags=area${filtro}`, "-f", "rawvideo", "-pix_fmt", "rgba", "-"], { encoding: "buffer", maxBuffer: 1 << 26, windowsHide: true });
+    return jsQR(new Uint8ClampedArray(stdout.buffer, stdout.byteOffset, stdout.length), lado, lado, { inversionAttempts: "attemptBoth" })?.data === url;
+  };
   for (const lado of LADOS_LECTURA) {
-    const { stdout } = await ejecutar(FFMPEG, ["-v", "error", "-i", ruta, "-vf", `scale=${lado}:${lado}:flags=area`, "-f", "rawvideo", "-pix_fmt", "rgba", "-"], { encoding: "buffer", maxBuffer: 1 << 26, windowsHide: true });
-    const r = jsQR(new Uint8ClampedArray(stdout.buffer, stdout.byteOffset, stdout.length), lado, lado, { inversionAttempts: "attemptBoth" });
-    if (r?.data === url) ok++;
+    // Como la cámara del teléfono: si no se lee tal cual, con el contraste estirado (rescata dibujos oscuros).
+    if ((await lee(lado, "")) || (await lee(lado, ",format=gray,normalize=blackpt=black:whitept=white:smoothing=0"))) ok++;
   }
   return ok;
 }
@@ -200,7 +203,7 @@ export async function generarQrArte(ctx: ContextoImagen, dirInvitacion: string, 
   ctx.avanzar("Esperando la tarjeta de video", 0.33);
   const candado = existsSync(GPU_SOLO_BIN) ? null : await tomarGpu("QR con dibujo", { esperar: true, signal: ctx.signal, alEsperar: (q) => ctx.avanzar(`Esperando la tarjeta (la tiene: ${q.slice(0, 80)})`, 0.33) });
   const prompt = `${p.prompt}, masterpiece, best quality, highly detailed`;
-  ctx.log(`QR con dibujo: ${cantidad} versiones, fuerza ${fuerza}, ruido ${ruido}, semilla ${semilla}. Prompt: ${prompt}`);
+  ctx.log(`QR con dibujo: ${cantidad} versiones por ronda, fuerza ${fuerza}, ruido ${ruido}, semilla ${semilla}. Prompt: ${prompt}`);
   let srv: Awaited<ReturnType<typeof arrancarComfyui>>;
   try {
     srv = await arrancarComfyui({
@@ -217,23 +220,38 @@ export async function generarQrArte(ctx: ContextoImagen, dirInvitacion: string, 
   }
   const cancelar = () => void srv.detener();
   ctx.signal?.addEventListener("abort", cancelar, { once: true });
-  let historial: unknown = null;
+  const dir = dirPropuestas(dirInvitacion);
+  await fs.mkdir(dir, { recursive: true });
+  // Si ninguna versión se escanea, otra ronda con el QR más marcado (mismo ComfyUI ya cargado: ~25 s más).
+  const rondas = rondasQr(fuerza, ruido);
+  let hechos = 0;
+  let sirven = 0;
   try {
-    const grafo = grafoQrArte({ imagen: path.basename(base), prompt, semilla, cantidad, fuerza, ruido, prefijo: id });
-    const r = await fetch(`${srv.url}/prompt`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt: grafo, client_id: id }) });
-    const cuerpo = (await r.json().catch(() => ({}))) as { prompt_id?: string; error?: { message?: string } };
-    if (!r.ok || !cuerpo.prompt_id) throw new Error(`ComfyUI no aceptó el QR con dibujo: ${cuerpo.error?.message ?? r.status}`);
-    while (!historial) {
-      if (ctx.signal?.aborted) throw new Error("Cancelado");
-      if (srv.hijo.exitCode !== null) throw new Error("ComfyUI se cerró en medio del trabajo (¿sin memoria?). Mira el registro.");
-      await new Promise((ok) => setTimeout(ok, 2000));
-      const h = (await (await fetch(`${srv.url}/history/${cuerpo.prompt_id}`)).json().catch(() => ({}))) as Record<string, { status?: { status_str?: string; messages?: [string, { exception_message?: string }][] }; outputs?: unknown }>;
-      const e = h[cuerpo.prompt_id];
-      if (e?.status?.status_str === "error") {
-        const ex = e.status.messages?.find((m) => m[0] === "execution_error")?.[1]?.exception_message ?? "error";
-        throw new Error(/out of memory/i.test(ex) ? "La tarjeta de video se quedó sin memoria." : `ComfyUI falló: ${ex.trim().split("\n").at(-1)}`);
+    for (const [n, ronda] of rondas.entries()) {
+      const semillaRonda = semilla + n * 1000;
+      if (n > 0) ctx.log(`Ninguna se escaneó: ronda ${n + 1} de ${rondas.length} con el QR más marcado (fuerza ${ronda.fuerza}, ruido ${ronda.ruido}).`);
+      ctx.avanzar(n ? `Ronda ${n + 1} de ${rondas.length}: el QR más marcado para que se lea` : "Dibujando el QR", 0.4);
+      const historial = await correrGrafo(srv, ctx, id, grafoQrArte({ imagen: path.basename(base), prompt, semilla: semillaRonda, cantidad, fuerza: ronda.fuerza, ruido: ronda.ruido, prefijo: `${id}-r${n}` }));
+
+      // Se leen todos y se guardan sólo los que escanean.
+      ctx.avanzar("Probando que cada QR se pueda escanear", 0.95);
+      const salidas = salidasDeHistorial(historial);
+      if (!salidas.length) throw new Error("ComfyUI terminó pero no dejó imágenes.");
+      const descartados: string[] = [];
+      for (const [k, sal] of salidas.entries()) {
+        const origen = path.join(COMFYUI_DIR, sal.carpeta, sal.subcarpeta, sal.archivo);
+        if (!existsSync(origen)) continue;
+        hechos++;
+        const lecturas = await lecturasQr(origen, p.url);
+        ctx.log(`Versión ${k + 1}: ${lecturas ? `se lee en ${lecturas} de 4 tamaños` : "no se lee (descartada)"}`);
+        if (lecturas) {
+          await fs.copyFile(origen, path.join(dir, `qr-${semillaRonda + k}-l${lecturas}.png`));
+          sirven++;
+          await fs.rm(origen, { force: true });
+        } else descartados.push(origen);
       }
-      if (e && (e.status?.status_str === "success" || e.outputs)) historial = e;
+      await guardarDescartados(dirInvitacion, descartados);
+      if (sirven) break;
     }
   } finally {
     ctx.signal?.removeEventListener("abort", cancelar);
@@ -241,28 +259,49 @@ export async function generarQrArte(ctx: ContextoImagen, dirInvitacion: string, 
     candado?.liberar();
     await fs.rm(base, { force: true });
   }
-
-  // 4. Se leen todos y se guardan sólo los que escanean.
-  ctx.avanzar("Probando que cada QR se pueda escanear", 0.95);
-  const dir = dirPropuestas(dirInvitacion);
-  await fs.mkdir(dir, { recursive: true });
-  const salidas = salidasDeHistorial(historial);
-  let sirven = 0;
-  for (const [k, s] of salidas.entries()) {
-    const origen = path.join(COMFYUI_DIR, s.carpeta, s.subcarpeta, s.archivo);
-    if (!existsSync(origen)) continue;
-    const lecturas = await lecturasQr(origen, p.url);
-    ctx.log(`Versión ${k + 1}: ${lecturas ? `se lee en ${lecturas} de 4 tamaños` : "no se lee (descartada)"}`);
-    if (lecturas) {
-      await fs.copyFile(origen, path.join(dir, `qr-${semilla + k}-l${lecturas}.png`));
-      sirven++;
-    }
-    await fs.rm(origen, { force: true });
-  }
   await podar(dir, "qr-");
-  if (!salidas.length) throw new Error("ComfyUI terminó pero no dejó imágenes.");
-  if (!sirven) throw new Error("Ninguna de las versiones se pudo escanear. Prueba «Que se lea mejor»: el dibujo queda más suave y el QR más claro.");
-  return { hechos: salidas.length, sirven };
+  if (!sirven) throw new Error(`Ninguna de las ${hechos} versiones se pudo escanear, ni con el QR más marcado. Prueba con otra idea para el dibujo (algo con zonas claras y oscuras, como «un bosque con luz entre los árboles») o usa el QR normal: también se puede tocar y descargar.`);
+  return { hechos, sirven };
+}
+
+/** Las rondas: la pedida y, si ninguna versión se escanea, hasta dos más con el QR cada vez más marcado. */
+export function rondasQr(fuerza: number, ruido: number): { fuerza: number; ruido: number }[] {
+  const mas = [{ fuerza: 1.55, ruido: 0.85 }, { fuerza: 1.75, ruido: 0.8 }].filter((r) => r.fuerza > fuerza + 0.05);
+  return [{ fuerza, ruido }, ...mas].slice(0, 3);
+}
+
+/** Manda un grafo a ComfyUI y espera su historial (errores de memoria en palabras simples). */
+async function correrGrafo(srv: Awaited<ReturnType<typeof arrancarComfyui>>, ctx: ContextoImagen, id: string, grafo: unknown): Promise<unknown> {
+  const r = await fetch(`${srv.url}/prompt`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt: grafo, client_id: id }) });
+  const cuerpo = (await r.json().catch(() => ({}))) as { prompt_id?: string; error?: { message?: string } };
+  if (!r.ok || !cuerpo.prompt_id) throw new Error(`ComfyUI no aceptó el QR con dibujo: ${cuerpo.error?.message ?? r.status}`);
+  for (;;) {
+    if (ctx.signal?.aborted) throw new Error("Cancelado");
+    if (srv.hijo.exitCode !== null) throw new Error("ComfyUI se cerró en medio del trabajo (¿sin memoria?). Mira el registro.");
+    await new Promise((ok) => setTimeout(ok, 2000));
+    const h = (await (await fetch(`${srv.url}/history/${cuerpo.prompt_id}`)).json().catch(() => ({}))) as Record<string, { status?: { status_str?: string; messages?: [string, { exception_message?: string }][] }; outputs?: unknown }>;
+    const e = h[cuerpo.prompt_id];
+    if (e?.status?.status_str === "error") {
+      const ex = e.status.messages?.find((m) => m[0] === "execution_error")?.[1]?.exception_message ?? "error";
+      throw new Error(/out of memory/i.test(ex) ? "La tarjeta de video se quedó sin memoria." : `ComfyUI falló: ${ex.trim().split("\n").at(-1)}`);
+    }
+    if (e && (e.status?.status_str === "success" || e.outputs)) return e;
+  }
+}
+
+/**
+ * Los que no se escanearon en la última ronda quedan en `propuestas/no-se-leen/` (no salen en la app):
+ * sirven para ver qué pasó. Se reemplazan en cada pedido; los de ComfyUI se borran.
+ */
+async function guardarDescartados(dirInvitacion: string, archivos: string[]) {
+  if (!archivos.length) return;
+  const dir = path.join(dirPropuestas(dirInvitacion), "no-se-leen");
+  await fs.rm(dir, { recursive: true, force: true });
+  await fs.mkdir(dir, { recursive: true });
+  for (const [k, a] of archivos.entries()) {
+    if (k < 3) await fs.copyFile(a, path.join(dir, `${k + 1}.png`)).catch(() => {});
+    await fs.rm(a, { force: true });
+  }
 }
 
 // ── Foto del sobre con Z-Image ───────────────────────────────────────────────────────────────────
