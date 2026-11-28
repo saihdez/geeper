@@ -20,9 +20,9 @@ Options:
   --platform <list>           comma-separated: tiktok,youtube,instagram,facebook,snapchat,pinterest
   --outro-start <seconds>     stop freeze/duplicate checks here (static end card)
   --no-rec709                 skip the color check
-  --json                      print the full report as JSON
+  --json                      print the full report as JSON (cannot be combined with --markdown)
   --junit <file>              write the report as JUnit XML (one test case per rule)
-  --markdown                  print the report as Markdown (for PR comments / $GITHUB_STEP_SUMMARY)
+  --markdown                  print the report as Markdown (for PR comments / $GITHUB_STEP_SUMMARY; cannot be combined with --json)
   -h, --help                  show this help
 
 Exit code: 0 when every rule passes (warnings allowed), 1 when one fails, 2 on usage errors.
@@ -79,6 +79,10 @@ async function main() {
   if (values.format && !FORMATS.has(values.format)) fail(`unknown --format ${values.format}`);
   const platforms = values.platform?.split(",").map((p) => p.trim()).filter(Boolean) ?? [];
   for (const p of platforms) if (!PLATFORMS.has(p)) fail(`unknown platform ${p}`);
+  // --json and --markdown both choose the stdout format; silently preferring
+  // one would hide the other, so reject the combination as a usage error
+  // before any video work starts.
+  if (values.json && values.markdown) fail("--json and --markdown cannot be used together");
 
   const exp: Expectations = {
     format: values.format as Format | undefined,

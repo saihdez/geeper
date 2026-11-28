@@ -40,6 +40,14 @@ describe("toMarkdown", () => {
     expect(md).toContain("Lower the limiter ceiling");
   });
 
+  it("keeps a multi-line fix inside its bullet", () => {
+    const md = toMarkdown({
+      ...report,
+      rules: [{ id: "subtitles", name: "Subtitles", ok: false, measured: "44 chars", target: "max 42 chars/line", detail: "Shorten the line.\nSplit it across two cues." }],
+    });
+    expect(md).toContain("- **Subtitles**: Shorten the line.\n  Split it across two cues.");
+  });
+
   it("says ready when every rule passes", () => {
     const md = toMarkdown({ ...report, passed: true, rules: report.rules.map((r) => ({ ...r, ok: true })) });
     expect(md).toContain("# shortform-qc: Ready to publish");

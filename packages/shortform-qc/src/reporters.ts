@@ -53,7 +53,9 @@ export function toMarkdown(report: Report): string {
   const failed = report.rules.filter((r) => !r.ok && !r.warning && r.detail);
   if (failed.length) {
     lines.push("", "## What to fix", "");
-    for (const r of failed) lines.push(`- **${r.name}**: ${r.detail}`);
+    // Indent continuation lines so a multi-line detail stays inside its
+    // bullet instead of breaking the Markdown list.
+    for (const r of failed) lines.push(`- **${r.name}**: ${(r.detail ?? "").split("\n").join("\n  ")}`);
   }
   return lines.join("\n") + "\n";
 }
