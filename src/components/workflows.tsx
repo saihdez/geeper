@@ -36,7 +36,8 @@ export function PaginaWorkflows() {
   const [categoria, setCategoria] = useState("Todas");
   const [filtro, setFiltro] = useState<Filtro>("ligeras");
   const [cuantos, setCuantos] = useState(48);
-  const [abierto, setAbierto] = useState<string | null>(null);
+  /** La receta abierta; con `desde`, parte de lo que se pidió en ese resultado («Editar»). */
+  const [abierto, setAbierto] = useState<{ id: string; desde?: string } | null>(null);
   const detalleRef = useRef<HTMLDivElement>(null);
 
   const lista = useMemo(() => {
@@ -76,8 +77,8 @@ export function PaginaWorkflows() {
         <Instalar comfy={datos.comfy} alTerminar={() => void recargar()} />
       ) : (
         <>
-          <Resultados corridas={datos.corridas} trabajos={datos.trabajos} cambio={() => void recargar()} />
-          <div ref={detalleRef}>{abierto && <Detalle id={abierto} cerrar={() => setAbierto(null)} creado={() => void recargar()} />}</div>
+          <Resultados corridas={datos.corridas} trabajos={datos.trabajos} cambio={() => void recargar()} editar={(c) => setAbierto({ id: c.workflow, desde: c.id })} />
+          <div ref={detalleRef}>{abierto && <Detalle key={`${abierto.id}:${abierto.desde ?? ""}`} id={abierto.id} desde={abierto.desde} cerrar={() => setAbierto(null)} creado={() => void recargar()} />}</div>
           <section className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <input className="campo max-w-sm" type="search" placeholder="Buscar: retrato, música, quitar fondo, video…" value={buscar} onChange={(ev) => { setBuscar(ev.target.value); setCuantos(48); }} aria-label="Buscar workflows" />
@@ -101,7 +102,7 @@ export function PaginaWorkflows() {
             ) : (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                 {lista.slice(0, cuantos).map((w) => (
-                  <button key={w.id} type="button" aria-pressed={abierto === w.id} onClick={() => setAbierto(w.id)} className="opcion-tarjeta overflow-hidden">
+                  <button key={w.id} type="button" aria-pressed={abierto?.id === w.id} onClick={() => setAbierto({ id: w.id })} className="opcion-tarjeta overflow-hidden">
                     <div className="relative aspect-video bg-slate-800">
                       <Miniatura key={w.id} urls={w.miniaturas} tipo={w.tipo} apagada={!!w.bloqueo} />
                       {!w.local && <span className="absolute left-1 top-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px]">🔒 De pago</span>}
@@ -224,11 +225,15 @@ function Instalar({ comfy, alTerminar }: { comfy: Datos["comfy"]; alTerminar: ()
   );
 }
 
-function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; creado: () => void }) {
+interface PedidoAnterior { textos: { nodo: string; indice: number; valor: string }[]; archivos: { nodo: number; nombre: string }[] }
+
+function Detalle({ id, desde, cerrar, creado }: { id: string; desde?: string; cerrar: () => void; creado: () => void }) {
   const [d, setD] = useState<Detalle | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [textos, setTextos] = useState<Record<string, string>>({});
   const [archivos, setArchivos] = useState<Record<number, File | null>>({});
+  /** Con «Editar»: los archivos que se subieron la vez anterior (se vuelven a usar si no subes otros). */
+  const [previos, setPrevios] = useState<PedidoAnterior["archivos"]>([]);
   const [enviando, setEnviando] = useState(false);
   const [listo, setListo] = useState(false);
   const [preguntado, setPreguntado] = useState(false);
@@ -237,11 +242,18 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
 
   useEffect(() => {
     let vivo = true;
-    pedir<Detalle>(`/api/workflows/${encodeURIComponent(id)}`)
-      .then((x) => {
+    Promise.all([
+      pedir<Detalle>(`/api/workflows/${encodeURIComponent(id)}`),
+      desde ? pedir<PedidoAnterior>(`/api/workflows/corridas/${encodeURIComponent(desde)}`) : Promise.resolve(null),
+    ])
+      .then(([x, antes]) => {
         if (!vivo) return;
         setD(x);
-        setTextos(Object.fromEntries(x.textos.map((t) => [`${t.nodo}/${t.indice}`, t.valor])));
+        setTextos({
+          ...Object.fromEntries(x.textos.map((t) => [`${t.nodo}/${t.indice}`, t.valor])),
+          ...Object.fromEntries((antes?.textos ?? []).map((t) => [`${t.nodo}/${t.indice}`, t.valor])),
+        });
+        setPrevios(antes?.archivos ?? []);
         setArchivos({});
         setListo(false);
         setPermiso(false);
@@ -251,7 +263,7 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
     return () => {
       vivo = false;
     };
-  }, [id]);
+  }, [id, desde]);
 
   async function crear() {
     if (!d) return;
@@ -268,6 +280,7 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
       f.set("textos", JSON.stringify(d.textos.map((t) => ({ nodo: t.nodo, indice: t.indice, valor: textos[`${t.nodo}/${t.indice}`] ?? t.valor })).filter((t, i) => t.valor !== d.textos[i]!.valor)));
       for (const [nodo, a] of Object.entries(archivos)) if (a) f.set(`archivo-${nodo}`, a);
       if (permiso) f.set("permitirNodos", "1");
+      if (desde && previos.length) f.set("reusar", desde);
       await pedir(`/api/workflows/${encodeURIComponent(id)}`, { method: "POST", body: f });
       setListo(true);
       creado();
@@ -281,7 +294,8 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
   if (error && !d) return <Aviso tipo="error">{error}</Aviso>;
   if (!d) return <p className="text-sm text-tenue">Cargando la receta…</p>;
   const w = d.workflow;
-  const sinArchivo = entradasSinArchivo(d.entradas, Object.keys(archivos).filter((n) => archivos[Number(n)]), (e) => !!e.ejemplo);
+  const previo = (nodo: number) => (desde ? previos.find((p) => p.nodo === nodo) : undefined);
+  const sinArchivo = entradasSinArchivo(d.entradas, Object.keys(archivos).filter((n) => archivos[Number(n)]), (e) => !!e.ejemplo || !!previo(e.nodo));
   const descarga = avisoDescarga(d.porBajar, d.libre);
   const faltaGuardar = faltanConGuardar(guarde);
   return (
@@ -294,6 +308,7 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
         </div>
         <button className="boton" onClick={cerrar}>Cerrar</button>
       </div>
+      {desde && <Aviso tipo="info">Estás editando un resultado: ya está lo que pediste la vez anterior. Cambia lo que quieras y pulsa «Crear». El resultado anterior no se borra.</Aviso>}
       <div className="flex flex-wrap gap-4">
         <Ejemplo urls={w.miniaturas} />
         <p className="min-w-0 flex-1 text-sm">{w.descripcion}</p>
@@ -310,21 +325,27 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
                 1. Tus archivos{" "}
                 {d.entradas.every((e) => e.ejemplo) && <span className="text-xs font-normal text-tenue">(si no subes nada, usa el de ejemplo)</span>}
               </legend>
-              {d.entradas.map((e, i) => (
+              {d.entradas.map((e, i) => {
+                const antes = previo(e.nodo);
+                return (
                 <div key={e.nodo} className="flex flex-wrap items-center gap-3">
-                  {e.ejemplo && e.medio === "image" && (
+                  {antes && !archivos[e.nodo] && e.medio === "image" ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={archivo(`workflows/${desde}/entradas/${antes.nombre}`)} alt="Tu archivo de la vez anterior" className="h-16 w-16 rounded object-cover" />
+                  ) : e.ejemplo && e.medio === "image" && (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={e.ejemplo} alt="Ejemplo" className="h-16 w-16 rounded object-cover" />
                   )}
                   <label className="boton cursor-pointer">
-                    {archivos[e.nodo] ? "Cambiar" : `Subir ${MEDIO[e.medio] ?? "un archivo"}${d.entradas.length > 1 ? ` (${i + 1})` : ""}`}
+                    {archivos[e.nodo] || antes ? "Cambiar" : `Subir ${MEDIO[e.medio] ?? "un archivo"}${d.entradas.length > 1 ? ` (${i + 1})` : ""}`}
                     <input type="file" className="sr-only" accept={ACEPTA[e.medio] ?? ""} onChange={(ev) => setArchivos((x) => ({ ...x, [e.nodo]: ev.target.files?.[0] ?? null }))} />
                   </label>
-                  <span className={`text-xs ${!archivos[e.nodo] && !e.ejemplo ? "text-amber-300" : "text-tenue"}`}>
-                    {archivos[e.nodo]?.name ?? (e.ejemplo ? "Ejemplo de la receta" : `Sube ${tuArchivo(e.medio)} (hace falta para empezar)`)}
+                  <span className={`text-xs ${!archivos[e.nodo] && !e.ejemplo && !antes ? "text-amber-300" : "text-tenue"}`}>
+                    {archivos[e.nodo]?.name ?? (antes ? "El mismo de la vez anterior" : e.ejemplo ? "Ejemplo de la receta" : `Sube ${tuArchivo(e.medio)} (hace falta para empezar)`)}
                   </span>
                 </div>
-              ))}
+                );
+              })}
             </fieldset>
           )}
           {d.textos.some((t) => !t.experto) && (
@@ -407,7 +428,7 @@ function Detalle({ id, cerrar, creado }: { id: string; cerrar: () => void; cread
   );
 }
 
-function Resultados({ corridas, trabajos, cambio }: { corridas: CorridaV[]; trabajos: TrabajoV[]; cambio: () => void }) {
+function Resultados({ corridas, trabajos, cambio, editar }: { corridas: CorridaV[]; trabajos: TrabajoV[]; cambio: () => void; editar: (c: CorridaV) => void }) {
   const motorVivo = useMotorVivo();
   // Una corrida «preparada» sin trabajo en marcha pero con uno cortado (se apagó la PC…) también se ve: se puede reintentar.
   const visibles = corridas.filter((c) => c.estado !== "preparada" || trabajos.some((t) => t.corrida === c.id) || c.trabajo).slice(0, 12);
@@ -435,13 +456,10 @@ function Resultados({ corridas, trabajos, cambio }: { corridas: CorridaV[]; trab
                     <Aviso tipo="error">{c.estado === "preparada" ? "Se cortó antes de terminar." : c.error?.split("\n")[0] ?? "No se pudo crear."}</Aviso>
                   )}
                   {c.trabajo && <Reintentar trabajo={c.trabajo} cambio={cambio} />}
-                  <button type="button" className="boton text-xs"
-                    onClick={async () => {
-                      await pedir(`/api/workflows/corridas/${encodeURIComponent(c.id)}`, { method: "DELETE" }).catch((e: Error) => alert(e.message));
-                      cambio();
-                    }}>
-                    Quitar
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" className="boton text-xs" onClick={() => editar(c)}>Editar</button>
+                    <Eliminar corrida={c} cambio={cambio} />
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -464,7 +482,11 @@ function Resultados({ corridas, trabajos, cambio }: { corridas: CorridaV[]; trab
                       </div>
                     );
                   })}
-                  {c.segundos !== undefined && <p className="text-[11px] text-tenue">Tardó {c.segundos >= 60 ? `${Math.round(c.segundos / 60)} min` : `${c.segundos} s`}</p>}
+                  <div className="flex flex-wrap items-center gap-2 border-t border-white/10 pt-2">
+                    <button type="button" className="boton text-xs" onClick={() => editar(c)} title="Abre la receta con lo que pediste, para cambiarlo y crear otra versión">Editar</button>
+                    <Eliminar corrida={c} cambio={cambio} />
+                    {c.segundos !== undefined && <span className="ml-auto text-[11px] text-tenue">Tardó {c.segundos >= 60 ? `${Math.round(c.segundos / 60)} min` : `${c.segundos} s`}</span>}
+                  </div>
                 </div>
               )}
             </article>
@@ -472,6 +494,29 @@ function Resultados({ corridas, trabajos, cambio }: { corridas: CorridaV[]; trab
         })}
       </div>
     </section>
+  );
+}
+
+/** Borra un resultado de la lista (y su archivo). Lo que ya se puso en un video sigue en el video. */
+function Eliminar({ corrida: c, cambio }: { corrida: CorridaV; cambio: () => void }) {
+  const [borrando, setBorrando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <>
+      <button type="button" className="boton text-xs" disabled={borrando} onClick={async () => {
+        if (c.estado === "hecha" && !confirm(`¿Eliminar este resultado de «${c.titulo}»? No se puede deshacer. Si ya lo pusiste en un video, ahí se queda.`)) return;
+        setError(null);
+        setBorrando(true);
+        try {
+          await pedir(`/api/workflows/corridas/${encodeURIComponent(c.id)}`, { method: "DELETE" });
+          cambio();
+        } catch (e) {
+          setError((e as Error).message);
+          setBorrando(false);
+        }
+      }}>{borrando ? "Eliminando…" : "Eliminar"}</button>
+      {error && <Aviso tipo="error">{error}</Aviso>}
+    </>
   );
 }
 

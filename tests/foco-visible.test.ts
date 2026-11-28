@@ -14,7 +14,7 @@ describe("foco visible (A11-02)", () => {
 
   it("en las recetas lo elegido se marca con .opcion-tarjeta y aria-pressed (A11-08)", () => {
     const s = leer("workflows.tsx");
-    expect(s).toContain('aria-pressed={abierto === w.id} onClick={() => setAbierto(w.id)} className="opcion-tarjeta overflow-hidden"');
+    expect(s).toContain('aria-pressed={abierto?.id === w.id} onClick={() => setAbierto({ id: w.id })} className="opcion-tarjeta overflow-hidden"');
     expect(s).toContain("aria-pressed={categoria === c}");
   });
 });

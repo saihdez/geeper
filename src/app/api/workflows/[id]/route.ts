@@ -8,7 +8,7 @@ import { json, manejar } from "@/lib/http";
 import { borrarRecibidos, recibirMultipart } from "@/lib/multipart-flujo";
 import { revisarComfyui } from "@/lib/instalar-comfyui";
 import { infoNodos, permitirNodos } from "@/lib/nodos-comfy";
-import { aviso, bloqueo, dirCorrida, entradasSinArchivo, escribirCorrida, espacioLibre, hayEjemplo, nuevaCorrida, PedidoWorkflow, textoFaltaArchivo } from "@/lib/workflows";
+import { aviso, bloqueo, dirCorrida, entradasDeCorrida, entradasSinArchivo, escribirCorrida, espacioLibre, hayEjemplo, leerCorrida, nuevaCorrida, PedidoWorkflow, textoFaltaArchivo } from "@/lib/workflows";
 import { bytesPorBajar } from "@/lib/workflows-texto";
 
 export const dynamic = "force-dynamic";
@@ -107,11 +107,24 @@ export async function POST(req: Request, ctx: Ctx) {
           await fs.rename(f.ruta, path.join(entradas, nombre));
           usados.push({ nodo: e.nodo, nombre });
         }
+        // «Editar» un resultado: lo que no se volvió a subir se toma del pedido anterior de la misma receta.
+        const desde = campos.get("reusar");
+        if (desde) {
+          const anterior = await leerCorrida(desde);
+          if (anterior?.workflow === w.id) {
+            for (const a of await entradasDeCorrida(desde)) {
+              if (usados.some((u) => u.nodo === a.nodo) || !w.entradas.some((e) => e.nodo === a.nodo)) continue;
+              await fs.mkdir(entradas, { recursive: true });
+              await fs.copyFile(path.join(dirCorrida(desde), "entradas", a.nombre), path.join(entradas, a.nombre));
+              usados.push(a);
+            }
+          }
+        }
         // Sin ejemplo, ComfyUI rechazaría el pedido recién después de bajar los modelos (UX-04): se avisa ya.
         const faltan = entradasSinArchivo(w.entradas, usados.map((u) => u.nodo), (e) => conEjemplo(e.archivo));
         if (faltan.length) throw new Error(`${textoFaltaArchivo(faltan.map((e) => e.medio))} Esta receta no trae un ejemplo y lo necesita para empezar.`);
         const pedido = PedidoWorkflow.parse({ workflow: w.id, textos, archivos: usados });
-        await escribirCorrida({ id: corrida, workflow: w.id, titulo: w.titulo, creada: new Date().toISOString(), estado: "preparada", salidas: [] });
+        await escribirCorrida({ id: corrida, workflow: w.id, titulo: w.titulo, creada: new Date().toISOString(), estado: "preparada", salidas: [], textos: pedido.textos });
         creada = true;
         const t = await encolar(null, "workflow.correr", { corrida, pedido });
         return json({ corrida, trabajo: t.id }, 201);

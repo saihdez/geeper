@@ -25,9 +25,11 @@ import { exigirEspacio } from "./espacio";
 
 export { entradasSinArchivo, hayEjemplo, REINTENTABLES, textoFaltaArchivo, trabajoPorCorrida, tuArchivo } from "./workflows-texto";
 
+const TextosPedido = z.array(z.object({ nodo: z.string().max(80), indice: z.number().int().min(0).max(200), valor: z.string().max(5000) })).max(20);
+
 export const PedidoWorkflow = z.object({
   workflow: z.string().regex(/^[\w.-]+$/),
-  textos: z.array(z.object({ nodo: z.string().max(80), indice: z.number().int().min(0).max(200), valor: z.string().max(5000) })).max(20).default([]),
+  textos: TextosPedido.default([]),
   /** Archivos ya subidos a la carpeta de la corrida: nodo de carga → nombre del archivo. */
   archivos: z.array(z.object({ nodo: z.union([z.number(), z.string()]), nombre: z.string().regex(/^[\w.-]+$/) })).max(10).default([]),
 });
@@ -42,6 +44,8 @@ export const Corrida = z.object({
   salidas: z.array(z.object({ archivo: z.string(), tipo: z.enum(["imagen", "video", "audio", "otro"]) })).default([]),
   segundos: z.number().optional(),
   error: z.string().optional(),
+  /** Los textos que la persona cambió en la receta, para «Editar» (las corridas viejas no lo traen). */
+  textos: TextosPedido.optional(),
 });
 export type Corrida = z.infer<typeof Corrida>;
 
@@ -100,6 +104,20 @@ export async function leerCorrida(id: string): Promise<Corrida | null> {
   } catch {
     return null;
   }
+}
+
+/** Los archivos que la persona subió a una corrida: nodo de carga → nombre (función de disco, sin fallar). */
+export async function entradasDeCorrida(id: string): Promise<{ nodo: number; nombre: string }[]> {
+  let nombres: string[] = [];
+  try {
+    nombres = await fs.readdir(path.join(dirCorrida(id), "entradas"));
+  } catch {
+    return [];
+  }
+  return nombres.flatMap((n) => {
+    const m = /^entrada-(\d+)\.[a-z0-9]+$/.exec(n);
+    return m ? [{ nodo: Number(m[1]), nombre: n }] : [];
+  });
 }
 
 export async function listarCorridas(): Promise<Corrida[]> {
