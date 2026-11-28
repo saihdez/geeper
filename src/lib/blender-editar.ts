@@ -54,7 +54,7 @@ export function blendDeEscena(p: Proyecto, escena: string): { abs: string; numer
 export async function abrirEnBlender(abs: string): Promise<void> {
   if (!(await versionBlender())) throw new Error("Falta Blender: instálalo con un clic en Sistema.");
   if (!existsSync(abs)) throw new Error("Ese archivo de Blender ya no está (quizás se borró la escena).");
-  const hijo = spawn(binBlender(), [abs], { detached: true, stdio: "ignore", env: { ...process.env, ...entornoBlender() }, cwd: path.dirname(abs) });
+  const hijo = spawn(binBlender(), [abs], { detached: true, stdio: "ignore", windowsHide: false, env: { ...process.env, ...entornoBlender() }, cwd: path.dirname(abs) });
   await new Promise<void>((ok, mal) => {
     hijo.once("error", (e) => mal(new Error(`No se pudo abrir Blender: ${e.message}`)));
     hijo.once("spawn", () => ok());
