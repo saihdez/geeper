@@ -46,6 +46,16 @@ export const APPS_CRAFT: AppCraft[] = [
   { app: "cadcraft", nombre: "CADCraft", version: "0.20.1", grupo: "3D y técnico", que: "Dibujo técnico y CAD.", comoA: "AutoCAD" },
   { app: "materialcraft", nombre: "MaterialCraft", version: "0.4.1", grupo: "3D y técnico", que: "Materiales 3D con nodos.", comoA: "Substance Designer" },
   { app: "texturecraft", nombre: "TextureCraft", version: "0.6.1", grupo: "3D y técnico", que: "Pintar texturas sobre modelos 3D.", comoA: "Substance Painter" },
+  {
+    app: "craft-anything",
+    nombre: "Craft Anything",
+    version: "0.6.1",
+    grupo: "3D y técnico",
+    que: "Mira cómo está hecho un sitio web, una app o un juego y arma tu propia versión con ayuda de la IA. Para construir necesita Claude Code instalado y con tu sesión iniciada.",
+    comoA: "un taller de sitios y apps",
+    paraGeeper: "Arma una página para tu producto y muéstrala con «Nuevo → Desde una página web».",
+    soloEscritorio: true,
+  },
 ];
 
 export const appCraft = (app: string) => APPS_CRAFT.find((a) => a.app === app && !a.soloEscritorio) ?? null;
