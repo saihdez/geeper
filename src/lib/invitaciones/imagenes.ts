@@ -104,7 +104,7 @@ const LADOS_LECTURA = [768, 512, 384, 256] as const;
 export async function lecturasQr(ruta: string, url: string): Promise<number> {
   let ok = 0;
   for (const lado of LADOS_LECTURA) {
-    const { stdout } = await ejecutar(FFMPEG, ["-v", "error", "-i", ruta, "-vf", `scale=${lado}:${lado}:flags=area`, "-f", "rawvideo", "-pix_fmt", "rgba", "-"], { encoding: "buffer", maxBuffer: 1 << 26 });
+    const { stdout } = await ejecutar(FFMPEG, ["-v", "error", "-i", ruta, "-vf", `scale=${lado}:${lado}:flags=area`, "-f", "rawvideo", "-pix_fmt", "rgba", "-"], { encoding: "buffer", maxBuffer: 1 << 26, windowsHide: true });
     const r = jsQR(new Uint8ClampedArray(stdout.buffer, stdout.byteOffset, stdout.length), lado, lado, { inversionAttempts: "attemptBoth" });
     if (r?.data === url) ok++;
   }

@@ -12,6 +12,8 @@ import {
   gradienteMarca,
   leerRgb,
   planDemo,
+  registroDeGrabacion,
+  revisarPagina,
   type Candidato,
   type EstiloDemo,
   type FormatoDemo,
@@ -112,8 +114,9 @@ export async function tomarDemo(url: string, dir: string, op: OpcionesToma): Pro
     // tsx (esbuild con keepNames) envuelve las funciones en __name(); en la página no existe.
     await ctx.addInitScript({ content: "window.__name = (f) => f;" });
     const page = await ctx.newPage();
+    let estado: number | null = null;
     try {
-      await page.goto(url, { waitUntil: "load", timeout: 60_000 });
+      estado = (await page.goto(url, { waitUntil: "load", timeout: 60_000 }))?.status() ?? null;
     } catch (e) {
       // «(page.goto: net::ERR_NAME_NOT_RESOLVED at …)» sólo en el registro, no en el mensaje (UX-17).
       log(`Detalle técnico: ${e instanceof Error ? e.message.split("\n")[0] : e}`);
@@ -131,6 +134,32 @@ export async function tomarDemo(url: string, dir: string, op: OpcionesToma): Pro
       })
       .catch(() => {});
     await dormir(400);
+
+    // Una página de error o en blanco no se graba (ver `revisarPagina`).
+    const medida = await page
+      .evaluate(() => {
+        const visible = (el: Element) => {
+          const r = el.getBoundingClientRect();
+          const s = getComputedStyle(el);
+          return r.width > 8 && r.height > 8 && s.visibility !== "hidden" && s.display !== "none";
+        };
+        const imagenes = [...document.images].filter(visible);
+        const otros = [...document.querySelectorAll("video, canvas, svg")].filter(visible).length;
+        return {
+          texto: (document.body?.innerText ?? "").replace(/\s+/g, " ").trim().length,
+          medios: imagenes.filter((i) => i.complete && i.naturalWidth > 0).length + otros,
+          rotas: imagenes.filter((i) => i.complete && i.naturalWidth === 0 && !!i.currentSrc).length,
+        };
+      })
+      .catch(() => null);
+    if (medida) {
+      const salud = revisarPagina({ estado, ...medida });
+      salud.avisos.forEach((a) => log(a));
+      if (salud.error) {
+        log(`Detalle técnico: estado ${estado ?? "-"}, ${medida.texto} caracteres, ${medida.medios} imágenes o videos, ${medida.rotas} rotas.`);
+        throw new Error(salud.error);
+      }
+    }
 
     // Exploración: titular, candidatos a botón y colores.
     const sc = await page.evaluate(() => {
@@ -302,6 +331,7 @@ export async function tomarDemo(url: string, dir: string, op: OpcionesToma): Pro
       duracion: info.duracion,
       ancho: info.ancho ?? Math.round(vista.width * escala),
       alto: info.alto ?? Math.round(vista.height * escala),
+      imagenesRotas: medida?.rotas ?? 0,
     };
     await fsp.writeFile(path.join(dir, "toma.json"), JSON.stringify(r, null, 1));
     return r;
@@ -309,6 +339,32 @@ export async function tomarDemo(url: string, dir: string, op: OpcionesToma): Pro
     signal?.removeEventListener("abort", cerrar);
     await nav.close().catch(() => {});
   }
+}
+
+/**
+ * Una grabación de pantalla subida por la persona → `<dir>/toma.mp4` con la misma forma que la toma
+ * automática (30 fps, lados pares, hasta 1920 px de ancho o 1920 de alto, sin sonido: la voz es la
+ * del texto), y su registro para el montaje (ver `registroDeGrabacion`).
+ */
+export async function prepararGrabacion(
+  src: string,
+  dir: string,
+  o: { formato: FormatoDemo; objetivo: number; log?: Registro },
+): Promise<RegistroDemo> {
+  const log = o.log ?? (() => {});
+  const antes = await probar(src).catch(() => null);
+  if (!antes?.ancho || !antes.alto) throw new Error("No pude leer la grabación: súbela otra vez como video (MP4 o MOV).");
+  const video = path.join(dir, "toma.mp4");
+  await ffmpeg([
+    "-i", src, "-an",
+    "-vf", "fps=30,scale=w='min(1920,iw)':h='min(1920,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p",
+    "-c:v", "libx264", "-preset", "medium", "-crf", "16", "-g", "30", "-movflags", "+faststart", video,
+  ], log);
+  const info = await probar(video);
+  log(`Grabación: ${antes.ancho}×${antes.alto}, ${info.duracion.toFixed(1)} s → toma ${info.ancho}×${info.alto} a 30 fps`);
+  const r = registroDeGrabacion({ duracion: info.duracion, ancho: info.ancho ?? antes.ancho, alto: info.alto ?? antes.alto }, { formato: o.formato, objetivo: o.objetivo });
+  await fsp.writeFile(path.join(dir, "toma.json"), JSON.stringify(r, null, 1));
+  return r;
 }
 
 export interface OpcionesRender {

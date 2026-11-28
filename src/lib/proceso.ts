@@ -97,7 +97,7 @@ export function matarArbol(hijo: ChildProcess, op: OpcionesMatar = {}): void {
   const pid = hijo.pid;
   if (!pid) return;
   if (process.platform === "win32") {
-    if (hijo.exitCode === null && hijo.signalCode === null) spawn("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore" }).on("error", () => {});
+    if (hijo.exitCode === null && hijo.signalCode === null) spawn("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true }).on("error", () => {});
     return;
   }
   if (!grupoVivo(pid)) return;
@@ -109,7 +109,7 @@ export function matarArbol(hijo: ChildProcess, op: OpcionesMatar = {}): void {
   setTimeout(() => {
     if (!grupoVivo(pid)) return;
     if (op.patronDuro) {
-      spawn("pkill", ["-KILL", "-g", String(pid), "-f", op.patronDuro], { stdio: "ignore" }).on("error", () => {});
+      spawn("pkill", ["-KILL", "-g", String(pid), "-f", op.patronDuro], { stdio: "ignore", windowsHide: true }).on("error", () => {});
       return;
     }
     try {
@@ -149,6 +149,7 @@ export function correr(cmd: string, argsPedidos: string[], op: OpcionesCorrer = 
       env: { ...process.env, PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8", ...op.env },
       stdio: [op.entrada === undefined ? "ignore" : "pipe", "pipe", "pipe"],
       detached: cortable && process.platform !== "win32",
+      windowsHide: true,
     });
     let stdout = "";
     let stderr = "";

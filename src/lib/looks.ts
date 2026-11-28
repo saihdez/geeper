@@ -102,7 +102,7 @@ async function histograma(ruta: string, duracion: number | undefined): Promise<{
     const r = await new Promise<Buffer>((ok, mal) => {
       // ffmpeg directo (stdout binario): `correr` lo trata como texto.
       import("node:child_process").then(({ spawn }) => {
-        const p = spawn(FFMPEG, ["-v", "error", "-ss", t.toFixed(3), "-i", ruta, "-frames:v", "1", "-vf", "scale=160:-2", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
+        const p = spawn(FFMPEG, ["-v", "error", "-ss", t.toFixed(3), "-i", ruta, "-frames:v", "1", "-vf", "scale=160:-2", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], { windowsHide: true });
         const partes: Buffer[] = [];
         p.stdout.on("data", (d: Buffer) => partes.push(d));
         p.on("error", mal);

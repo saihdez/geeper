@@ -8,11 +8,12 @@
  *     diga que el sitio es suyo.
  * Después la cadena sigue con el render y el QC de siempre.
  */
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describirAsset, guardarProyecto, registrarAssetsEnDb, crearCarpetas } from "./almacen";
-import { MAX_CARACTERES_DEMO, type EstiloDemo, type FormatoDemo, type Historia, type RegistroDemo } from "./demo-web";
-import { probarLink, renderDemo, tomarDemo } from "./demo-web-toma";
+import { fondoDePlantilla, MAX_CARACTERES_DEMO, type EstiloDemo, type FormatoDemo, type Historia, type RegistroDemo } from "./demo-web";
+import { prepararGrabacion, probarLink, renderDemo, tomarDemo } from "./demo-web-toma";
 import { SCHEMA_VERSION, validarProyecto, type Asset, type Escena, type Proyecto } from "./esquema";
 import { huellaFfmpeg, probar } from "./media";
 import { paso, type Contexto } from "./pasos";
@@ -33,16 +34,23 @@ export interface DatosDemo {
   historia?: Historia;
   /** La persona dice que el sitio es suyo (o tiene permiso): la captura queda con licencia propia. */
   propio?: boolean;
+  /** Grabación de pantalla subida (ruta absoluta en `_subidos/`): reemplaza la toma automática. */
+  grabacion?: string;
 }
 
 export async function importarDemo(ctx: Contexto & { signal?: AbortSignal; etapa?: (e: string, p: number) => Promise<void> }, d: DatosDemo) {
   const texto = d.texto.replace(/\s+/g, " ").trim();
   if (!texto) throw new Error("Escribe qué quieres que diga el video.");
   if (texto.length > MAX_CARACTERES_DEMO) throw new Error(`El texto es muy largo (${texto.length} caracteres; hasta ${MAX_CARACTERES_DEMO}, unos 45 s).`);
-  if (!/^https?:\/\//i.test(d.url)) throw new Error("El link tiene que empezar con https://");
-  // 0. Que el link abra (hasta 10 s), antes de esperar la voz (UX-17).
-  await ctx.etapa?.("Probando que la página abre", 0.05);
-  await probarLink(d.url, { log: ctx.log, signal: ctx.signal });
+  const grabacion = d.grabacion;
+  if (grabacion) {
+    if (!existsSync(grabacion)) throw new Error("No encontré la grabación que subiste. Vuelve a Nuevo y súbela otra vez.");
+  } else {
+    if (!/^https?:\/\//i.test(d.url)) throw new Error("El link tiene que empezar con https://");
+    // 0. Que el link abra (hasta 10 s), antes de esperar la voz (UX-17).
+    await ctx.etapa?.("Probando que la página abre", 0.05);
+    await probarLink(d.url, { log: ctx.log, signal: ctx.signal });
+  }
   await crearCarpetas(d.slug);
 
   // 1. Voz.
@@ -53,38 +61,55 @@ export async function importarDemo(ctx: Contexto & { signal?: AbortSignal; etapa
   ctx.log(`Voz: ${durVoz.toFixed(1)} s, ${palabras.length} palabras`);
 
   // 2. Demo de la página: un poco más larga que la voz (la tarjeta final y el aire del final).
-  await ctx.etapa?.("Grabando la página y armando la demo (CPU, 2–4 min)", 0.3);
+  await ctx.etapa?.(grabacion ? "Preparando tu grabación y armando la demo (CPU, 2–4 min)" : "Grabando la página y armando la demo (CPU, 2–4 min)", 0.3);
   const objetivo = Math.max(6, durVoz + 1.2);
   const dirDemo = path.join(ctx.dir, "assets", "demo");
   await fs.mkdir(dirDemo, { recursive: true });
   const rutaDemo = path.join(ctx.dir, "assets", "demo-web.mp4");
-  await paso(
+  const { resultado: toma } = await paso(
     ctx,
     "demo.web",
-    { archivos: [], params: { url: d.url, formato: d.formato, estilo: d.estilo, historia: d.historia ?? null, objetivo: +objetivo.toFixed(2) }, motor: `demo-web-v1+${await huellaFfmpeg()}` },
+    {
+      archivos: grabacion ? [grabacion] : [],
+      params: { url: grabacion ? null : d.url, formato: d.formato, estilo: d.estilo, historia: d.historia ?? null, objetivo: +objetivo.toFixed(2), grabacion: !!grabacion },
+      motor: `demo-web-v1+${await huellaFfmpeg()}`,
+    },
     [rutaDemo],
     async ([tmp]) => {
-      const r: RegistroDemo = await tomarDemo(d.url, dirDemo, { formato: d.formato, historia: d.historia, duracionMin: objetivo + 3.5, log: ctx.log, signal: ctx.signal });
+      const r: RegistroDemo = grabacion
+        ? await prepararGrabacion(grabacion, dirDemo, { formato: d.formato, objetivo, log: ctx.log })
+        : await tomarDemo(d.url, dirDemo, { formato: d.formato, historia: d.historia, duracionMin: objetivo + 3.5, log: ctx.log, signal: ctx.signal });
       await ctx.etapa?.("Componiendo la demo (Hyperframes, CPU)", 0.6);
-      const { montaje } = await renderDemo(dirDemo, r, { estilo: d.estilo, maximo: objetivo, salida: tmp!, log: ctx.log, signal: ctx.signal });
-      return { historia: r.historia, cta: r.cta, total: montaje.total, titulo: r.titulo };
+      // Una grabación no trae los colores de la página: el fondo sale de los de la plantilla.
+      const fondo = grabacion ? fondoDePlantilla(d.plantilla.datos) : undefined;
+      const { montaje } = await renderDemo(dirDemo, r, { estilo: d.estilo, maximo: objetivo, salida: tmp!, log: ctx.log, signal: ctx.signal, fondo });
+      return { historia: r.historia, cta: r.cta, total: montaje.total, titulo: r.titulo, imagenesRotas: r.imagenesRotas ?? 0 };
     },
   );
   const durDemo = (await probar(rutaDemo)).duracion;
   if (durDemo + 0.05 < durVoz) {
+    if (grabacion) throw new Error(`Tu grabación da ${durDemo.toFixed(1)} s de imagen y la voz dura ${durVoz.toFixed(1)} s: graba un poco más o acorta el texto.`);
     throw new Error(`La página dio ${durDemo.toFixed(1)} s de imagen y la voz dura ${durVoz.toFixed(1)} s: acorta el texto o prueba con una página más larga.`);
   }
 
   // 3. Proyecto.
-  const licencia = d.propio
-    ? `propia: captura de ${d.url} (sitio propio o con permiso, según quien creó el proyecto)`
-    : `revisar: captura de ${d.url}; publícala sólo si el sitio es tuyo o tienes permiso`;
+  const desde = d.url ? ` de ${d.url}` : "";
+  const licencia = grabacion
+    ? d.propio
+      ? `propia: grabación de pantalla${desde} subida por quien creó el proyecto (sitio propio o con permiso)`
+      : `revisar: grabación de pantalla${desde} subida por quien creó el proyecto; publícala sólo si lo que se ve es tuyo o tienes permiso`
+    : d.propio
+      ? `propia: captura de ${d.url} (sitio propio o con permiso, según quien creó el proyecto)`
+      : `revisar: captura de ${d.url}; publícala sólo si el sitio es tuyo o tienes permiso`;
+  const rotas = Number(toma?.imagenesRotas ?? 0);
   const aDemo = await describirAsset(ctx.dir, path.relative(ctx.dir, rutaDemo), {
     id: "demo-web",
     tipo: "video",
     source: "archivo",
     licencia,
-    regenerar: { origen: "demo-web", url: d.url, formato: d.formato, estilo: d.estilo, historia: d.historia ?? null },
+    regenerar: grabacion
+      ? { origen: "grabacion-pantalla", url: d.url || null, formato: d.formato, estilo: d.estilo }
+      : { origen: "demo-web", url: d.url, formato: d.formato, estilo: d.estilo, historia: d.historia ?? null, ...(rotas > 0 ? { imagenesRotas: rotas } : {}) },
   });
   const assets: Record<string, Asset> = { [aVoz.id]: aVoz, [aDemo.id]: aDemo };
   const tramos = segmentar(palabras, durVoz, 8);
@@ -118,7 +143,7 @@ export async function importarDemo(ctx: Contexto & { signal?: AbortSignal; etapa
     escenas,
     marcadores: tramos.slice(1).map((t, i) => ({ id: `m${i + 1}`, tiempo: t.inicio, nombre: `Corte ${i + 1}`, tipo: "corte" as const })),
   });
-  const version = await guardarProyecto(d.proyectoId, proyecto, `Demo de ${new URL(d.url).host}`);
+  const version = await guardarProyecto(d.proyectoId, proyecto, d.url ? `Demo de ${new URL(d.url).host}` : "Demo de tu grabación");
   await registrarAssetsEnDb(d.proyectoId, proyecto);
   ctx.log(`Proyecto: ${tramos.length} escenas, voz ${durVoz.toFixed(1)} s, demo ${durDemo.toFixed(1)} s, versión ${version}`);
   return { version, escenas: tramos.length, voz: durVoz, demo: durDemo };

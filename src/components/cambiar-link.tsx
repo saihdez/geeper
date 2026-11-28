@@ -14,14 +14,14 @@ export function ofreceCambiarLink(t: { tipo: string; estado: string }): boolean 
  * Botón «Cambiar el link» (UX-17): vuelve a Nuevo → Desde una página web con el link, el texto y lo
  * elegido ya puestos, para corregir el link sin escribir todo otra vez. Va junto a «Volver a intentar».
  */
-export function CambiarLink({ trabajoId }: { trabajoId: string }) {
+export function CambiarLink({ trabajoId, grabacion = false }: { trabajoId: string; grabacion?: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [yendo, setYendo] = useState(false);
   async function ir() {
     setYendo(true);
     setError(null);
     try {
-      const { enlace } = await pedir<{ enlace: string }>(`/api/demos/borrador?trabajo=${encodeURIComponent(trabajoId)}`);
+      const { enlace } = await pedir<{ enlace: string }>(`/api/demos/borrador?trabajo=${encodeURIComponent(trabajoId)}${grabacion ? "&fuente=grabacion" : ""}`);
       window.location.assign(enlace);
     } catch (e) {
       setError((e as Error).message);
@@ -30,7 +30,7 @@ export function CambiarLink({ trabajoId }: { trabajoId: string }) {
   }
   return (
     <>
-      <button type="button" className="boton" disabled={yendo} onClick={() => void ir()}>Cambiar el link</button>
+      <button type="button" className="boton" disabled={yendo} onClick={() => void ir()}>{grabacion ? "Usar una grabación mía" : "Cambiar el link"}</button>
       {error && <span role="alert" className="text-xs text-rose-300">{error}</span>}
     </>
   );

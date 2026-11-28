@@ -37,6 +37,7 @@ export function tomarGpu(descripcion: string, op: OpcionesCandado): Promise<Cand
         stdio: ["pipe", "pipe", "pipe"],
         // Grupo propio: al rendirse se mata también el `flock` que espera dentro de gpu-lock.
         detached: true,
+        windowsHide: true,
       });
     } catch (e) {
       mal(e as Error);

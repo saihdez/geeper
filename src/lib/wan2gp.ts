@@ -443,6 +443,7 @@ function lanzar(i: InstalacionWan2gp, argsPedidos: string[], conGpuSolo: boolean
     },
     // Grupo propio en POSIX: cancelar llega a todo el árbol.
     detached: process.platform !== "win32",
+    windowsHide: true,
   });
 }
 
