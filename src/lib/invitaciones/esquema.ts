@@ -57,6 +57,11 @@ export const Musica = z.discriminatedUnion("tipo", [
 ]);
 export type Musica = z.infer<typeof Musica>;
 
+/** Lo que sale volando del sobre al abrirlo (efecto-sobre.ts). «auto»: el que va con el tema. */
+export const EFECTOS_SOBRE = ["auto", "mariposas", "luciernagas", "petalos", "corazones", "estrellas", "brillos", "hojas", "copos", "burbujas", "confeti", "ninguno"] as const;
+export const EfectoSobre = z.enum(EFECTOS_SOBRE);
+export type EfectoSobre = z.infer<typeof EfectoSobre>;
+
 /** Lo que manda el formulario (la música llega como enlace y el servidor la convierte en `Musica`). */
 export const Entrada = z.object({
   tipo: Tipo,
@@ -85,6 +90,7 @@ export const Entrada = z.object({
   pases: z.number().int().min(1).max(20).optional(),
   regalos: opcional(300),
   hashtag: opcional(40),
+  efectoSobre: EfectoSobre.optional(),
 });
 export type Entrada = z.input<typeof Entrada>;
 

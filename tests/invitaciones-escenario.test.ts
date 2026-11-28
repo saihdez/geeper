@@ -56,4 +56,18 @@ describe("escenario del tema", () => {
     // El fondo marcado en el json pero sin el archivo: escenario dibujado.
     expect(compilar(inv({ fondo: "fondo.webp" }), { fuentesCss: "" }).html).not.toContain("con-foto\"");
   });
+
+  it("efecto al abrir el sobre: el elegido, el del tema en «auto» y ninguno", async () => {
+    const { efectoDe, datosEfecto } = await import("@/lib/invitaciones/efecto-sobre");
+    const e = estiloDe(inv());
+    expect(efectoDe({ efectoSobre: "mariposas" }, e)).toBe("mariposas");
+    expect(efectoDe({}, { adorno: "mariposas" })).toBe("mariposas");
+    expect(efectoDe({ efectoSobre: "auto" }, { adorno: "flores" })).toBe("petalos");
+    expect(datosEfecto({ efectoSobre: "ninguno" }, e)).toBeNull();
+    const html = compilar(inv({ efectoSobre: "mariposas" }), { fuentesCss: "" }).html;
+    expect(html).toContain('"tipo":"mariposas"');
+    expect(html).toContain("window.efectoSobre=function()");
+    expect(html).toContain("if(window.efectoSobre)window.efectoSobre()");
+    expect(compilar(inv({ efectoSobre: "ninguno" }), { fuentesCss: "" }).html).toContain('"efecto":null');
+  });
 });

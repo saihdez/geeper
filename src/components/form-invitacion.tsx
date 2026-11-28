@@ -2,7 +2,8 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { PLANTILLAS_INFO, TIPOS_INFO } from "@/lib/invitaciones/catalogo";
-import { PLANTILLAS, TIPOS, type EstiloId, type Invitacion, type Tipo } from "@/lib/invitaciones/esquema";
+import { EFECTOS_SOBRE, PLANTILLAS, TIPOS, type EfectoSobre, type EstiloId, type Invitacion, type Tipo } from "@/lib/invitaciones/esquema";
+import { NOMBRES_EFECTO } from "@/lib/invitaciones/efecto-sobre";
 import { NOMBRE_ADORNO, NOMBRE_PARTICULAS, type Tema } from "@/lib/invitaciones/tema";
 import { Aviso, postJson } from "./comun";
 
@@ -72,6 +73,7 @@ export function FormInvitacion({ inicial, desde }: { inicial?: Invitacion; desde
   const [pases, setPases] = useState(ini?.pases ? String(ini.pases) : "");
   const [regalos, setRegalos] = useState(ini?.regalos ?? "");
   const [hashtag, setHashtag] = useState(ini?.hashtag ?? "");
+  const [efectoSobre, setEfectoSobre] = useState<EfectoSobre>(ini?.efectoSobre ?? "auto");
   const [duracion, setDuracion] = useState(String(ini?.duracionHoras ?? 5));
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,7 +107,7 @@ export function FormInvitacion({ inicial, desde }: { inicial?: Invitacion; desde
       whatsapp, plantilla: estilo, tema: estilo === "tema" && tema ? tema : undefined, mensaje,
       musicaEnlace: musicaModo === "enlace" ? musicaEnlace : "",
       dressCode: { estilo: dressEstilo, colores: coloresDress, evitar },
-      confirmarAntes, pases: pases ? Number(pases) : undefined, regalos, hashtag,
+      confirmarAntes, pases: pases ? Number(pases) : undefined, regalos, hashtag, efectoSobre,
     };
   }
 
@@ -297,6 +299,14 @@ export function FormInvitacion({ inicial, desde }: { inicial?: Invitacion; desde
               ))}
             </div>
           </fieldset>
+
+          <div>
+            <label className="etiqueta" htmlFor="inv-efecto">Efecto al abrir el sobre</label>
+            <select id="inv-efecto" className="campo" value={efectoSobre} onChange={(e) => setEfectoSobre(e.target.value as EfectoSobre)}>
+              {EFECTOS_SOBRE.map((k) => <option key={k} value={k}>{NOMBRES_EFECTO[k]}</option>)}
+            </select>
+            <p className="mt-1 text-xs text-tenue">Lo que sale volando del sobre cuando el invitado toca el sello.</p>
+          </div>
 
           <div>
             <label className="etiqueta" htmlFor="inv-foto">Foto para el sobre</label>

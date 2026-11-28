@@ -261,6 +261,14 @@ momento, que me lleve por las ramas o raíces». `escenario.ts`, para todas las 
   el QR (800×800, `vistaPrevia: "qr"`). `og:image` lleva `?v=<guardado>` para que WhatsApp no use la
   imagen vieja. Después hay que volver a subir el .zip.
 
+### Efecto al abrir el sobre (hecho el 2026-11-28)
+
+«Efecto al abrir el sobre» en «Más detalles» (`efectoSobre`): mariposas, luciérnagas, pétalos, corazones,
+estrellas, destellos, hojas, copos, burbujas, confeti o ninguno; «Automático» elige el que va con el adorno
+del tema (`efecto-sobre.ts`). Salen del sobre 0,65 s después de tocar el sello, en un canvas por encima de
+todo que se borra solo (~5-8 s). Las mariposas aletean y revolotean más lento; con «reducir movimiento»
+salen la mitad y más despacio.
+
 ### Datos del cliente con Google Forms (hecho el 2026-11-27)
 
 En Invitaciones, «Pedirle los datos al cliente con Google Forms»: Geeper crea el formulario en la cuenta

@@ -10,6 +10,7 @@ import { instanteUTC, partesCuentaAtras, semanasDelMes, textosFecha } from "./ca
 import { ics, mensajeConfirmacion, urlGoogleCalendar, urlMaps, urlReproductor, urlWaze, type Evento } from "./enlaces";
 import type { Invitacion, Retoques } from "./esquema";
 import { divisor, esquinas, estiloDe, pilaLetra, scriptParticulas, texturaFondo, type Estilo } from "./estilo";
+import { datosEfecto, scriptEfectoSobre } from "./efecto-sobre";
 import { cssEscenario, htmlEscenario, scriptEscenario, semillaDe } from "./escenario";
 
 export interface Recursos {
@@ -183,6 +184,7 @@ function bajarA(el){var mano=false,fin=function(){mano=true};['touchstart','whee
  setTimeout(function(){if(mano||!el)return;var y0=scrollY,y1=el.getBoundingClientRect().top+scrollY-Math.max(16,innerHeight*.08),dur=1600,t0=null;if(y1<=y0+4)return;
  (function paso(t){if(mano)return;if(t0===null)t0=t;var k=Math.min(1,(t-t0)/dur),e=k<.5?4*k*k*k:1-Math.pow(-2*k+2,3)/2;scrollTo(0,y0+(y1-y0)*e);if(k<1)requestAnimationFrame(paso)})(performance.now())},2500)}
 function abrir(){if(b.classList.contains('abierto'))return;b.classList.add('abierto');b.classList.remove('cerrado');ajustar();
+ setTimeout(function(){if(window.efectoSobre)window.efectoSobre()},650);
  if(!b.classList.contains('editor'))bajarA(document.querySelector('.resto>.tarjeta,.resto>section,.resto>footer'));
  if(audio){audio.play().then(function(){btnM.hidden=false;btnM.setAttribute('aria-pressed','true')}).catch(function(){btnM.hidden=false;btnM.setAttribute('aria-pressed','false')});}
  }
@@ -310,7 +312,7 @@ export function compilar(inv: Invitacion, r: Recursos, ahora = Date.now(), op: O
   const og = urlOg(inv);
   const reproductor = urlReproductor(inv.musica);
   const colores = inv.dressCode.colores.length ? inv.dressCode.colores : [];
-  const datos = { inicio: ev.inicio, fin: ev.fin, zona: inv.zona, whatsapp: inv.whatsapp, evento: largo, acento: e.colores.acento, claro: e.colores.claro, tarjeta: e.colores.tarjeta };
+  const datos = { inicio: ev.inicio, fin: ev.fin, zona: inv.zona, whatsapp: inv.whatsapp, evento: largo, acento: e.colores.acento, claro: e.colores.claro, tarjeta: e.colores.tarjeta, efecto: datosEfecto(inv, e) };
   const maxPersonas = inv.pases ?? 6;
   const descripcionOg = `${f.fecha} · ${inv.lugar.nombre}`;
 
@@ -363,7 +365,7 @@ ${og ? `<meta property="og:image" content="${esc(og)}"><meta property="og:image:
 <footer class="pie aparece"><p class="script">${t("pie-nombres")}</p><p class="mayus">${t("pie-fecha")}</p></footer></div>
 </main>${escena.frente}${audio}
 <script type="application/json" id="datos">${JSON.stringify(datos).replace(/</g, "\\u003c")}</script>
-<script>${script()}${scriptParticulas(e)}${scriptEscenario(e)}${ed ? scriptEditor() : ""}</script></body></html>`;
+<script>${script()}${scriptEfectoSobre()}${scriptParticulas(e)}${scriptEscenario(e)}${ed ? scriptEditor() : ""}</script></body></html>`;
 
   return { html, ics: ics(ev, ahora) };
 }
