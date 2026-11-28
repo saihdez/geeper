@@ -953,6 +953,15 @@ con el original. Casi nada es de video. Se tomaron ideas reescritas, no código.
 | Lo que no coincide se le dice a la persona en palabras claras, con qué hacer | **Imágenes que no cargaron**: el aviso sale en «Lo siguiente» del proyecto (`demo-imagenes-rotas` en `recomendaciones.ts`; el número queda en `regenerar.imagenesRotas` del video de la demo) |
 | Si una herramienta no puede mirar el original, se ofrece otro camino (su modo Clean room: imágenes que añade la persona) | **«Subo una grabación de mi pantalla»** en «Desde una página web» (`form-demo.tsx`, `POST /api/demos/grabacion`, `prepararGrabacion` y `registroDeGrabacion`): para páginas con inicio de sesión o que bloquean al grabador. La grabación pasa a la toma (30 fps, hasta 1920 px, sin sonido) y sigue el mismo montaje, empezando por el principio; el fondo sale del acento de la plantilla. Si la grabación automática falla por bloqueo o página en blanco, el trabajo ofrece «Usar una grabación mía» con todo ya escrito |
 
+**En Media (2026-11-28, v0.6.1):** la app completa como programa de escritorio, igual que AniCraft
+(`soloEscritorio` en `craft-web.ts`, grupo «3D y técnico»). Windows baja el zip portable y Linux el
+tarball, verificados con SHA256SUMS.txt; en macOS se enlaza el .dmg. La versión web de la release no
+sirve aquí: sólo dice qué es un archivo. Instalación real probada en una carpeta aparte
+(`GEEPER_HERRAMIENTAS`): descarga, suma, descompresión y `craft-anything-cli --version` = 0.6.1. El zip de
+Windows trae todo dentro de una carpeta; `carpetaRaiz` la toma sola. Para construir necesita Claude Code
+con la sesión de la persona (lo dice la tarjeta); el programa usa la tarjeta de video para dibujar su
+ventana (egui/wgpu), no para generar.
+
 **Revisado y ya cubierto**
 
 - Captura de marca (colores, letras, maquetación medida): ya la hace `marca-web.ts` (OpenDesign).
