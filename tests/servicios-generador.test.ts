@@ -3,12 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const m = vi.hoisted(() => ({
   viva: false,
+  esperas: [] as (number | undefined)[],
   creados: [] as unknown[],
   lotes: 0,
   encolados: [] as unknown[],
 }));
 
-vi.mock("@/lib/mpt", () => ({ apiViva: async () => m.viva }));
+// asegurarApi: la API viva o, en el escritorio, los contenedores parados de MPT levantados.
+vi.mock("@/lib/mpt", () => ({ asegurarApi: async (_log: unknown, ms?: number) => (m.esperas.push(ms), m.viva) }));
 vi.mock("@/lib/almacen", () => ({ crearCarpetas: async () => "/tmp/x" }));
 vi.mock("@/lib/actuar", () => ({ guardarAvatarDelVideo: async () => undefined }));
 vi.mock("@/lib/animar-escenas", () => ({ guardarEstiloGeneracion: async () => undefined }));
@@ -44,5 +46,7 @@ describe("crear proyectos desde un tema (UX-07)", () => {
     const r = await crearLote(["a", "b"], "9:16", "base");
     expect(r.proyectos).toHaveLength(2);
     expect(m.encolados).toHaveLength(2);
+    // Antes de rendirse intenta levantar el generador parado (espera hasta 1 min, no los 2 de siempre).
+    expect(m.esperas.at(-1)).toBe(60_000);
   });
 });

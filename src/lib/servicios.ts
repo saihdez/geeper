@@ -8,16 +8,20 @@ import { crearCarpetas } from "./almacen";
 import { encolar, type TipoTrabajo } from "./cola";
 import { db } from "./db";
 import type { Formato } from "./esquema";
-import { apiViva } from "./mpt";
+import { asegurarApi } from "./mpt";
 import { guardarPedido } from "./pedido-video";
 import type { FilaVideo } from "./tabla-videos";
 
 /** Lo que ve la persona si el generador de videos (MPT, en Docker) está apagado (UX-07). */
 export const GENERADOR_APAGADO = "El generador de videos está apagado. Abre Docker Desktop, espera un minuto y vuelve a intentar.";
 
-/** Antes de crear nada: con el generador apagado cada tema dejaría un proyecto fallido (UX-07). */
+/**
+ * Antes de crear nada: con el generador apagado cada tema dejaría un proyecto fallido (UX-07). Si sólo
+ * estaba parado (Geeper lo pausa para liberar la tarjeta y lo vuelve a levantar después; un cierre de la
+ * app o un reinicio de WSL puede dejarlo parado), se levanta aquí antes de pedirle nada a la persona.
+ */
 export async function exigirGenerador(): Promise<void> {
-  if (!(await apiViva())) throw new Error(GENERADOR_APAGADO);
+  if (!(await asegurarApi(undefined, 60_000))) throw new Error(GENERADOR_APAGADO);
 }
 
 export function slugDe(texto: string): string {
