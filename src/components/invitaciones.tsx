@@ -6,6 +6,7 @@ import { normalizarUrlPublica, type Invitacion } from "@/lib/invitaciones/esquem
 import { Aviso, pedir, useSondeo } from "./comun";
 import { FormInvitacion } from "./form-invitacion";
 import { PanelFormularios } from "./invitacion-formularios";
+import { PanelAvnac } from "./invitacion-avnac";
 import { PanelFoto, PanelQr } from "./invitacion-imagenes";
 
 interface Resumen {
@@ -125,7 +126,7 @@ export function VistaInvitacion({ slug }: { slug: string }) {
           <a className="boton boton-primario" href={archivo(slug, "invitacion.zip", v)}>Descargar (.zip)</a>
           <a className="boton" href={archivo(slug, "index.html", v)} target="_blank" rel="noopener">Abrir en otra pestaña</a>
           <Link className="boton" href={`/invitaciones/${slug}/editar`}>Cambiar datos</Link>
-          <Link className="boton" href={`/invitaciones/${slug}/a-mano`}>✏️ Corregir a mano</Link>
+          <Link className="boton" href={`/invitaciones/${slug}/a-mano`}>✏️ Corregir textos</Link>
         </div>
 
         <section className="tarjeta space-y-3 p-4">
@@ -158,6 +159,8 @@ export function VistaInvitacion({ slug }: { slug: string }) {
           )}
           {inv.urlPublica && <PanelQr inv={inv} alCambiar={(a) => { setAvisos(a); void recargar(); }} />}
         </section>
+
+        <PanelAvnac slug={slug} />
 
         <PanelFoto inv={inv} inicial={params.get("foto") ?? ""} alCambiar={(a) => { setAvisos(a); void recargar(); }} />
 

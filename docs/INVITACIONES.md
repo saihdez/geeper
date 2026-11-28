@@ -208,6 +208,21 @@ Cada texto lleva una clave estable (`data-ed`) y se escribe en su lugar; cada pa
 - Fecha, hora y lugar se pueden reescribir (lo que se lee), pero el calendario, la cuenta atrás y los
   mapas siguen saliendo de los datos.
 
+### Diseñarla en Avnac Studio (hecho el 2026-11-28)
+
+Pedido del dueño: «Corregir a mano» que abra la invitación en Avnac Studio con todas las piezas. Avnac sólo
+exporta imagen o PDF, así que quedaron las dos cosas: «Corregir textos» (la página interactiva) y «Abrir en
+Avnac Studio» (el diseño para imprimir o compartir como imagen).
+
+- `avnac.ts` arma el formato «v2» que acepta el «Import» de Avnac 0.4.1 (`parseV2WorkspaceImport`): una
+  página de 1080×1920 por parte (portada, mensaje, fecha con cada día suelto, cuenta atrás, lugar, vestimenta,
+  confirmación con el QR, regalos, hashtag, cierre), con textos, foto, QR, botones y adornos sueltos y con
+  nombre. Respeta los retoques y las partes ocultas. Los adornos van como SVG con sus colores puestos.
+- Avnac no abre archivos al arrancar: Geeper deja `<GEEPER_DATA>/Avnac/<nombre>.workspace.avnac`, abre Avnac
+  y muestra el archivo en el explorador; la persona toca «Import» una vez. También se puede descargar.
+- Los títulos se achican para que la palabra más larga quepa (Cinzel y otras letras anchas se miden más
+  anchas). No se pudo correr el importador de Avnac aquí: la prueba revisa las mismas condiciones que su código.
+
 ### Datos del cliente con Google Forms (hecho el 2026-11-27)
 
 En Invitaciones, «Pedirle los datos al cliente con Google Forms»: Geeper crea el formulario en la cuenta

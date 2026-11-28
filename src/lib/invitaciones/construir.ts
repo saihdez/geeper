@@ -22,6 +22,10 @@ import { leerEnlaceMusica, resolverEnlaceMusica } from "./enlaces";
 import { Entrada, fechaPasada, Invitacion, normalizarUrlPublica, Retoques, Seccion, SLUG, type EstiloId } from "./esquema";
 import { z } from "zod";
 import { copiarElegida, pngQrBase } from "./imagenes";
+import { disenoAvnac, nombreArchivoAvnac } from "./avnac";
+import { abrirAvnac } from "../avnac";
+import { SISTEMA } from "../plataforma";
+import { spawn } from "node:child_process";
 
 export const ARCHIVOS_PUBLICOS = ["index.html", "invitacion.ics", "portada-og.jpg", "qr.svg", "qr.png", "invitacion.zip"] as const;
 export const EXT_FOTO = new Set([".jpg", ".jpeg", ".png", ".webp", ".heic", ".avif"]);
@@ -350,6 +354,47 @@ export async function htmlEditor(slug: string): Promise<string> {
   const inv = await leerInvitacion(slug);
   const { fuentes, fotoB64 } = await recursosDe(inv);
   return compilar(inv, { fuentesCss: fuentes.css, fotoB64 }, Date.now(), { editor: true }).html;
+}
+
+/** La invitación como diseño de Avnac Studio, con la foto y el QR adentro (avnac.ts). */
+export async function archivoAvnac(slug: string): Promise<{ nombre: string; contenido: string }> {
+  const inv = await leerInvitacion(slug);
+  const dir = dirInvitacion(slug);
+  const fotoB64 = inv.foto ? (await fs.readFile(path.join(dir, inv.foto))).toString("base64") : undefined;
+  const qr = path.join(dir, "publicar", "qr.png");
+  const qrB64 = inv.urlPublica && existsSync(qr) ? (await fs.readFile(qr)).toString("base64") : undefined;
+  return { nombre: nombreArchivoAvnac(inv), contenido: JSON.stringify(disenoAvnac(inv, { fotoB64, qrB64 })) };
+}
+
+/**
+ * Deja el diseño en la carpeta «Avnac» de los datos de Geeper (fácil de encontrar desde «Import» de Avnac),
+ * abre Avnac Studio si está instalada y muestra el archivo en el explorador. Devuelve qué se pudo hacer.
+ */
+export async function abrirEnAvnac(slug: string): Promise<{ archivo: string; abierta: boolean; motivo?: string }> {
+  const { nombre, contenido } = await archivoAvnac(slug);
+  const carpeta = path.join(dirDatos(), "Avnac");
+  await fs.mkdir(carpeta, { recursive: true });
+  const ruta = path.join(carpeta, nombre);
+  await escribirAtomico(ruta, contenido);
+  mostrarEnCarpeta(ruta);
+  try {
+    await abrirAvnac();
+    return { archivo: nombre, abierta: true };
+  } catch (e) {
+    return { archivo: nombre, abierta: false, motivo: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Abre la carpeta del archivo con el archivo marcado (Windows) o la carpeta (Linux/macOS), sin esperar. */
+function mostrarEnCarpeta(ruta: string) {
+  const [cmd, args] = SISTEMA === "windows" ? ["explorer.exe", [`/select,${ruta}`]] : SISTEMA === "mac" ? ["open", ["-R", ruta]] : ["xdg-open", [path.dirname(ruta)]];
+  try {
+    const h = spawn(cmd, args, { detached: true, stdio: "ignore", windowsHide: false });
+    h.on("error", () => {});
+    h.unref();
+  } catch {
+    /* sin explorador (servidor sin escritorio): queda el archivo */
+  }
 }
 
 /** Rehace `publicar/` desde el json. Devuelve avisos para la persona (nunca falla por la portada o las letras). */

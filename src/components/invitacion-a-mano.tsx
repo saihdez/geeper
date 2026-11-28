@@ -90,7 +90,7 @@ export function InvitacionAMano({ slug }: { slug: string }) {
       <div className="mx-auto">
         <div className="max-w-full rounded-[2.6rem] border-[10px] border-neutral-800 bg-black shadow-2xl" style={{ width: 410, height: 800 }}>
           {html ? (
-            <iframe ref={marco} title={`Corregir a mano la invitación de ${inv.nombres}`} srcDoc={html} sandbox="allow-scripts" className="h-full w-full rounded-[2rem] bg-white" />
+            <iframe ref={marco} title={`Corregir los textos de la invitación de ${inv.nombres}`} srcDoc={html} sandbox="allow-scripts" className="h-full w-full rounded-[2rem] bg-white" />
           ) : (
             <p className="p-6 text-sm text-tenue">{falla ? "" : "Abriendo la invitación…"}</p>
           )}
@@ -100,7 +100,7 @@ export function InvitacionAMano({ slug }: { slug: string }) {
       <div className="space-y-5">
         <div>
           <Link href={`/invitaciones/${slug}`} className="text-xs text-tenue hover:text-white">← Volver a la invitación</Link>
-          <h1 className="text-xl font-semibold">Corregir a mano</h1>
+          <h1 className="text-xl font-semibold">Corregir textos</h1>
           <p className="text-sm text-tenue">{inv.nombres}</p>
         </div>
         <ol className="list-decimal space-y-2 pl-5 text-sm">
@@ -108,6 +108,9 @@ export function InvitacionAMano({ slug }: { slug: string }) {
           <li>Para quitar una parte (por ejemplo, los regalos), toca <b>Ocultar esta parte</b> en su esquina.</li>
           <li>Cuando termines, toca <b>Guardar cambios</b>: se rehace la invitación y el .zip.</li>
         </ol>
+        <p className="text-xs text-tenue">
+          ¿Quieres mover piezas, cambiar letras o rediseñarla como imagen? En la invitación, usa «Abrir en Avnac Studio».
+        </p>
         <p className="text-xs text-tenue">
           La fecha, la hora y el lugar también se corrigen aquí, pero sólo cambia lo que se lee: el calendario, la cuenta atrás y el mapa
           siguen con los datos. Para cambiar esos, usa «Cambiar datos».
